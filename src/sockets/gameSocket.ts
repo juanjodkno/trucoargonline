@@ -118,11 +118,6 @@ export function setupSocketEvents(io: Server) {
 
   function handleTimeout(room: ActiveRoom) {
     if (!room.gameRound) return;
-    if (room.envidoPendingCaller) {
-        resolveEnvidoDeclined(room, responderId);
-      } else {
-        resolveTrucoFold(room, responderId, 'NO_QUIERO_TRUCO');
-      }
 
     if (room.isDeclaringEnvido && room.envidoDeclarer) {
       const activeUser = room.envidoDeclarer;
@@ -147,7 +142,7 @@ export function setupSocketEvents(io: Server) {
       if (room.envidoPendingCaller) {
         resolveEnvidoDeclined(room, responderId);
       } else {
-        resolveTrucoFold(room, responderId);
+        resolveTrucoFold(room, responderId, 'NO_QUIERO_TRUCO');
       }
       return;
     }
@@ -208,7 +203,6 @@ export function setupSocketEvents(io: Server) {
 
     const lastCall = chain[chain.length - 1];
 
-    // Puntos acumulados en caso de "No quiero"
     let declined = 1;
     if (chain.length > 1) {
       declined = 0;
@@ -218,7 +212,6 @@ export function setupSocketEvents(io: Server) {
       if (declined === 0) declined = 1;
     }
 
-    // Puntos en caso de "Quiero"
     let accepted = 0;
     if (lastCall === 'FALTA_ENVIDO') {
       if (room) {
@@ -809,7 +802,6 @@ export function setupSocketEvents(io: Server) {
         if (callType === 'NO_QUIERO_TRUCO' || callType === 'ME_VOY_AL_MAZO') {
           room.pendingTrucoAfterEnvido = null;
           return resolveTrucoFold(room, userId, callType);
-        }
         }
 
       } catch (err) { console.error('Error en send_call:', err); }
