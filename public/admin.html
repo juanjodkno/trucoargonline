@@ -19,7 +19,7 @@
       border: 1px solid #334155; text-align: center; box-shadow: 0 16px 36px rgba(0,0,0,0.7);
     }
 
-    .admin-card { background: #16222f; width: 100%; max-width: 700px; border-radius: 16px; padding: 25px; border: 1px solid #334155; box-shadow: 0 8px 24px rgba(0,0,0,0.5); display: none; }
+    .admin-card { background: #16222f; width: 100%; max-width: 760px; border-radius: 16px; padding: 25px; border: 1px solid #334155; box-shadow: 0 8px 24px rgba(0,0,0,0.5); display: none; }
     h2 { color: #ffd166; margin-bottom: 20px; text-align: center; }
     .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
     .tab-btn { flex: 1; padding: 10px; background: #080c10; border: 1px solid #334155; color: #cbd5e1; border-radius: 8px; font-weight: bold; cursor: pointer; }
@@ -35,8 +35,22 @@
     .btn-deduct:hover { background: #d90429; }
     .btn-pass { width: 100%; background: #0077b6; }
     .btn-pass:hover { background: #0096c7; }
+    
+    .btn-delete-row {
+      background: #ef4444;
+      color: white;
+      border: none;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.2s;
+    }
+    .btn-delete-row:hover { background: #dc2626; transform: scale(1.05); }
+
     .user-table { width: 100%; margin-top: 25px; border-collapse: collapse; font-size: 0.9rem; }
-    .user-table th, .user-table td { padding: 10px; border-bottom: 1px solid #1e293b; text-align: left; }
+    .user-table th, .user-table td { padding: 10px; border-bottom: 1px solid #1e293b; text-align: left; vertical-align: middle; }
     .user-table th { color: #ffd166; font-size: 0.8rem; text-transform: uppercase; }
     .chips-badge { background: #0077b6; padding: 4px 8px; border-radius: 12px; font-weight: bold; }
     .msg { margin-top: 12px; padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; display: none; }
@@ -75,7 +89,6 @@
     <div class="tabs">
       <button class="tab-btn active" id="tabChips" onclick="switchAdminTab('chips')">Gestión de Fichas</button>
       <button class="tab-btn" id="tabPass" onclick="switchAdminTab('pass')">Cambiar Contraseña</button>
-      <button class="btn-action" style="background:#ef4444; color:white;" onclick="deleteUserPrompt('${u.username}')">🗑️ Eliminar</button>
     </div>
 
     <!-- Form Gestión Fichas -->
@@ -113,13 +126,14 @@
 
     <div id="statusMsg" class="msg"></div>
 
-    <h3 style="color:#cbd5e1; margin-top: 30px; border-bottom: 1px solid #334155; padding-bottom: 8px;">Jugadores Registrados (Hacé clic en uno para seleccionarlo)</h3>
+    <h3 style="color:#cbd5e1; margin-top: 30px; border-bottom: 1px solid #334155; padding-bottom: 8px;">Jugadores Registrados</h3>
     <table class="user-table">
       <thead>
         <tr>
           <th>Usuario</th>
           <th>Nombre</th>
           <th>Saldo Fichas</th>
+          <th style="text-align:center;">Acción</th>
         </tr>
       </thead>
       <tbody id="userRows"></tbody>
@@ -199,40 +213,44 @@
       data.forEach(u => {
         const tr = document.createElement('tr');
         tr.innerHTML = `
-          <td><strong>@${u.username}</strong></td>
-          <td>${u.fullName}</td>
-          <td><span class="chips-badge">$${new Intl.NumberFormat('es-AR').format(u.chips)}</span></td>
+          <td style="cursor:pointer;" onclick="selectUser('${u.username}')"><strong>@${u.username}</strong></td>
+          <td style="cursor:pointer;" onclick="selectUser('${u.username}')">${u.fullName}</td>
+          <td style="cursor:pointer;" onclick="selectUser('${u.username}')"><span class="chips-badge">$${new Intl.NumberFormat('es-AR').format(u.chips)}</span></td>
+          <td style="text-align:center;">
+            <button class="btn-delete-row" onclick="deleteUserPrompt('${u.username}')">🗑️ Eliminar</button>
+          </td>
         `;
-        tr.onclick = () => { 
-          document.getElementById('targetUser').value = u.username; 
-          document.getElementById('passUser').value = u.username; 
-        };
-        tr.style.cursor = 'pointer';
         tbody.appendChild(tr);
       });
     }
+
+    function selectUser(username) {
+      document.getElementById('targetUser').value = username; 
+      document.getElementById('passUser').value = username; 
+    }
+
     async function deleteUserPrompt(username) {
-  const confirmar = confirm(`⚠️ ¿Estás seguro de que deseás eliminar permanentemente al usuario @${username}?\n\nEsta acción borrará su cuenta y saldo de Supabase.`);
-  if (!confirmar) return;
+      const confirmar = confirm(`⚠️ ¿Estás seguro de que deseás eliminar permanentemente al usuario @${username}?\n\nEsta acción borrará su cuenta y saldo de Supabase.`);
+      if (!confirmar) return;
 
-  const adminPin = localStorage.getItem('admin_pin') || sessionStorage.getItem('admin_pin');
-  const res = await fetch('/api/admin/delete-user', {
-    method: 'POST',
-    headers: { 
-      'Content-Type': 'application/json',
-      'x-admin-pin': adminPin
-    },
-    body: JSON.stringify({ username })
-  });
+      try {
+        const res = await fetch('/api/admin/delete-user', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ username })
+        });
 
-  const data = await res.json();
-  if (res.ok) {
-    alert(data.message);
-    loadUsers(); // o la función que uses para refrescar la lista
-  } else {
-    alert(data.message);
-  }
-}
+        const data = await res.json();
+        if (res.ok) {
+          alert(data.message);
+          loadUsers();
+        } else {
+          alert(data.message);
+        }
+      } catch {
+        alert('Error de conexión al intentar eliminar el usuario.');
+      }
+    }
 
     async function handleChipsAction(actionType) {
       const username = document.getElementById('targetUser').value.trim();
@@ -303,7 +321,6 @@
       }
     }
 
-    // Comprobar si ya había una clave guardada
     window.addEventListener('DOMContentLoaded', async () => {
       if (adminToken) {
         const res = await fetch('/api/admin/auth', {
