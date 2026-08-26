@@ -693,13 +693,20 @@ export function setupSocketEvents(io: Server) {
 
         if (callType === 'FLOR') {
           if (!room.withFlor) return socket.emit('error_action', { message: 'Partida SIN FLOR.' });
-          if (currentTrick > 0 || callerCardsPlayed > 0) return socket.emit('error_action', { message: 'Ya jugaste carta, no podés cantar Flor.' });
+          if (currentTrick > 0 || room.gameRound.envidoResolved) return socket.emit('error_action', { message: 'El tiempo para cantar Flor ya cerró.' });
           return resolveFlor(room, userId);
         }
 
         if (['ENVIDO', 'ENVIDO_ENVIDO', 'REAL_ENVIDO', 'FALTA_ENVIDO'].includes(callType)) {
-          if (currentTrick > 0 || room.gameRound.envidoResolved || callerCardsPlayed > 0) {
-            return socket.emit('error_action', { message: 'Ya jugaste carta o el Envido ya cerró.' });
+          if (currentTrick > 0 || room.gameRound.envidoResolved) {
+            return socket.emit('error_action', { message: 'El Envido ya cerró.' });
+          }
+
+          // Si se inicia el Envido de cero (no es contra-canto ni respuesta a Truco)
+          if (room.envidoChain.length === 0) {
+            if (callerCardsPlayed > 0 && !room.gameRound.awaitingResponseFrom) {
+              return socket.emit('error_action', { message: 'Ya jugaste tu carta, no podés iniciar el Envido.' });
+            }
           }
 
           room.envidoChain.push(callType);
@@ -737,7 +744,7 @@ export function setupSocketEvents(io: Server) {
             userId, 
             callType: 'TRUCO', 
             category: 'TRUCO', 
-            awaitingResponseFrom: rivalId,
+            awaitingResponseFrom: rivalId, 
             canCallEnvido: canEnvido 
           });
           return startTurnTimer(room, 25);
