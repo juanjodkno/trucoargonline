@@ -767,7 +767,11 @@ export function setupSocketEvents(io: Server) {
           room.gameRound.awaitingResponseFrom = null;
           room.trucoLevel = room.gameRound.trucoPointsAtStake;
           room.trucoOwner = userId;
-          io.to(roomId).emit('truco_accepted', { acceptedBy: userId, trucoLevel: room.trucoLevel, trucoOwner: room.trucoOwner });
+          io.to(roomId).emit('truco_accepted', { 
+            acceptedBy: userId, 
+            trucoLevel: room.trucoLevel, 
+            trucoOwner: room.trucoOwner 
+          });
           return startTurnTimer(room, 25);
         }
 

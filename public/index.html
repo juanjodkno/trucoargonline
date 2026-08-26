@@ -1063,49 +1063,25 @@
         else if (data.callType === 'ME_VOY_AL_MAZO') playAudio('me voy al mazo');
 
         const userHasFlor = checkIfIHaveFlor();
-        const hasPlayedAnyCard = currentMyCards.length < 3;
-        const isForMe = (data.awaitingResponseFrom || '').toLowerCase() === currentUser.username.toLowerCase();
+      const hasPlayedAnyCard = currentMyCards.length < 3;
 
-        if (data.category === 'ENVIDO') {
-          document.getElementById('trucoGroup').style.display = 'none';
-
-          if (isForMe) {
-            document.getElementById('responseGroup').style.display = 'inline-block';
-
-            if (userHasFlor) {
-              document.getElementById('florGroup').style.display = 'inline-block';
-              document.getElementById('envidoGroup').style.display = 'none';
-            } else {
-              document.getElementById('florGroup').style.display = 'none';
-              document.getElementById('envidoGroup').style.display = 'inline-block';
-
-              const chain = data.chain || [data.callType];
-              const lastCall = chain[chain.length - 1];
-
-              if (lastCall === 'ENVIDO') {
-                document.getElementById('btnEnvido').style.display = 'none';
-                document.getElementById('btnEnvidoEnvido').style.display = 'inline-block';
-                document.getElementById('btnRealEnvido').style.display = 'inline-block';
-                document.getElementById('btnFaltaEnvido').style.display = 'inline-block';
-              } else if (lastCall === 'ENVIDO_ENVIDO') {
-                document.getElementById('btnEnvido').style.display = 'none';
-                document.getElementById('btnEnvidoEnvido').style.display = 'none';
-                document.getElementById('btnRealEnvido').style.display = 'inline-block';
-                document.getElementById('btnFaltaEnvido').style.display = 'inline-block';
-              } else if (lastCall === 'REAL_ENVIDO') {
-                document.getElementById('btnEnvido').style.display = 'none';
-                document.getElementById('btnEnvidoEnvido').style.display = 'none';
-                document.getElementById('btnRealEnvido').style.display = 'none';
-                document.getElementById('btnFaltaEnvido').style.display = 'inline-block';
-              } else if (lastCall === 'FALTA_ENVIDO') {
-                document.getElementById('envidoGroup').style.display = 'none';
-              }
-            }
-          } else {
-            document.getElementById('envidoGroup').style.display = 'none';
-            document.getElementById('florGroup').style.display = 'none';
-            document.getElementById('responseGroup').style.display = 'none';
-          }
+      // Envido/Flor disponible en 1ra mano solo si NO se resolvió el envido y NO hay un truco ya aceptado/subido
+      if (currentTrickIndex === 0 && !envidoDone && !hasPlayedAnyCard && currentTrucoLevel === 1) {
+        if (userHasFlor) {
+          document.getElementById('florGroup').style.display = 'inline-block';
+          document.getElementById('envidoGroup').style.display = 'none';
+        } else {
+          document.getElementById('florGroup').style.display = 'none';
+          document.getElementById('envidoGroup').style.display = 'inline-block';
+          document.getElementById('btnEnvido').style.display = 'inline-block';
+          document.getElementById('btnEnvidoEnvido').style.display = 'none';
+          document.getElementById('btnRealEnvido').style.display = 'inline-block';
+          document.getElementById('btnFaltaEnvido').style.display = 'inline-block';
+        }
+      } else {
+        document.getElementById('florGroup').style.display = 'none';
+        document.getElementById('envidoGroup').style.display = 'none';
+      }
         } else if (data.category === 'TRUCO') {
           if (isForMe) {
             document.getElementById('responseGroup').style.display = 'inline-block';
@@ -1155,6 +1131,7 @@
 
       socket.on('truco_accepted', (data) => {
         playAudio('quiero');
+        envidoDone = true
         currentTrucoLevel = data.trucoLevel;
         currentTrucoOwner = data.trucoOwner;
         updateTurnControls(currentTurnPlayer);
