@@ -1,0 +1,203 @@
+<!-- public/admin.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Panel Admin - Control de Usuarios y Fichas</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+    body { background: #0b1320; color: white; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+    .admin-card { background: #16222f; width: 100%; max-width: 700px; border-radius: 16px; padding: 25px; border: 1px solid #334155; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+    h2 { color: #ffd166; margin-bottom: 20px; text-align: center; }
+    .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
+    .tab-btn { flex: 1; padding: 10px; background: #080c10; border: 1px solid #334155; color: #cbd5e1; border-radius: 8px; font-weight: bold; cursor: pointer; }
+    .tab-btn.active { background: #0077b6; color: white; border-color: #0077b6; }
+    .form-group { margin-bottom: 14px; }
+    label { display: block; font-size: 0.85rem; color: #cbd5e1; margin-bottom: 6px; }
+    input { width: 100%; padding: 12px; background: #080c10; border: 1px solid #334155; border-radius: 8px; color: white; font-size: 1rem; outline: none; }
+    input:focus { border-color: #2a9d8f; }
+    .btn-submit { padding: 12px; border: none; border-radius: 8px; color: white; font-size: 1rem; font-weight: bold; cursor: pointer; transition: 0.2s; }
+    .btn-add { background: #2a9d8f; flex: 1; }
+    .btn-add:hover { background: #21867a; }
+    .btn-deduct { background: #e63946; flex: 1; }
+    .btn-deduct:hover { background: #d90429; }
+    .btn-pass { width: 100%; background: #0077b6; }
+    .btn-pass:hover { background: #0096c7; }
+    .user-table { width: 100%; margin-top: 25px; border-collapse: collapse; font-size: 0.9rem; }
+    .user-table th, .user-table td { padding: 10px; border-bottom: 1px solid #1e293b; text-align: left; }
+    .user-table th { color: #ffd166; font-size: 0.8rem; text-transform: uppercase; }
+    .chips-badge { background: #0077b6; padding: 4px 8px; border-radius: 12px; font-weight: bold; }
+    .msg { margin-top: 12px; padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; display: none; }
+    .msg.ok { background: #2ec4b6; color: #081c15; }
+    .msg.err { background: #e63946; color: white; }
+  </style>
+</head>
+<body>
+
+  <div class="admin-card">
+    <h2>🪙 Panel de Administración</h2>
+
+    <div class="tabs">
+      <button class="tab-btn active" id="tabChips" onclick="switchAdminTab('chips')">Gestión de Fichas</button>
+      <button class="tab-btn" id="tabPass" onclick="switchAdminTab('pass')">Cambiar Contraseña</button>
+    </div>
+
+    <!-- Form Gestión Fichas -->
+    <div id="formChips">
+      <div class="form-group">
+        <label>Nombre de Usuario del Jugador:</label>
+        <input type="text" id="targetUser" placeholder="Ej: jja1" required />
+      </div>
+
+      <div class="form-group">
+        <label>Cantidad de Fichas (1 ARS = 1 Ficha):</label>
+        <input type="number" id="targetAmount" placeholder="Ej: 5000" min="1" step="1" required />
+      </div>
+
+      <div style="display:flex; gap:10px;">
+        <button type="button" class="btn-submit btn-add" onclick="handleChipsAction('add')">+ Acreditar Fichas</button>
+        <button type="button" class="btn-submit btn-deduct" onclick="handleChipsAction('remove')">- Descontar Fichas</button>
+      </div>
+    </div>
+
+    <!-- Form Cambiar Contraseña -->
+    <form id="formPass" onsubmit="handleResetPass(event)" style="display:none;">
+      <div class="form-group">
+        <label>Nombre de Usuario del Jugador:</label>
+        <input type="text" id="passUser" placeholder="Ej: jja1" required />
+      </div>
+
+      <div class="form-group">
+        <label>Nueva Contraseña:</label>
+        <input type="text" id="newPassValue" placeholder="Escribí la nueva contraseña" required />
+      </div>
+
+      <button type="submit" class="btn-submit btn-pass">Actualizar Contraseña</button>
+    </form>
+
+    <div id="statusMsg" class="msg"></div>
+
+    <h3 style="color:#cbd5e1; margin-top: 30px; border-bottom: 1px solid #334155; padding-bottom: 8px;">Jugadores Registrados (Hacé clic en uno para seleccionarlo)</h3>
+    <table class="user-table">
+      <thead>
+        <tr>
+          <th>Usuario</th>
+          <th>Nombre</th>
+          <th>Saldo Fichas</th>
+        </tr>
+      </thead>
+      <tbody id="userRows"></tbody>
+    </table>
+  </div>
+
+  <script>
+    function switchAdminTab(tab) {
+      document.getElementById('statusMsg').style.display = 'none';
+      if (tab === 'chips') {
+        document.getElementById('tabChips').classList.add('active');
+        document.getElementById('tabPass').classList.remove('active');
+        document.getElementById('formChips').style.display = 'block';
+        document.getElementById('formPass').style.display = 'none';
+      } else {
+        document.getElementById('tabPass').classList.add('active');
+        document.getElementById('tabChips').classList.remove('active');
+        document.getElementById('formPass').style.display = 'block';
+        document.getElementById('formChips').style.display = 'none';
+      }
+    }
+
+    async function loadUsers() {
+      const res = await fetch('/api/admin/users-list');
+      const data = await res.json();
+      const tbody = document.getElementById('userRows');
+      tbody.innerHTML = '';
+      data.forEach(u => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td><strong>@${u.username}</strong></td>
+          <td>${u.fullName}</td>
+          <td><span class="chips-badge">$${new Intl.NumberFormat('es-AR').format(u.chips)}</span></td>
+        `;
+        tr.onclick = () => { 
+          document.getElementById('targetUser').value = u.username; 
+          document.getElementById('passUser').value = u.username; 
+        };
+        tr.style.cursor = 'pointer';
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function handleChipsAction(actionType) {
+      const username = document.getElementById('targetUser').value.trim();
+      const amount = document.getElementById('targetAmount').value;
+      const msg = document.getElementById('statusMsg');
+
+      if (!username || !amount || Number(amount) <= 0) {
+        msg.className = 'msg err';
+        msg.innerText = 'Completá el usuario y un monto válido mayor a 0.';
+        msg.style.display = 'block';
+        return;
+      }
+
+      const endpoint = actionType === 'add' ? '/api/admin/add-chips' : '/api/admin/remove-chips';
+
+      try {
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, amount })
+        });
+        const data = await res.json();
+
+        msg.style.display = 'block';
+        if (res.ok) {
+          msg.className = 'msg ok';
+          msg.innerText = data.message;
+          document.getElementById('targetAmount').value = '';
+          loadUsers();
+        } else {
+          msg.className = 'msg err';
+          msg.innerText = data.message;
+        }
+      } catch {
+        msg.className = 'msg err';
+        msg.innerText = 'Error de conexión.';
+        msg.style.display = 'block';
+      }
+    }
+
+    async function handleResetPass(e) {
+      e.preventDefault();
+      const username = document.getElementById('passUser').value.trim();
+      const newPassword = document.getElementById('newPassValue').value.trim();
+      const msg = document.getElementById('statusMsg');
+
+      try {
+        const res = await fetch('/api/admin/reset-password', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, newPassword })
+        });
+        const data = await res.json();
+
+        msg.style.display = 'block';
+        if (res.ok) {
+          msg.className = 'msg ok';
+          msg.innerText = data.message;
+          document.getElementById('newPassValue').value = '';
+        } else {
+          msg.className = 'msg err';
+          msg.innerText = data.message;
+        }
+      } catch {
+        msg.className = 'msg err';
+        msg.innerText = 'Error de conexión.';
+        msg.style.display = 'block';
+      }
+    }
+
+    loadUsers();
+  </script>
+</body>
+</html>

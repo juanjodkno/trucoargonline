@@ -1,0 +1,52 @@
+[
+  {
+    "id": "usr_e942fc1b",
+    "fullName": "juan jose arancibia",
+    "email": "juanjodkno@gmail.com",
+    "username": "juanjodkno",
+    "passwordHash": "15b3a0489b937ba2dde22afcbf891bcbccb12b32bad3d192306e8890d33ce8172e5faba4e01aa2caca06b037d37f58bcbecada2038b4b21f6cae0091274413be",
+    "salt": "aae1938867b7828bc45341c74573b144",
+    "chips": 0,
+    "createdAt": "2026-08-25T18:37:03.210Z"
+  },
+  {
+    "id": "usr_01d090a5",
+    "fullName": "juan",
+    "email": "jose@gmail.lcom",
+    "username": "jja",
+    "passwordHash": "7585428bfece5c8e7b1f76ae14326622c3c63cc3f70a8ffdd02cc2ef475a8de4a48931a3cf5f4cd80ae1e2118d8b28a99956fea5132bcc6cf0374e3d184e26fc",
+    "salt": "4230009afa7e59e00844c425634aee0b",
+    "chips": 0,
+    "createdAt": "2026-08-25T18:52:21.918Z"
+  },
+  {
+    "id": "usr_6253d062",
+    "fullName": "juano",
+    "email": "jose12@gmail.com",
+    "username": "jja1",
+    "passwordHash": "a114ed5668551244a42274a8749cf8543447a326f04b650cc819286bafa1f46afa662a0e080d2f92bbd39d940c012d0f67e9917b67f4c1188560905dcadf54c2",
+    "salt": "30ab3420b405f80d7c840d195e8761e6",
+    "chips": 0,
+    "createdAt": "2026-08-25T18:53:13.041Z"
+  },
+  {
+    "id": "usr_0e6477ec",
+    "fullName": "Tami",
+    "email": "maricelgutierrez834@gmail.com",
+    "username": "maricel",
+    "passwordHash": "ac2c3cf70c96165994274f48755b972318c99e4edde363b864af7f14f9079d4cec3617a48ddee0c55a799805541f6fd9d2328880a84afb4e9e541a2e752a2265",
+    "salt": "bdd6219eea604d72061658cea572ab27",
+    "chips": 0,
+    "createdAt": "2026-08-25T19:27:03.653Z"
+  },
+  {
+    "id": "usr_cc489b7b",
+    "fullName": "Zoe",
+    "email": "zoelamasjodidas@gmail.com",
+    "username": "zoe",
+    "passwordHash": "8ddee2e26e8c59993ac59a94c33fe2dca2f87107bd919660a2fe55f5ee328c661b6a06a82d0901f08fe74082301ca02386d2e1dd8b2cce8acb7498ca194c19ca",
+    "salt": "02813c449b379f773630e05a0a0b8c00",
+    "chips": 0,
+    "createdAt": "2026-08-26T01:32:44.423Z"
+  }
+]

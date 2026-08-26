@@ -1,0 +1,1274 @@
+<!-- public/index.html -->
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#0077b6" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<link rel="apple-touch-icon" href="/logo.png" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Truco Argentino Online - Fichas ARS</title>
+  <link rel="icon" type="image/png" href="/logo.png" />
+  <script src="/socket.io/socket.io.js">if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW error:', err));
+}</script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
+    body { background: radial-gradient(circle at center, #1b2838 0%, #080c10 100%); color: white; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 10px; }
+
+    /* Modal de Autenticación */
+    .auth-overlay {
+      position: fixed; inset: 0; background: rgba(8, 12, 16, 0.98); backdrop-filter: blur(12px);
+      display: flex; justify-content: center; align-items: center; z-index: 200;
+    }
+    .auth-card {
+      background: #16222f; border: 1px solid rgba(255, 255, 255, 0.15); width: 100%; max-width: 400px;
+      padding: 30px; border-radius: 20px; box-shadow: 0 16px 36px rgba(0,0,0,0.7); text-align: center;
+    }
+    .auth-title { 
+      font-size: 1.8rem; font-weight: 800; color: #ffd166; margin-bottom: 6px; 
+      display: flex; align-items: center; justify-content: center; gap: 10px; 
+    }
+    .auth-subtitle { font-size: 0.9rem; color: #94a3b8; margin-bottom: 20px; }
+    .auth-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+    .auth-tab { flex: 1; padding: 8px; background: #0f172a; border: none; color: #94a3b8; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+    .auth-tab.active { background: #0077b6; color: white; }
+
+    .form-group { margin-bottom: 14px; text-align: left; }
+    .form-group label { display: block; font-size: 0.8rem; color: #cbd5e1; margin-bottom: 4px; font-weight: 600; }
+    .form-control {
+      width: 100%; padding: 10px 14px; background: #0b1320; border: 1px solid #334155;
+      border-radius: 8px; color: white; font-size: 0.95rem; outline: none; transition: 0.2s;
+    }
+    .form-control:focus { border-color: #0077b6; box-shadow: 0 0 8px rgba(0, 119, 182, 0.5); }
+    .btn-submit { width: 100%; padding: 12px; background: #0077b6; border: none; border-radius: 8px; color: white; font-size: 1rem; font-weight: bold; cursor: pointer; transition: 0.2s; margin-top: 10px; }
+    .btn-submit:hover { background: #0096c7; }
+    .auth-error { color: #ef4444; font-size: 0.85rem; margin-top: 10px; display: none; }
+
+    /* LOBBY */
+    .lobby-container {
+      width: 100%; max-width: 760px; background: #16222f; padding: 25px; border-radius: 16px;
+      border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: none; flex-direction: column; gap: 20px;
+    }
+    .lobby-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 15px; }
+    .wallet-box { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .chip-badge { background: #2a9d8f; padding: 6px 14px; border-radius: 20px; font-weight: bold; display: flex; align-items: center; gap: 6px; }
+    
+    .btn-cargar { background: #f77f00; border: none; padding: 6px 12px; border-radius: 20px; color: white; font-weight: bold; cursor: pointer; font-size: 0.85rem; transition: 0.2s; }
+    .btn-cargar:hover { background: #fcbf49; color: black; }
+
+    .btn-retirar { background: #e63946; border: none; padding: 6px 12px; border-radius: 20px; color: white; font-weight: bold; cursor: pointer; font-size: 0.85rem; transition: 0.2s; }
+    .btn-retirar:hover { background: #d90429; }
+
+    .btn-logout { background: #475569; border: none; padding: 6px 12px; border-radius: 20px; color: white; font-weight: bold; cursor: pointer; font-size: 0.85rem; transition: 0.2s; }
+    .btn-logout:hover { background: #ef4444; }
+
+    .create-table-card { background: #0b1320; padding: 18px; border-radius: 12px; border: 1px solid #1e293b; display: flex; flex-direction: column; gap: 12px; }
+    .table-options-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; align-items: flex-end; }
+    
+    .table-list { display: flex; flex-direction: column; gap: 10px; max-height: 320px; overflow-y: auto; }
+    .table-item { display: flex; justify-content: space-between; background: #1e293b; padding: 14px 20px; border-radius: 10px; align-items: center; transition: 0.2s; }
+    .table-item:hover { background: #334155; }
+    .table-info { display: flex; flex-direction: column; gap: 4px; }
+    .table-tags { display: flex; gap: 6px; }
+    .tag-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; font-weight: bold; }
+    .tag-pts { background: #0077b6; color: white; }
+    .tag-flor { background: #7209b7; color: white; }
+    .tag-noflor { background: #64748b; color: white; }
+    .tag-free { background: #2ec4b6; color: #081c15; font-weight: 900; }
+
+    .btn-play-match { background: #0077b6; border: none; padding: 10px 18px; border-radius: 8px; color: white; font-weight: bold; cursor: pointer; font-size: 0.95rem; transition: 0.2s; box-shadow: 0 4px 10px rgba(0,119,182,0.4); }
+    .btn-play-match:hover { background: #0096c7; transform: scale(1.03); }
+    .btn-free-match { background: #2a9d8f !important; box-shadow: 0 4px 10px rgba(42,157,143,0.4) !important; }
+    .btn-free-match:hover { background: #38b000 !important; }
+
+    /* Modales */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px);
+      display: none; justify-content: center; align-items: center; z-index: 300;
+    }
+    .modal-card { background: #16222f; width: 100%; max-width: 440px; padding: 25px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.15); }
+    .cbu-box { background: #080c10; padding: 14px; border-radius: 8px; font-size: 0.92rem; color: #ffd166; margin-bottom: 15px; border: 1px dashed #334155; line-height: 1.6; }
+
+    /* MESA DE JUEGO */
+    #gameContainer { display: none; width: 100%; flex-direction: column; align-items: center; }
+    .header-bar { background: rgba(255, 255, 255, 0.07); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.15); width: 100%; max-width: 880px; padding: 8px 20px; border-radius: 12px; margin-bottom: 10px; display: flex; gap: 20px; align-items: center; justify-content: space-between; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+    .score-badge { background: #0077b6; padding: 5px 12px; border-radius: 20px; font-weight: bold; font-size: 1rem; }
+    .turn-badge { color: #ffd166; font-weight: bold; }
+    .timer-badge { background: #d90429; padding: 4px 10px; border-radius: 15px; font-weight: bold; font-size: 0.95rem; }
+
+    .truco-table { width: 100%; max-width: 880px; height: 550px; background: radial-gradient(circle, #1e6b3b 0%, #0d381e 100%); border: 12px solid #3e2723; border-radius: 40px; position: relative; display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: 15px 30px; box-shadow: inset 0 0 35px rgba(0,0,0,0.85), 0 12px 30px rgba(0,0,0,0.6); }
+    .opponent-cards, .my-cards { display: flex; gap: 15px; min-height: 135px; align-items: center; }
+    
+    .table-tricks { display: flex; gap: 40px; width: 100%; justify-content: center; align-items: center; background: rgba(0,0,0,0.2); padding: 14px; border-radius: 20px; border: 1px dashed rgba(255,255,255,0.2); }
+    .trick-slot { width: 110px; height: 185px; border: 2px dashed rgba(255,255,255,0.3); border-radius: 10px; position: relative; display: flex; justify-content: center; align-items: center; }
+    .trick-label { position: absolute; bottom: -22px; font-size: 0.75rem; color: #a3b18a; font-weight: bold; text-transform: uppercase; }
+
+    .card-img { width: 88px; height: 140px; border-radius: 8px; box-shadow: 0 6px 12px rgba(0,0,0,0.45); cursor: pointer; user-select: none; object-fit: cover; transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s, filter 0.2s; }
+    .my-cards .card-img:hover { transform: translateY(-15px) scale(1.06); box-shadow: 0 12px 24px rgba(0,0,0,0.7); }
+    .my-cards.disabled .card-img { cursor: not-allowed; filter: brightness(0.65); transform: none !important; box-shadow: 0 4px 6px rgba(0,0,0,0.3) !important; }
+    .opponent-cards .card-img { cursor: default; }
+
+    /* CARTAS EN MESA */
+    .card-in-trick { 
+      position: absolute; 
+      transition: transform 0.2s ease, box-shadow 0.2s ease; 
+    }
+    .card-in-trick.opp-played-card { 
+      transform: translateY(-28px); 
+      z-index: 2; 
+    }
+    .card-in-trick.my-played-card { 
+      transform: translateY(28px); 
+      z-index: 2; 
+    }
+    .card-in-trick.matada { 
+      z-index: 2 !important; 
+      filter: brightness(0.85); 
+      box-shadow: 0 4px 10px rgba(0,0,0,0.6);
+    }
+    .card-in-trick.matadora { 
+      z-index: 10 !important; 
+      box-shadow: 0 0 18px #ffd166, 0 10px 22px rgba(0,0,0,0.8) !important; 
+    }
+
+    .actions-bar { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; justify-content: center; max-width: 880px; width: 100%; min-height: 42px; }
+    button.action-btn { background: #0077b6; color: white; border: none; padding: 8px 14px; font-size: 0.88rem; font-weight: bold; border-radius: 8px; cursor: pointer; transition: 0.15s; }
+    button.action-btn:hover { background: #0096c7; transform: translateY(-2px); }
+    button.btn-truco { background: #d90429; }
+    button.btn-envido { background: #f77f00; }
+    button.btn-flor { background: #7209b7; }
+    button.btn-buenas { background: #4a5568; }
+    button.btn-mazo { background: #495057; }
+
+    .console-log { margin-top: 10px; width: 100%; max-width: 880px; height: 75px; background: #06090e; border-radius: 8px; padding: 8px 12px; overflow-y: auto; font-size: 0.8rem; color: #adb5bd; border: 1px solid #1e293b; }
+    .envido-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(6px); border-radius: 28px; display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 50; }
+    .envido-title { font-size: 1.6rem; font-weight: 900; color: #ffd166; margin-bottom: 6px; }
+    .envido-cards-row { display: flex; gap: 20px; justify-content: center; }
+
+    .winner-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.88); backdrop-filter: blur(10px); display: none; justify-content: center; align-items: center; z-index: 100; }
+    .winner-card { background: #1c2541; padding: 35px 45px; border-radius: 20px; text-align: center; border: 3px solid #ffd166; }
+  </style>
+</head>
+<body>
+
+  <!-- Modal de Registro / Login -->
+  <div class="auth-overlay" id="authOverlay">
+    <div class="auth-card">
+      <div class="auth-title">
+        <img src="/logo.png" alt="Logo" style="width: 38px; height: 38px; object-fit: contain;" />
+        <span>Truco Argentino</span>
+      </div>
+      <div class="auth-subtitle">Ingresá a tu cuenta para jugar por fichas reales o gratis</div>
+
+      <div class="auth-tabs">
+        <button class="auth-tab active" id="tabRegister" onclick="switchTab('register')">Registro</button>
+        <button class="auth-tab" id="tabLogin" onclick="switchTab('login')">Ingresar</button>
+      </div>
+
+      <!-- Formulario Registro -->
+      <form id="formRegister" onsubmit="handleRegister(event)">
+        <div class="form-group">
+          <label>Nombre Completo</label>
+          <input type="text" id="regFullName" class="form-control" placeholder="Ej: Juanjo" required />
+        </div>
+        <div class="form-group">
+          <label>Correo Electrónico</label>
+          <input type="email" id="regEmail" class="form-control" placeholder="correo@ejemplo.com" required />
+        </div>
+        <div class="form-group">
+          <label>Nombre de Usuario (Único)</label>
+          <input type="text" id="regUsername" class="form-control" placeholder="Ej: decano_tuc" required />
+        </div>
+        <div class="form-group">
+          <label>Contraseña</label>
+          <input type="password" id="regPassword" class="form-control" placeholder="••••••••" required />
+        </div>
+        
+        <div style="display:flex; align-items:center; gap:8px; margin: 12px 0 6px 0; font-size:0.85rem; color:#cbd5e1; text-align:left;">
+          <input type="checkbox" id="regRememberMe" checked style="width:17px; height:17px; cursor:pointer;" />
+          <label for="regRememberMe" style="cursor:pointer; margin:0;">Mantener sesión iniciada</label>
+        </div>
+
+        <button type="submit" class="btn-submit">Crear Cuenta</button>
+      </form>
+
+      <!-- Formulario Login -->
+      <form id="formLogin" onsubmit="handleLogin(event)" style="display:none;">
+        <div class="form-group">
+          <label>Usuario o Correo</label>
+          <input type="text" id="logUser" class="form-control" placeholder="Tu usuario o email" required />
+        </div>
+        <div class="form-group">
+          <label>Contraseña</label>
+          <input type="password" id="logPassword" class="form-control" placeholder="••••••••" required />
+        </div>
+
+        <div style="display:flex; align-items:center; gap:8px; margin: 12px 0 6px 0; font-size:0.85rem; color:#cbd5e1; text-align:left;">
+          <input type="checkbox" id="logRememberMe" checked style="width:17px; height:17px; cursor:pointer;" />
+          <label for="logRememberMe" style="cursor:pointer; margin:0;">Mantener sesión iniciada</label>
+        </div>
+
+        <button type="submit" class="btn-submit">Ingresar al Lobby</button>
+      </form>
+
+      <div class="auth-error" id="authError"></div>
+    </div>
+  </div>
+
+  <!-- LOBBY -->
+  <div class="lobby-container" id="lobbyContainer">
+    <div class="lobby-header">
+      <div>
+        <h2 style="color:#48cae4; margin-bottom:4px; display:flex; align-items:center; gap:8px;">
+          <img src="/logo.png" alt="Logo" style="width: 28px; height: 28px; object-fit: contain;" />
+          <span>Mesas de Truco Online</span>
+        </h2>
+        <span style="color:#cbd5e1; font-size:0.9rem;">Jugador: <strong id="lobbyUsername"></strong></span>
+      </div>
+      <div class="wallet-box">
+        <div class="chip-badge">
+          🪙 <span id="lobbyChips">0</span> Fichas
+        </div>
+        <button class="btn-cargar" onclick="openDepositModal()">+ Cargar</button>
+        <button class="btn-retirar" onclick="openWithdrawModal()">Retirar saldo</button>
+        <button class="btn-logout" onclick="logoutUser()">Salir</button>
+      </div>
+    </div>
+
+    <div class="create-table-card">
+      <div style="display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-weight:bold; color:#ffd166; font-size:0.95rem;">➕ Crear Nueva Mesa</span>
+        <label style="display:flex; align-items:center; gap:6px; font-size:0.85rem; color:#2ec4b6; font-weight:bold; cursor:pointer;">
+          <input type="checkbox" id="chkFreeTable" onchange="toggleFreeTable(this.checked)" style="width:17px; height:17px; cursor:pointer;" />
+          🎮 Jugar Gratis (Sin fichas)
+        </label>
+      </div>
+
+      <div class="table-options-grid">
+        <div class="form-group" style="margin:0;">
+          <label id="lblBetAmount">Monto Apuesta (ARS):</label>
+          <input type="number" id="inputBet" class="form-control" value="0" min="0" step="100" />
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Puntos de Partida:</label>
+          <select id="selectPoints" class="form-control">
+            <option value="30">A 30 Puntos (Completa)</option>
+            <option value="15">A 15 Puntos (Corta)</option>
+          </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label>Modalidad de Flor:</label>
+          <select id="selectFlor" class="form-control">
+            <option value="true">Con Flor</option>
+            <option value="false">Sin Flor</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn-submit" id="btnCreateTable" style="margin-top:5px; padding:10px;" onclick="createNewTable()">Crear Mesa y Esperar Rival</button>
+    </div>
+
+    <h4 style="color:#94a3b8; border-bottom:1px solid #334155; padding-bottom:8px;">Mesas en Espera de Rival</h4>
+    <div class="table-list" id="tableList"></div>
+  </div>
+
+  <!-- Modal Cargar Fichas (Sin campo de referencia) -->
+  <div class="modal-overlay" id="depositModal">
+    <div class="modal-card">
+      <h3 style="color:#ffd166; margin-bottom:10px;">💳 Cargar Fichas (1 ARS = 1 Ficha)</h3>
+      <p style="font-size:0.85rem; color:#94a3b8; margin-bottom:12px;">Transferí desde tu banco o billetera virtual a estos datos oficiales:</p>
+      
+      <div class="cbu-box">
+        <div><strong>Alias:</strong> juanjodecano.ap</div>
+        <div><strong>Titular:</strong> Juan Jose Arancibia Jerez</div>
+        <div><strong>Banco:</strong> AstroPay</div>
+      </div>
+
+      <form onsubmit="handleDepositSubmit(event)">
+        <div class="form-group">
+          <label>Monto Transferido (ARS):</label>
+          <input type="number" id="depAmount" class="form-control" placeholder="Ej: 1000" required min="100" />
+        </div>
+        <div style="display:flex; gap:10px; margin-top:18px;">
+          <button type="submit" class="btn-submit" style="margin:0; background:#25d366; font-size: 0.82rem; font-weight: 800; display:flex; align-items:center; justify-content:center; gap:6px; flex:1;">
+            <span>📲 ENVIAR COMPROBANTE DE TRANSFERENCIA</span>
+          </button>
+          <button type="button" class="btn-submit" style="margin:0; background:#495057; width: auto; padding: 12px 18px;" onclick="closeDepositModal()">Cerrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Retirar Saldo -->
+  <div class="modal-overlay" id="withdrawModal">
+    <div class="modal-card">
+      <h3 style="color:#ffd166; margin-bottom:10px;">💸 Retirar Saldo</h3>
+      <p style="font-size:0.85rem; color:#94a3b8; margin-bottom:14px;">Ingresá tus datos para que te transfiramos tus fondos ganados:</p>
+
+      <form onsubmit="handleWithdrawSubmit(event)">
+        <div class="form-group">
+          <label>Alias / CBU a nombre del titular de la cuenta:</label>
+          <input type="text" id="withCbuAlias" class="form-control" placeholder="Ej: mi.alias.mp / 00000031..." required />
+        </div>
+        <div class="form-group">
+          <label>Monto (Fichas):</label>
+          <input type="number" id="withAmount" class="form-control" placeholder="Ej: 1000" required min="100" />
+        </div>
+        <div style="display:flex; gap:10px; margin-top:18px;">
+          <button type="submit" class="btn-submit" style="margin:0; background:#e63946; font-size: 0.95rem; font-weight: 800; flex:1;">
+            Retirar
+          </button>
+          <button type="button" class="btn-submit" style="margin:0; background:#495057; width: auto; padding: 12px 18px;" onclick="closeWithdrawModal()">Cerrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="gameContainer">
+    <div class="header-bar">
+      <div><strong>Mesa:</strong> <span id="lblRoom">...</span></div>
+      <div class="score-badge">Nosotros: <span id="scoreNosotros">0</span> | Ellos: <span id="scoreEllos">0</span></div>
+      <div class="turn-badge">Turno: <span id="lblTurn">-</span></div>
+      <div class="timer-badge">⏱️ <span id="lblTimer">25</span>s</div>
+    </div>
+
+    <div class="truco-table">
+      <div class="opponent-cards" id="opponentCards"></div>
+
+      <div class="table-tricks">
+        <div class="trick-slot" id="trick-0"><span class="trick-label">1ra Mano</span></div>
+        <div class="trick-slot" id="trick-1"><span class="trick-label">2da Mano</span></div>
+        <div class="trick-slot" id="trick-2"><span class="trick-label">3ra Mano</span></div>
+      </div>
+
+      <div class="my-cards" id="myCards"></div>
+
+      <div class="envido-overlay" id="envidoOverlay">
+        <div style="text-align:center;">
+          <div class="envido-title" id="envidoTitle">🃏 TANTOS</div>
+          <div style="font-size:1.05rem; color:#e0e1dd; margin-bottom:18px;" id="envidoSubtitle">...</div>
+          <div class="envido-cards-row" id="envidoCardsRow"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="actions-bar" id="gameActions">
+      <div id="florGroup" style="display:none;">
+        <button class="action-btn btn-flor" onclick="sendCall('FLOR')">🌸 ¡Flor!</button>
+      </div>
+
+      <div id="envidoGroup" style="display:none;">
+        <button id="btnEnvido" class="action-btn btn-envido" onclick="sendCall('ENVIDO')">Envido</button>
+        <button id="btnEnvidoEnvido" class="action-btn btn-envido" onclick="sendCall('ENVIDO_ENVIDO')" style="display:none;">Envido</button>
+        <button id="btnRealEnvido" class="action-btn btn-envido" onclick="sendCall('REAL_ENVIDO')">Real Envido</button>
+        <button id="btnFaltaEnvido" class="action-btn btn-envido" onclick="sendCall('FALTA_ENVIDO')">Falta Envido</button>
+      </div>
+      
+      <div id="envidoDeclareGroup" style="display:none;">
+        <button id="btnCantarPuntos" class="action-btn btn-envido" onclick="cantarMisPuntos()"></button>
+        <button id="btnSonBuenas" class="action-btn btn-buenas" onclick="decirSonBuenas()">Son buenas</button>
+      </div>
+
+      <div id="trucoGroup" style="display:none;">
+        <button id="btnTruco" class="action-btn btn-truco" onclick="sendCall('TRUCO')">¡Truco!</button>
+        <button id="btnRetruco" class="action-btn btn-truco" onclick="sendCall('RETRUCO')" style="display:none;">¡Retruco!</button>
+        <button id="btnVale4" class="action-btn btn-truco" onclick="sendCall('VALE_4')" style="display:none;">¡Vale Cuatro!</button>
+      </div>
+
+      <div id="responseGroup" style="display:none;">
+        <button id="btnQuiero" class="action-btn" onclick="acceptCall()" style="background:#2ec4b6;">Quiero</button>
+        <button id="btnNoQuiero" class="action-btn" onclick="declineCall()" style="background:#e71d36;">No Quiero</button>
+      </div>
+
+      <button id="btnMazo" class="action-btn btn-mazo" style="display:none;" onclick="sendCall('ME_VOY_AL_MAZO')">Al Mazo</button>
+    </div>
+
+    <div class="console-log" id="gameLogs">
+      <div>🟢 Esperando al rival para comenzar...</div>
+    </div>
+  </div>
+
+  <div class="winner-overlay" id="winnerModal">
+    <div class="winner-card">
+      <div style="font-size:2.2rem; font-weight:900; margin-bottom:10px; color:#ffd166;" id="winnerTitle">🏆 ¡PARTIDA FINALIZADA!</div>
+      <div style="font-size:1.1rem; color:#e0e1dd; margin-bottom:25px;" id="winnerDesc">...</div>
+      <button class="action-btn" onclick="window.location.reload()" style="background:#2ec4b6; font-size:1.1rem; padding:12px 28px;">Volver al Lobby</button>
+    </div>
+  </div>
+
+  <script>
+    let socket = null;
+    let currentUser = null;
+    let activeRoomId = null;
+    let pendingCategory = null;
+    let currentMyCards = [];
+    let roomTargetPoints = 30;
+    let roomWithFlor = true;
+    let currentTrickIndex = 0;
+    let envidoDone = false;
+    let currentTrucoLevel = 1;
+    let currentTrucoOwner = null;
+    let currentTurnPlayer = '';
+
+    function playAudio(audioName) {
+      if (!audioName) return;
+      const cleanName = audioName.toString().trim().toLowerCase();
+      const src = `/audio/${cleanName}.mp3`;
+      const audio = new Audio(src);
+      audio.play().catch(err => console.warn('Audio no disponible:', src, err));
+    }
+
+    function switchTab(tab) {
+      document.getElementById('authError').style.display = 'none';
+      if (tab === 'register') {
+        document.getElementById('tabRegister').classList.add('active');
+        document.getElementById('tabLogin').classList.remove('active');
+        document.getElementById('formRegister').style.display = 'block';
+        document.getElementById('formLogin').style.display = 'none';
+      } else {
+        document.getElementById('tabLogin').classList.add('active');
+        document.getElementById('tabRegister').classList.remove('active');
+        document.getElementById('formLogin').style.display = 'block';
+        document.getElementById('formRegister').style.display = 'none';
+      }
+    }
+
+    function saveSession(user, remember) {
+      if (remember) {
+        localStorage.setItem('truco_saved_user', JSON.stringify(user));
+        sessionStorage.removeItem('truco_saved_user');
+      } else {
+        sessionStorage.setItem('truco_saved_user', JSON.stringify(user));
+        localStorage.removeItem('truco_saved_user');
+      }
+    }
+
+    function logoutUser() {
+      localStorage.removeItem('truco_saved_user');
+      sessionStorage.removeItem('truco_saved_user');
+      window.location.reload();
+    }
+
+    async function handleRegister(e) {
+      e.preventDefault();
+      const fullName = document.getElementById('regFullName').value;
+      const email = document.getElementById('regEmail').value;
+      const username = document.getElementById('regUsername').value;
+      const password = document.getElementById('regPassword').value;
+      const remember = document.getElementById('regRememberMe').checked;
+      const err = document.getElementById('authError');
+
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fullName, email, username, password })
+        });
+        const data = await res.json();
+        if (!res.ok) { err.innerText = data.message; err.style.display = 'block'; return; }
+        currentUser = data.user;
+        saveSession(currentUser, remember);
+        initLobby();
+      } catch { err.innerText = 'Error de conexión.'; err.style.display = 'block'; }
+    }
+
+    async function handleLogin(e) {
+      e.preventDefault();
+      const usernameOrEmail = document.getElementById('logUser').value;
+      const password = document.getElementById('logPassword').value;
+      const remember = document.getElementById('logRememberMe').checked;
+      const err = document.getElementById('authError');
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ usernameOrEmail, password })
+        });
+        const data = await res.json();
+        if (!res.ok) { err.innerText = data.message; err.style.display = 'block'; return; }
+        currentUser = data.user;
+        saveSession(currentUser, remember);
+        initLobby();
+      } catch { err.innerText = 'Error de conexión.'; err.style.display = 'block'; }
+    }
+
+    function initLobby() {
+      document.getElementById('authOverlay').style.display = 'none';
+      document.getElementById('lobbyContainer').style.display = 'flex';
+      document.getElementById('lobbyUsername').innerText = currentUser.username;
+      updateChipsDisplay(currentUser.chips || 0);
+
+      socket = io({ transports: ['websocket', 'polling'] });
+      setupSocketListeners();
+      socket.emit('request_tables');
+    }
+
+    function updateChipsDisplay(chips) {
+      currentUser.chips = chips;
+      document.getElementById('lobbyChips').innerText = new Intl.NumberFormat('es-AR').format(chips);
+    }
+
+    // Modal Cargar Fichas
+    function openDepositModal() { document.getElementById('depositModal').style.display = 'flex'; }
+    function closeDepositModal() { document.getElementById('depositModal').style.display = 'none'; }
+
+    async function handleDepositSubmit(e) {
+      e.preventDefault();
+      const amount = document.getElementById('depAmount').value;
+
+      try {
+        fetch('/api/wallet/deposit-request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: currentUser.username, amount, reference: 'Directo WhatsApp' })
+        });
+      } catch(err) { console.error(err); }
+
+      const phone = '5493815811724';
+      const textMsg = encodeURIComponent(`¡Hola! Acabo de transferir $${amount} para cargar fichas.\n\n👤 Usuario: ${currentUser.username}\n💵 Monto: $${amount} ARS\n\nTe adjunto el comprobante por acá.`);
+      window.open(`https://wa.me/${phone}?text=${textMsg}`, '_blank');
+
+      closeDepositModal();
+    }
+
+    // Modal Retirar Saldo
+    function openWithdrawModal() { document.getElementById('withdrawModal').style.display = 'flex'; }
+    function closeWithdrawModal() { document.getElementById('withdrawModal').style.display = 'none'; }
+
+    async function handleWithdrawSubmit(e) {
+      e.preventDefault();
+      const aliasCbu = document.getElementById('withCbuAlias').value.trim();
+      const amount = parseInt(document.getElementById('withAmount').value, 10);
+
+      if (!amount || amount <= 0) {
+        alert('Ingresá un monto válido a retirar.');
+        return;
+      }
+
+      if (amount > (currentUser.chips || 0)) {
+        alert('No disponés de suficientes fichas para realizar este retiro.');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/wallet/withdraw-request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: currentUser.username, amount, cbuAlias: aliasCbu })
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+          alert(data.message || 'Error al procesar el retiro.');
+          return;
+        }
+
+        // Actualizar saldo de inmediato en pantalla y memoria
+        updateChipsDisplay(data.chips);
+        currentUser.chips = data.chips;
+        const storage = localStorage.getItem('truco_saved_user') ? localStorage : sessionStorage;
+        storage.setItem('truco_saved_user', JSON.stringify(currentUser));
+
+        // Abrir WhatsApp con la solicitud detallada
+        const phone = '5493815811724';
+        const textMsg = encodeURIComponent(`¡Hola! Solicito un retiro de fondos de Truco Online:\n\n👤 Usuario: ${currentUser.username}\n🪙 Monto a retirar: $${amount} ARS\n🏦 Alias / CBU a nombre del titular: ${aliasCbu}\n\n(Fichas ya descontadas de mi cuenta)`);
+        window.open(`https://wa.me/${phone}?text=${textMsg}`, '_blank');
+
+        alert('Solicitud enviada. Las fichas han sido debitadas de tu cuenta.');
+        closeWithdrawModal();
+      } catch(err) {
+        alert('Error de conexión al procesar el retiro.');
+      }
+    }
+
+    function toggleFreeTable(isFree) {
+      const inputBet = document.getElementById('inputBet');
+      const lblBet = document.getElementById('lblBetAmount');
+      const btn = document.getElementById('btnCreateTable');
+
+      if (isFree) {
+        inputBet.disabled = true;
+        inputBet.value = 0;
+        inputBet.style.opacity = '0.4';
+        lblBet.innerText = 'Modo Gratis (Sin apuesta)';
+        btn.innerText = 'Crear Mesa Gratis y Esperar Rival';
+        btn.style.background = '#2a9d8f';
+      } else {
+        inputBet.disabled = false;
+        inputBet.value = 0;
+        inputBet.style.opacity = '1';
+        lblBet.innerText = 'Monto Apuesta (ARS):';
+        btn.innerText = 'Crear Mesa y Esperar Rival';
+        btn.style.background = '#0077b6';
+      }
+    }
+
+    function createNewTable() {
+      const isFree = document.getElementById('chkFreeTable').checked;
+      const bet = isFree ? 0 : parseInt(document.getElementById('inputBet').value, 10);
+      const points = parseInt(document.getElementById('selectPoints').value, 10);
+      const withFlor = document.getElementById('selectFlor').value === 'true';
+
+      if (!isFree && bet > currentUser.chips) {
+        alert('No tenés suficientes fichas para crear esta mesa.');
+        return;
+      }
+
+      socket.emit('create_room', { 
+        userId: currentUser.username, 
+        betAmount: bet,
+        targetPoints: points,
+        withFlor
+      });
+    }
+
+    function joinTable(roomId, betAmount) {
+      if (betAmount > 0 && betAmount > currentUser.chips) {
+        alert('No tenés suficientes fichas para entrar a esta mesa.');
+        return;
+      }
+      socket.emit('join_room', { roomId, userId: currentUser.username });
+    }
+
+    function renderTables(tables) {
+      const container = document.getElementById('tableList');
+      container.innerHTML = '';
+
+      if (tables.length === 0) {
+        container.innerHTML = '<div style="color:#64748b; text-align:center; padding:20px;">No hay mesas esperando rival. ¡Creá una!</div>';
+        return;
+      }
+
+      tables.forEach(t => {
+        const isFree = t.betAmount === 0;
+        const div = document.createElement('div');
+        div.className = 'table-item';
+        div.innerHTML = `
+          <div class="table-info">
+            <span style="color:white; font-weight:bold;">Mesa de ${t.creatorId}</span>
+            <div class="table-tags">
+              <span class="tag-badge ${isFree ? 'tag-free' : 'tag-pts'}">${isFree ? 'GRATIS' : '$' + new Intl.NumberFormat('es-AR').format(t.betAmount)}</span>
+              <span class="tag-badge tag-pts">${t.targetPoints} Pts</span>
+              <span class="tag-badge ${t.withFlor ? 'tag-flor' : 'tag-noflor'}">${t.withFlor ? 'Con Flor' : 'Sin Flor'}</span>
+            </div>
+          </div>
+          <button class="btn-play-match ${isFree ? 'btn-free-match' : ''}" onclick="joinTable('${t.roomId}', ${t.betAmount})">
+            ${isFree ? '🎮 Jugar Gratis' : 'Jugar por $' + new Intl.NumberFormat('es-AR').format(t.betAmount)}
+          </button>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    function enterGameInterface(roomId, points, flor, bet) {
+      activeRoomId = roomId;
+      roomTargetPoints = Number(points) || 30;
+      roomWithFlor = (flor === true || flor === 'true' || flor === undefined);
+
+      document.getElementById('lobbyContainer').style.display = 'none';
+      document.getElementById('gameContainer').style.display = 'flex';
+      
+      const betLabel = bet > 0 ? `$${new Intl.NumberFormat('es-AR').format(bet)} ARS` : 'Gratis (Amistoso)';
+      document.getElementById('lblRoom').innerText = `${roomId} (${betLabel} | ${roomTargetPoints} pts | ${roomWithFlor ? 'Con Flor' : 'Sin Flor'})`;
+      log(`🟢 Ingresaste a la mesa: ${roomId}. Esperando rival...`);
+    }
+
+    function getCardSrc(cardId) {
+      if (cardId === 'BACK') return '/cards/back.png';
+      return `/cards/${cardId.toLowerCase()}.png`;
+    }
+
+    function log(msg) {
+      const box = document.getElementById('gameLogs');
+      box.innerHTML += `<div>${msg}</div>`;
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function getCardEnvidoVal(num) { return (num >= 10 && num <= 12) ? 0 : num; }
+
+    function getMyEnvidoScore() {
+      if (!currentMyCards || currentMyCards.length === 0) return 0;
+      const suits = {};
+      currentMyCards.forEach(c => {
+        const s = (c.suit || '').toLowerCase();
+        suits[s] = suits[s] || [];
+        suits[s].push(c);
+      });
+
+      let maxScore = -1;
+      for (const s in suits) {
+        const list = suits[s];
+        if (list.length >= 2) {
+          for (let i = 0; i < list.length; i++) {
+            for (let j = i + 1; j < list.length; j++) {
+              const v = 20 + getCardEnvidoVal(list[i].number) + getCardEnvidoVal(list[j].number);
+              if (v > maxScore) maxScore = v;
+            }
+          }
+        }
+      }
+
+      if (maxScore === -1) {
+        currentMyCards.forEach(c => {
+          const v = getCardEnvidoVal(c.number);
+          if (v > maxScore) maxScore = v;
+        });
+      }
+      return maxScore;
+    }
+
+    function checkIfIHaveFlor() {
+      if (!roomWithFlor || !currentMyCards || currentMyCards.length < 3) return false;
+      const s0 = (currentMyCards[0].suit || '').toLowerCase();
+      const s1 = (currentMyCards[1].suit || '').toLowerCase();
+      const s2 = (currentMyCards[2].suit || '').toLowerCase();
+      return Boolean(s0 && s0 === s1 && s1 === s2);
+    }
+
+    function setScores(scoresMap) {
+      if (!scoresMap || !currentUser) return;
+      const myUser = currentUser.username.toLowerCase();
+      const myKey = Object.keys(scoresMap).find(k => k.toLowerCase() === myUser);
+      const myScore = myKey ? scoresMap[myKey] : 0;
+      const rivalKey = Object.keys(scoresMap).find(k => k.toLowerCase() !== myUser);
+      const rivalScore = rivalKey ? scoresMap[rivalKey] : 0;
+
+      document.getElementById('scoreNosotros').innerText = myScore;
+      document.getElementById('scoreEllos').innerText = rivalScore;
+    }
+
+    function updateTurnControls(turn) {
+      if (turn) {
+        currentTurnPlayer = turn;
+        document.getElementById('lblTurn').innerText = currentTurnPlayer;
+      }
+      
+      const myCardsContainer = document.getElementById('myCards');
+      const isMyTurn = (currentTurnPlayer || '').toLowerCase() === (currentUser ? currentUser.username.toLowerCase() : '');
+
+      if (isMyTurn) {
+        myCardsContainer.classList.remove('disabled');
+      } else {
+        myCardsContainer.classList.add('disabled');
+      }
+
+      document.getElementById('responseGroup').style.display = 'none';
+      document.getElementById('envidoDeclareGroup').style.display = 'none';
+
+      if (!isMyTurn) {
+        document.getElementById('florGroup').style.display = 'none';
+        document.getElementById('envidoGroup').style.display = 'none';
+        document.getElementById('trucoGroup').style.display = 'none';
+        document.getElementById('btnMazo').style.display = 'none';
+        return;
+      }
+
+      document.getElementById('btnMazo').style.display = 'inline-block';
+
+      const userHasFlor = checkIfIHaveFlor();
+      const hasPlayedAnyCard = currentMyCards.length < 3;
+
+      if (currentTrickIndex === 0 && !envidoDone && !hasPlayedAnyCard) {
+        if (userHasFlor) {
+          document.getElementById('florGroup').style.display = 'inline-block';
+          document.getElementById('envidoGroup').style.display = 'none';
+        } else {
+          document.getElementById('florGroup').style.display = 'none';
+          document.getElementById('envidoGroup').style.display = 'inline-block';
+          document.getElementById('btnEnvido').style.display = 'inline-block';
+          document.getElementById('btnEnvidoEnvido').style.display = 'none';
+          document.getElementById('btnRealEnvido').style.display = 'inline-block';
+          document.getElementById('btnFaltaEnvido').style.display = 'inline-block';
+        }
+      } else {
+        document.getElementById('florGroup').style.display = 'none';
+        document.getElementById('envidoGroup').style.display = 'none';
+      }
+
+      if (currentTrucoLevel === 1) {
+        document.getElementById('trucoGroup').style.display = 'inline-block';
+        document.getElementById('btnTruco').style.display = 'inline-block';
+        document.getElementById('btnRetruco').style.display = 'none';
+        document.getElementById('btnVale4').style.display = 'none';
+      } else if (currentTrucoOwner && currentTrucoOwner.toLowerCase() === currentUser.username.toLowerCase()) {
+        document.getElementById('trucoGroup').style.display = 'inline-block';
+        document.getElementById('btnTruco').style.display = 'none';
+        if (currentTrucoLevel === 2) {
+          document.getElementById('btnRetruco').style.display = 'inline-block';
+          document.getElementById('btnVale4').style.display = 'none';
+        } else if (currentTrucoLevel === 3) {
+          document.getElementById('btnRetruco').style.display = 'none';
+          document.getElementById('btnVale4').style.display = 'inline-block';
+        } else {
+          document.getElementById('trucoGroup').style.display = 'none';
+        }
+      } else {
+        document.getElementById('trucoGroup').style.display = 'none';
+      }
+    }
+
+    function setupSocketListeners() {
+      socket.on('connect', () => {
+        if (activeRoomId && currentUser) {
+          socket.emit('reconnect_game', { roomId: activeRoomId, userId: currentUser.username });
+        }
+      });
+
+      socket.on('sync_game_state', (data) => {
+        document.getElementById('envidoOverlay').style.display = 'none';
+        setScores(data.scores);
+        currentTrickIndex = data.currentTrick;
+        envidoDone = data.envidoResolved;
+        currentTrucoLevel = data.trucoLevel;
+        currentTrucoOwner = data.trucoOwner;
+        roomWithFlor = (data.withFlor === true || data.withFlor === 'true' || data.withFlor === undefined);
+
+        currentMyCards = data.myCards || [];
+        const myCardsContainer = document.getElementById('myCards');
+        myCardsContainer.innerHTML = '';
+        currentMyCards.forEach(c => {
+          const img = document.createElement('img');
+          img.id = `card-${c.id}`;
+          img.className = 'card-img';
+          img.src = getCardSrc(c.id);
+          img.alt = c.id;
+          img.onclick = () => playCard(c.id);
+          myCardsContainer.appendChild(img);
+        });
+
+        const opp = document.getElementById('opponentCards');
+        opp.innerHTML = '';
+        for (let i = 0; i < data.oppCardsCount; i++) {
+          const img = document.createElement('img');
+          img.className = 'card-img';
+          img.src = getCardSrc('BACK');
+          opp.appendChild(img);
+        }
+
+        for (let i = 0; i < 3; i++) {
+          const slot = document.getElementById(`trick-${i}`);
+          slot.innerHTML = `<span class="trick-label">${i + 1}ra Mano</span>`;
+          if (data.tricks[i]) {
+            data.tricks[i].forEach((cardObj) => {
+              const isMine = cardObj.userId.toLowerCase() === currentUser.username.toLowerCase();
+              const img = document.createElement('img');
+              img.className = `card-img card-in-trick ${isMine ? 'my-played-card' : 'opp-played-card'}`;
+              img.dataset.owner = cardObj.userId;
+              img.src = getCardSrc(cardObj.cardId);
+              slot.appendChild(img);
+            });
+          }
+        }
+
+        updateTurnControls(data.currentTurn);
+      });
+
+      socket.on('update_tables', (tables) => { renderTables(tables); });
+
+      socket.on('room_created', (data) => {
+        updateChipsDisplay(data.newBalance);
+        enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount);
+      });
+
+      socket.on('game_ready', (data) => {
+        if (!activeRoomId) enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount);
+        roomWithFlor = (data.withFlor === true || data.withFlor === 'true' || data.withFlor === undefined);
+        const potMsg = data.pot > 0 ? `Pozo en juego: $${new Intl.NumberFormat('es-AR').format(data.pot)} ARS` : '¡Partida Amistosa (Gratis)!';
+        log(`🏆 ¡Rival encontrado! ${potMsg}`);
+      });
+
+      socket.on('timer_tick', (data) => {
+        document.getElementById('lblTimer').innerText = data.secondsLeft;
+      });
+
+      socket.on('hand_started', (data) => {
+        document.getElementById('envidoOverlay').style.display = 'none';
+        currentTurnPlayer = data.currentTurn;
+        document.getElementById('lblTurn').innerText = currentTurnPlayer;
+        log(`🃏 Mano iniciada. Sale jugando: <strong>${currentTurnPlayer}</strong>`);
+        setScores(data.scores);
+
+        if (data.withFlor !== undefined) {
+          roomWithFlor = (data.withFlor === true || data.withFlor === 'true');
+        }
+
+        currentTrickIndex = 0;
+        envidoDone = false;
+        currentTrucoLevel = 1;
+        currentTrucoOwner = null;
+
+        for (let i = 0; i < 3; i++) {
+          document.getElementById(`trick-${i}`).innerHTML = `<span class="trick-label">${i + 1}ra Mano</span>`;
+        }
+        const opp = document.getElementById('opponentCards');
+        opp.innerHTML = `
+          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
+          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
+          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
+        `;
+
+        updateTurnControls(currentTurnPlayer);
+      });
+
+      socket.on('cards_dealt', (data) => {
+        const isP1 = (data.p1Id || '').toLowerCase() === currentUser.username.toLowerCase();
+        const myCards = isP1 ? data.p1Cards : data.p2Cards;
+        currentMyCards = myCards || [];
+
+        if (data.withFlor !== undefined) {
+          roomWithFlor = (data.withFlor === true || data.withFlor === 'true');
+        }
+
+        const container = document.getElementById('myCards');
+        container.innerHTML = '';
+
+        myCards.forEach(c => {
+          const img = document.createElement('img');
+          img.id = `card-${c.id}`;
+          img.className = 'card-img';
+          img.src = getCardSrc(c.id);
+          img.alt = c.id;
+          img.onclick = () => playCard(c.id);
+          container.appendChild(img);
+        });
+
+        updateTurnControls(currentTurnPlayer);
+      });
+
+      socket.on('card_played', (data) => {
+        log(`🃏 <strong>${data.userId}</strong> tiró: ${data.cardId.replace('_', ' ')}`);
+        currentTrickIndex = data.currentTrick;
+
+        const isMine = data.userId.toLowerCase() === currentUser.username.toLowerCase();
+
+        if (isMine) {
+          const cardElem = document.getElementById(`card-${data.cardId}`);
+          if (cardElem) cardElem.remove();
+        } else {
+          const opp = document.getElementById('opponentCards');
+          if (opp.children.length > 0) opp.removeChild(opp.children[0]);
+        }
+
+        const trickSlot = document.getElementById(`trick-${data.trickIndex}`);
+
+        const img = document.createElement('img');
+        img.className = `card-img card-in-trick ${isMine ? 'my-played-card' : 'opp-played-card'}`;
+        img.dataset.owner = data.userId;
+        img.src = getCardSrc(data.cardId);
+        img.alt = data.cardId;
+        trickSlot.appendChild(img);
+
+        if (data.isTrickOver && data.trickWinnerId) {
+          const slotCards = trickSlot.querySelectorAll('.card-in-trick');
+          if (slotCards.length === 2) {
+            slotCards.forEach(card => {
+              if (card.dataset.owner.toLowerCase() === data.trickWinnerId.toLowerCase()) {
+                card.classList.add('matadora');
+              } else if (data.trickWinnerId !== 'PARDA') {
+                card.classList.add('matada');
+              }
+            });
+          }
+        }
+
+        updateTurnControls(data.nextTurn);
+      });
+
+      socket.on('call_received', (data) => {
+        log(`🗣️ <strong>${data.userId}</strong> cantó: <strong>${data.callType}</strong>`);
+        pendingCategory = data.category;
+        document.getElementById('myCards').classList.add('disabled');
+
+        if (data.callType === 'TRUCO') playAudio('truco');
+        else if (data.callType === 'RETRUCO') playAudio('retruco');
+        else if (data.callType === 'VALE_4') playAudio('vale 4');
+        else if (data.callType === 'ENVIDO' || data.callType === 'ENVIDO_ENVIDO') playAudio('envido');
+        else if (data.callType === 'REAL_ENVIDO') playAudio('real envido');
+        else if (data.callType === 'FALTA_ENVIDO') playAudio('falta envido');
+        else if (data.callType === 'ME_VOY_AL_MAZO') playAudio('me voy al mazo');
+
+        const userHasFlor = checkIfIHaveFlor();
+        const hasPlayedAnyCard = currentMyCards.length < 3;
+        const isForMe = (data.awaitingResponseFrom || '').toLowerCase() === currentUser.username.toLowerCase();
+
+        if (data.category === 'ENVIDO') {
+          document.getElementById('trucoGroup').style.display = 'none';
+
+          if (isForMe) {
+            document.getElementById('responseGroup').style.display = 'inline-block';
+
+            if (userHasFlor) {
+              document.getElementById('florGroup').style.display = 'inline-block';
+              document.getElementById('envidoGroup').style.display = 'none';
+            } else {
+              document.getElementById('florGroup').style.display = 'none';
+              document.getElementById('envidoGroup').style.display = 'inline-block';
+
+              const chain = data.chain || [data.callType];
+              const lastCall = chain[chain.length - 1];
+
+              if (lastCall === 'ENVIDO') {
+                document.getElementById('btnEnvido').style.display = 'none';
+                document.getElementById('btnEnvidoEnvido').style.display = 'inline-block';
+                document.getElementById('btnRealEnvido').style.display = 'inline-block';
+                document.getElementById('btnFaltaEnvido').style.display = 'inline-block';
+              } else if (lastCall === 'ENVIDO_ENVIDO') {
+                document.getElementById('btnEnvido').style.display = 'none';
+                document.getElementById('btnEnvidoEnvido').style.display = 'none';
+                document.getElementById('btnRealEnvido').style.display = 'inline-block';
+                document.getElementById('btnFaltaEnvido').style.display = 'inline-block';
+              } else if (lastCall === 'REAL_ENVIDO') {
+                document.getElementById('btnEnvido').style.display = 'none';
+                document.getElementById('btnEnvidoEnvido').style.display = 'none';
+                document.getElementById('btnRealEnvido').style.display = 'none';
+                document.getElementById('btnFaltaEnvido').style.display = 'inline-block';
+              } else if (lastCall === 'FALTA_ENVIDO') {
+                document.getElementById('envidoGroup').style.display = 'none';
+              }
+            }
+          } else {
+            document.getElementById('envidoGroup').style.display = 'none';
+            document.getElementById('florGroup').style.display = 'none';
+            document.getElementById('responseGroup').style.display = 'none';
+          }
+        } else if (data.category === 'TRUCO') {
+          if (isForMe) {
+            document.getElementById('responseGroup').style.display = 'inline-block';
+            document.getElementById('trucoGroup').style.display = 'inline-block';
+
+            if (data.callType === 'TRUCO') {
+              document.getElementById('btnTruco').style.display = 'none';
+              document.getElementById('btnRetruco').style.display = 'inline-block';
+              document.getElementById('btnVale4').style.display = 'none';
+
+              if (data.canCallEnvido && !hasPlayedAnyCard) {
+                if (userHasFlor) {
+                  document.getElementById('florGroup').style.display = 'inline-block';
+                  document.getElementById('envidoGroup').style.display = 'none';
+                } else {
+                  document.getElementById('florGroup').style.display = 'none';
+                  document.getElementById('envidoGroup').style.display = 'inline-block';
+                  document.getElementById('btnEnvido').style.display = 'inline-block';
+                  document.getElementById('btnEnvidoEnvido').style.display = 'none';
+                  document.getElementById('btnRealEnvido').style.display = 'inline-block';
+                  document.getElementById('btnFaltaEnvido').style.display = 'inline-block';
+                }
+              } else {
+                document.getElementById('florGroup').style.display = 'none';
+                document.getElementById('envidoGroup').style.display = 'none';
+              }
+
+            } else if (data.callType === 'RETRUCO') {
+              document.getElementById('envidoGroup').style.display = 'none';
+              document.getElementById('florGroup').style.display = 'none';
+              document.getElementById('btnTruco').style.display = 'none';
+              document.getElementById('btnRetruco').style.display = 'none';
+              document.getElementById('btnVale4').style.display = 'inline-block';
+            } else if (data.callType === 'VALE_4') {
+              document.getElementById('envidoGroup').style.display = 'none';
+              document.getElementById('florGroup').style.display = 'none';
+              document.getElementById('trucoGroup').style.display = 'none';
+            }
+          } else {
+            document.getElementById('envidoGroup').style.display = 'none';
+            document.getElementById('florGroup').style.display = 'none';
+            document.getElementById('trucoGroup').style.display = 'none';
+            document.getElementById('responseGroup').style.display = 'none';
+          }
+        }
+      });
+
+      socket.on('truco_accepted', (data) => {
+        playAudio('quiero');
+        currentTrucoLevel = data.trucoLevel;
+        currentTrucoOwner = data.trucoOwner;
+        updateTurnControls(currentTurnPlayer);
+      });
+
+      socket.on('start_envido_declaration', (data) => {
+        playAudio('quiero');
+        document.getElementById('envidoGroup').style.display = 'none';
+        document.getElementById('florGroup').style.display = 'none';
+        document.getElementById('responseGroup').style.display = 'none';
+        document.getElementById('trucoGroup').style.display = 'none';
+        document.getElementById('myCards').classList.add('disabled');
+
+        const myScore = getMyEnvidoScore();
+        const isMyTurn = (data.firstDeclarer || '').toLowerCase() === currentUser.username.toLowerCase();
+
+        if (isMyTurn) {
+          document.getElementById('envidoDeclareGroup').style.display = 'inline-block';
+          const btnCantar = document.getElementById('btnCantarPuntos');
+          btnCantar.style.display = 'inline-block';
+          btnCantar.innerText = `🗣️ Cantar ${myScore}`;
+          document.getElementById('btnSonBuenas').style.display = 'none';
+        } else {
+          document.getElementById('envidoDeclareGroup').style.display = 'none';
+          log(`⏳ Esperando que el rival cante sus tantos de Envido...`);
+        }
+      });
+
+      socket.on('envido_points_announced', (data) => {
+        log(`🗣️ <strong>${data.userId}</strong> cantó: <strong>${data.points}</strong> de Envido`);
+        playAudio(data.points);
+
+        if (data.isFinal) {
+          document.getElementById('envidoDeclareGroup').style.display = 'none';
+          return;
+        }
+
+        const myScore = getMyEnvidoScore();
+        const isMyTurn = (data.nextDeclarer || '').toLowerCase() === currentUser.username.toLowerCase();
+
+        if (isMyTurn) {
+          document.getElementById('envidoDeclareGroup').style.display = 'inline-block';
+          const btnCantar = document.getElementById('btnCantarPuntos');
+          const btnBuenas = document.getElementById('btnSonBuenas');
+
+          if (myScore > data.highestScore) {
+            btnCantar.style.display = 'inline-block';
+            btnCantar.innerText = `🗣️ Cantar ${myScore}`;
+            btnBuenas.style.display = 'inline-block';
+          } else {
+            btnCantar.style.display = 'none';
+            btnBuenas.style.display = 'inline-block';
+          }
+        } else {
+          document.getElementById('envidoDeclareGroup').style.display = 'none';
+        }
+      });
+
+      socket.on('son_buenas_said', (data) => {
+        log(`🏳️ <strong>${data.userId}</strong> dijo: <strong>Son buenas</strong>`);
+        playAudio('son buenas');
+        document.getElementById('envidoDeclareGroup').style.display = 'none';
+      });
+
+      socket.on('envido_resolved', (data) => {
+        envidoDone = true;
+        currentTrucoLevel = data.trucoLevel;
+        currentTrucoOwner = data.trucoOwner;
+
+        if (data.declined) {
+          playAudio('no quiero');
+          log(`✋ No se quiso el Envido. Tantos para <strong>${data.winnerId}</strong> (+${data.pointsAwarded} pts)`);
+        } else {
+          log(`📊 Envido finalizado: Ganó <strong>${data.winnerId}</strong> (+${data.pointsAwarded} pts)`);
+        }
+        setScores(data.scores);
+        updateTurnControls(data.currentTurn || currentTurnPlayer);
+      });
+
+      socket.on('flor_declared', (data) => {
+        envidoDone = true;
+        currentTrucoLevel = data.trucoLevel;
+        currentTrucoOwner = data.trucoOwner;
+
+        playAudio('flor');
+        log(`🌸 <strong>${data.winnerId}</strong> cantó FLOR (${data.score} pts) $\\rightarrow$ +${data.pointsAwarded} pts`);
+        setScores(data.scores);
+        updateTurnControls(data.currentTurn || currentTurnPlayer);
+      });
+
+      socket.on('show_envido_winner', (data) => {
+        const overlay = document.getElementById('envidoOverlay');
+        const title = document.getElementById('envidoTitle');
+        const subtitle = document.getElementById('envidoSubtitle');
+        const cardsRow = document.getElementById('envidoCardsRow');
+
+        title.innerText = '🃏 TANTOS DE LA JUGADA';
+        subtitle.innerHTML = `<strong>${data.winnerId}</strong> mostró <strong>${data.score}</strong> puntos`;
+        cardsRow.innerHTML = '';
+
+        data.cards.forEach(c => {
+          const img = document.createElement('img');
+          img.className = 'card-img';
+          img.src = getCardSrc(c.id);
+          cardsRow.appendChild(img);
+        });
+
+        overlay.style.display = 'flex';
+        setTimeout(() => { overlay.style.display = 'none'; }, data.durationMs || 3500);
+      });
+
+      socket.on('round_ended', (data) => {
+        log(`✨ Fin de la mano. Ganó <strong>${data.winnerId}</strong> (+${data.pointsAwarded} pts).`);
+        setScores(data.scores);
+        currentTurnPlayer = '';
+        document.getElementById('lblTurn').innerText = 'Fin de mano';
+        document.getElementById('myCards').classList.add('disabled');
+        document.getElementById('responseGroup').style.display = 'none';
+        document.getElementById('envidoGroup').style.display = 'none';
+        document.getElementById('envidoDeclareGroup').style.display = 'none';
+        document.getElementById('florGroup').style.display = 'none';
+        document.getElementById('trucoGroup').style.display = 'none';
+        document.getElementById('btnMazo').style.display = 'none';
+      });
+
+      socket.on('match_finished', (data) => {
+        setScores(data.scores);
+        document.getElementById('gameActions').style.display = 'none';
+        currentTurnPlayer = '';
+        document.getElementById('lblTurn').innerText = 'Partida Concluida';
+        
+        const isWinner = data.winnerId.toLowerCase() === currentUser.username.toLowerCase();
+        const modal = document.getElementById('winnerModal');
+        const title = document.getElementById('winnerTitle');
+        const desc = document.getElementById('winnerDesc');
+
+        title.innerText = isWinner ? '🎉 ¡GANASTE LA PARTIDA!' : '💀 ¡PERDISTE LA PARTIDA!';
+        title.style.color = isWinner ? '#48cae4' : '#e63946';
+
+        const potText = data.pot > 0 
+          ? `Pozo neto ganado: $${new Intl.NumberFormat('es-AR').format(data.pot)} ARS` 
+          : 'Partida Amistosa (Gratis)';
+        desc.innerText = `Ganador: ${data.winnerId} | ${potText}`;
+        modal.style.display = 'flex';
+      });
+
+      socket.on('error_action', (data) => { alert(data.message); });
+      socket.on('error_action_player', (data) => {
+        if (data.targetUser.toLowerCase() === currentUser.username.toLowerCase()) alert(data.message);
+      });
+    }
+
+    function playCard(cardId) { 
+      const isMyTurn = (currentTurnPlayer || '').toLowerCase() === (currentUser ? currentUser.username.toLowerCase() : '');
+      if (!isMyTurn) {
+        alert('No es tu turno de jugar carta.');
+        return;
+      }
+      socket.emit('play_card', { roomId: activeRoomId, userId: currentUser.username, cardId }); 
+    }
+
+    function sendCall(callType) { socket.emit('send_call', { roomId: activeRoomId, userId: currentUser.username, callType }); }
+    function acceptCall() { pendingCategory === 'ENVIDO' ? sendCall('QUIERO_ENVIDO') : sendCall('QUIERO_TRUCO'); document.getElementById('responseGroup').style.display = 'none'; }
+    function declineCall() { pendingCategory === 'ENVIDO' ? sendCall('NO_QUIERO_ENVIDO') : sendCall('NO_QUIERO_TRUCO'); document.getElementById('responseGroup').style.display = 'none'; }
+    function cantarMisPuntos() { socket.emit('declare_envido_points', { roomId: activeRoomId, userId: currentUser.username, points: getMyEnvidoScore() }); document.getElementById('envidoDeclareGroup').style.display = 'none'; }
+    function decirSonBuenas() { socket.emit('say_son_buenas', { roomId: activeRoomId, userId: currentUser.username }); document.getElementById('envidoDeclareGroup').style.display = 'none'; }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const saved = localStorage.getItem('truco_saved_user') || sessionStorage.getItem('truco_saved_user');
+      if (saved) {
+        try {
+          currentUser = JSON.parse(saved);
+          fetch(`/api/wallet/balance/${currentUser.username}`)
+            .then(res => res.json())
+            .then(data => {
+              if (data && data.chips !== undefined) {
+                currentUser.chips = data.chips;
+              }
+              initLobby();
+            })
+            .catch(() => initLobby());
+        } catch {
+          // Ignorar y mostrar login
+        }
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+[
+  {
+    "id": "dep_220bfacf",
+    "userId": "usr_01d090a5",
+    "username": "jja",
+    "amount": 1000,
+    "reference": "215151515",
+    "status": "PENDIENTE",
+    "createdAt": "2026-08-26T00:22:13.128Z"
+  },
+  {
+    "id": "dep_93bf40f3",
+    "userId": "usr_01d090a5",
+    "username": "jja",
+    "amount": 5000,
+    "reference": "Directo WhatsApp",
+    "status": "PENDIENTE",
+    "createdAt": "2026-08-26T00:27:06.494Z"
+  }
+]
