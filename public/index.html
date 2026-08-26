@@ -336,6 +336,7 @@
       <div class="score-badge">Nosotros: <span id="scoreNosotros">0</span> | Ellos: <span id="scoreEllos">0</span></div>
       <div class="turn-badge">Turno: <span id="lblTurn">-</span></div>
       <div class="timer-badge">⏱️ <span id="lblTimer">25</span>s</div>
+      <button onclick="surrenderMatch()" style="background:#e63946; color:white; border:none; padding:5px 12px; border-radius:8px; font-weight:bold; font-size:0.8rem; cursor:pointer; transition:0.2s;">🚪 Abandonar</button>
     </div>
 
     <div class="truco-table">
@@ -422,6 +423,13 @@
       const src = `/audio/${cleanName}.mp3`;
       const audio = new Audio(src);
       audio.play().catch(err => console.warn('Audio no disponible:', src, err));
+    }
+    function surrenderMatch() {
+      const confirmar = confirm('⚠️ ¿Estás seguro de que deseás abandonar la partida?\n\nSi salís ahora, se te dará por perdida la partida y el pozo de fichas pasará directamente a tu rival.');
+      if (confirmar) {
+        sessionStorage.removeItem('truco_active_room');
+        socket.emit('surrender_match', { roomId: activeRoomId, userId: currentUser.username });
+      }
     }
 
     function switchTab(tab) {
@@ -835,6 +843,33 @@
         if (activeRoomId && currentUser) {
           socket.emit('reconnect_game', { roomId: activeRoomId, userId: currentUser.username });
         }
+      });
+      socket.on('player_surrendered', (data) => {
+        sessionStorage.removeItem('truco_active_room');
+        setScores(data.scores);
+        document.getElementById('gameActions').style.display = 'none';
+        currentTurnPlayer = '';
+        document.getElementById('lblTurn').innerText = 'Partida Concluida';
+
+        const isWinner = (data.winnerId || '').toLowerCase() === currentUser.username.toLowerCase();
+        const modal = document.getElementById('winnerModal');
+        const title = document.getElementById('winnerTitle');
+        const desc = document.getElementById('winnerDesc');
+
+        if (isWinner) {
+          title.innerText = '🏆 ¡TU RIVAL ABANDONÓ!';
+          title.style.color = '#48cae4';
+          const potText = data.pot > 0 
+            ? `Pozo ganado: $${new Intl.NumberFormat('es-AR').format(data.pot)} ARS` 
+            : 'Partida Amistosa';
+          desc.innerText = `@${data.surrenderedUser} abandonó la mesa. ¡Ganaste los puntos y las fichas! (${potText})`;
+        } else {
+          title.innerText = '🚪 ABANDONASTE LA PARTIDA';
+          title.style.color = '#e63946';
+          desc.innerText = `Te retiraste del partido. Las fichas de la apuesta fueron entregadas a @${data.winnerId}.`;
+        }
+
+        modal.style.display = 'flex';
       });
 
       socket.on('sync_game_state', (data) => {
