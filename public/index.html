@@ -130,7 +130,7 @@
     .card-in-trick.matada { 
       z-index: 2 !important; 
       filter: brightness(0.85); 
-      box-shadow: 0 4px 10px rgba(0,0,0,0.6);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.6); 
     }
     .card-in-trick.matadora { 
       z-index: 10 !important; 
@@ -418,6 +418,12 @@
     let currentTrucoOwner = null;
     let currentTurnPlayer = '';
 
+    function parseBoolean(val) {
+      if (val === true || val === 'true') return true;
+      if (val === false || val === 'false') return false;
+      return true;
+    }
+
     function playAudio(audioName) {
       if (!audioName) return;
       const cleanName = audioName.toString().trim().toLowerCase();
@@ -634,10 +640,10 @@
     function createNewTable() {
       const isFree = document.getElementById('chkFreeTable').checked;
       const bet = isFree ? 0 : parseInt(document.getElementById('inputBet').value, 10);
-      const points = parseInt(document.getElementById('selectPoints').value, 10);
+      const points = parseInt(document.getElementById('selectPoints').value, 10) || 30;
       const withFlor = document.getElementById('selectFlor').value === 'true';
 
-      if (!isFree && bet > currentUser.chips) {
+      if (!isFree && bet > (currentUser.chips || 0)) {
         alert('No tenés suficientes fichas para crear esta mesa.');
         return;
       }
@@ -651,7 +657,7 @@
     }
 
     function joinTable(roomId, betAmount) {
-      if (betAmount > 0 && betAmount > currentUser.chips) {
+      if (betAmount > 0 && betAmount > (currentUser.chips || 0)) {
         alert('No tenés suficientes fichas para entrar a esta mesa.');
         return;
       }
@@ -670,6 +676,7 @@
 
       tables.forEach(t => {
         const isFree = t.betAmount === 0;
+        const hasFlorOption = parseBoolean(t.withFlor);
         const div = document.createElement('div');
         div.className = 'table-item';
         div.innerHTML = `
@@ -678,7 +685,7 @@
             <div class="table-tags">
               <span class="tag-badge ${isFree ? 'tag-free' : 'tag-pts'}">${isFree ? 'GRATIS' : '$' + new Intl.NumberFormat('es-AR').format(t.betAmount)}</span>
               <span class="tag-badge tag-pts">${t.targetPoints} Pts</span>
-              <span class="tag-badge ${t.withFlor ? 'tag-flor' : 'tag-noflor'}">${t.withFlor ? 'Con Flor' : 'Sin Flor'}</span>
+              <span class="tag-badge ${hasFlorOption ? 'tag-flor' : 'tag-noflor'}">${hasFlorOption ? 'Con Flor' : 'Sin Flor'}</span>
             </div>
           </div>
           <button class="btn-play-match ${isFree ? 'btn-free-match' : ''}" onclick="joinTable('${t.roomId}', ${t.betAmount})">
@@ -694,10 +701,11 @@
       isGameStarted = isPlaying;
       sessionStorage.setItem('truco_active_room', roomId);
       roomTargetPoints = Number(points) || 30;
-      roomWithFlor = (flor === true || flor === 'true' || flor === undefined);
+      roomWithFlor = parseBoolean(flor);
 
       document.getElementById('lobbyContainer').style.display = 'none';
       document.getElementById('gameContainer').style.display = 'flex';
+      document.getElementById('gameActions').style.display = 'flex';
       
       const betLabel = bet > 0 ? `$${new Intl.NumberFormat('es-AR').format(bet)} ARS` : 'Gratis (Amistoso)';
       document.getElementById('lblRoom').innerText = `${roomId} (${betLabel} | ${roomTargetPoints} pts | ${roomWithFlor ? 'Con Flor' : 'Sin Flor'})`;
@@ -730,6 +738,7 @@
       isGameStarted = false;
       document.getElementById('winnerModal').style.display = 'none';
       document.getElementById('gameContainer').style.display = 'none';
+      document.getElementById('gameActions').style.display = 'flex';
       document.getElementById('lobbyContainer').style.display = 'flex';
       socket.emit('request_tables');
       fetch(`/api/wallet/balance/${currentUser.username}`)
@@ -807,6 +816,8 @@
         document.getElementById('lblTurn').innerText = currentTurnPlayer;
       }
       
+      document.getElementById('gameActions').style.display = 'flex';
+
       const myCardsContainer = document.getElementById('myCards');
       const isMyTurn = (currentTurnPlayer || '').toLowerCase() === (currentUser ? currentUser.username.toLowerCase() : '');
 
@@ -882,12 +893,13 @@
       socket.on('sync_game_state', (data) => {
         enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, true);
         document.getElementById('envidoOverlay').style.display = 'none';
+        document.getElementById('gameActions').style.display = 'flex';
         setScores(data.scores);
         currentTrickIndex = data.currentTrick;
         envidoDone = data.envidoResolved;
         currentTrucoLevel = data.trucoLevel;
         currentTrucoOwner = data.trucoOwner;
-        roomWithFlor = (data.withFlor === true || data.withFlor === 'true' || data.withFlor === undefined);
+        roomWithFlor = parseBoolean(data.withFlor);
 
         currentMyCards = data.myCards || [];
         const myCardsContainer = document.getElementById('myCards');
@@ -949,7 +961,7 @@
 
       socket.on('game_ready', (data) => {
         enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, true);
-        roomWithFlor = (data.withFlor === true || data.withFlor === 'true' || data.withFlor === undefined);
+        roomWithFlor = parseBoolean(data.withFlor);
         const potMsg = data.pot > 0 ? `Pozo en juego: $${new Intl.NumberFormat('es-AR').format(data.pot)} ARS` : '¡Partida Amistosa (Gratis)!';
         log(`🏆 ¡Rival encontrado! ${potMsg}`);
       });
@@ -960,13 +972,14 @@
 
       socket.on('hand_started', (data) => {
         document.getElementById('envidoOverlay').style.display = 'none';
+        document.getElementById('gameActions').style.display = 'flex';
         currentTurnPlayer = data.currentTurn;
         document.getElementById('lblTurn').innerText = currentTurnPlayer;
         log(`🃏 Mano iniciada. Sale jugando: <strong>${currentTurnPlayer}</strong>`);
         setScores(data.scores);
 
         if (data.withFlor !== undefined) {
-          roomWithFlor = (data.withFlor === true || data.withFlor === 'true');
+          roomWithFlor = parseBoolean(data.withFlor);
         }
 
         currentTrickIndex = 0;
@@ -993,7 +1006,7 @@
         currentMyCards = myCards || [];
 
         if (data.withFlor !== undefined) {
-          roomWithFlor = (data.withFlor === true || data.withFlor === 'true');
+          roomWithFlor = parseBoolean(data.withFlor);
         }
 
         const container = document.getElementById('myCards');
@@ -1054,6 +1067,7 @@
       socket.on('call_received', (data) => {
         log(`🗣️ <strong>${data.userId}</strong> cantó: <strong>${data.callType}</strong>`);
         pendingCategory = data.category;
+        document.getElementById('gameActions').style.display = 'flex';
         document.getElementById('myCards').classList.add('disabled');
 
         if (data.callType === 'TRUCO') playAudio('truco');
@@ -1165,6 +1179,7 @@
 
       socket.on('start_envido_declaration', (data) => {
         playAudio('quiero');
+        document.getElementById('gameActions').style.display = 'flex';
         document.getElementById('envidoGroup').style.display = 'none';
         document.getElementById('florGroup').style.display = 'none';
         document.getElementById('responseGroup').style.display = 'none';

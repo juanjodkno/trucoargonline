@@ -38,8 +38,8 @@ export class TrucoRound {
   constructor(p1Id: string, p2Id: string, manoId: string, targetPoints: number = 30, withFlor: boolean = true) {
     this.manoId = manoId;
     this.currentTurn = manoId;
-    this.targetPoints = targetPoints;
-    this.withFlor = withFlor;
+    this.targetPoints = Number(targetPoints) === 15 ? 15 : 30;
+    this.withFlor = (withFlor === true || (withFlor as unknown) === 'true');
 
     const deck = shuffleDeck(createDeck());
 

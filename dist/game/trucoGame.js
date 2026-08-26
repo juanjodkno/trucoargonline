@@ -20,8 +20,8 @@ class TrucoRound {
     constructor(p1Id, p2Id, manoId, targetPoints = 30, withFlor = true) {
         this.manoId = manoId;
         this.currentTurn = manoId;
-        this.targetPoints = targetPoints;
-        this.withFlor = withFlor;
+        this.targetPoints = Number(targetPoints) === 15 ? 15 : 30;
+        this.withFlor = (withFlor === true || withFlor === 'true');
         const deck = (0, trucoEngine_1.shuffleDeck)((0, trucoEngine_1.createDeck)());
         this.p1 = {
             userId: p1Id,
