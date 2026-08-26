@@ -1,6 +1,5 @@
 // src/auth/userService.ts
-import fs from 'fs';
-import path from 'path';
+import { Pool } from 'pg';
 import crypto from 'crypto';
 
 export interface User {
@@ -24,69 +23,70 @@ export interface DepositRequest {
   createdAt: string;
 }
 
-const DATA_DIR = path.join(process.cwd(), 'data');
-const USERS_FILE = path.join(DATA_DIR, 'users.json');
-const DEPOSITS_FILE = path.join(DATA_DIR, 'deposits.json');
+const DATABASE_URL = process.env.DATABASE_URL || '';
 
-function ensureFilesExist() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
-  }
-  if (!fs.existsSync(USERS_FILE)) {
-    fs.writeFileSync(USERS_FILE, JSON.stringify([], null, 2), 'utf-8');
-  }
-  if (!fs.existsSync(DEPOSITS_FILE)) {
-    fs.writeFileSync(DEPOSITS_FILE, JSON.stringify([], null, 2), 'utf-8');
-  }
-}
+export const pool = new Pool({
+  connectionString: DATABASE_URL,
+  ssl: DATABASE_URL ? { rejectUnauthorized: false } : false
+});
 
-export function readUsers(): User[] {
-  ensureFilesExist();
+let usersCache: User[] = [];
+let depositsCache: DepositRequest[] = [];
+
+export async function initDatabase() {
+  if (!DATABASE_URL) {
+    console.warn('⚠️ DATABASE_URL no configurada.');
+    return;
+  }
+
   try {
-    const raw = fs.readFileSync(USERS_FILE, 'utf-8');
-    return JSON.parse(raw);
-  } catch {
-    return [];
+    const client = await pool.connect();
+    
+    // Cargar usuarios a memoria
+    const uRes = await client.query('SELECT * FROM users');
+    usersCache = uRes.rows.map(r => ({
+      id: r.id,
+      fullName: r.full_name,
+      email: r.email,
+      username: r.username,
+      passwordHash: r.password_hash,
+      salt: r.salt,
+      chips: Number(r.chips) || 0,
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
+    }));
+
+    // Cargar depósitos a memoria
+    const dRes = await client.query('SELECT * FROM deposits');
+    depositsCache = dRes.rows.map(r => ({
+      id: r.id,
+      username: r.username,
+      amount: Number(r.amount) || 0,
+      reference: r.reference || '',
+      status: r.status,
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
+    }));
+
+    client.release();
+    console.log(`✅ Base de datos conectada. ${usersCache.length} usuarios cargados.`);
+  } catch (err) {
+    console.error('❌ Error conectando a PostgreSQL:', err);
   }
 }
 
-export function writeUsers(users: User[]) {
-  ensureFilesExist();
-  fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2), 'utf-8');
-}
-
-export function readDeposits(): DepositRequest[] {
-  ensureFilesExist();
-  try {
-    const raw = fs.readFileSync(DEPOSITS_FILE, 'utf-8');
-    return JSON.parse(raw);
-  } catch {
-    return [];
-  }
-}
-
-export function writeDeposits(deposits: DepositRequest[]) {
-  ensureFilesExist();
-  fs.writeFileSync(DEPOSITS_FILE, JSON.stringify(deposits, null, 2), 'utf-8');
-}
+initDatabase();
 
 function hashPbkdf2(password: string, salt: string): string {
   return crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
 }
 
-function hashSha256(password: string): string {
-  return crypto.createHash('sha256').update(password).digest('hex');
-}
-
 export function registerUser(fullName: string, email: string, username: string, password: string): { success: boolean; message: string; user?: User } {
-  const users = readUsers();
   const cleanUser = username.trim().toLowerCase();
   const cleanEmail = email.trim().toLowerCase();
 
-  if (users.some(u => (u.username || '').toLowerCase() === cleanUser)) {
+  if (usersCache.some(u => (u.username || '').toLowerCase() === cleanUser)) {
     return { success: false, message: 'El nombre de usuario ya está registrado.' };
   }
-  if (users.some(u => (u.email || '').toLowerCase() === cleanEmail)) {
+  if (usersCache.some(u => (u.email || '').toLowerCase() === cleanEmail)) {
     return { success: false, message: 'El correo electrónico ya está registrado.' };
   }
 
@@ -104,102 +104,89 @@ export function registerUser(fullName: string, email: string, username: string, 
     createdAt: new Date().toISOString()
   };
 
-  users.push(newUser);
-  writeUsers(users);
+  usersCache.push(newUser);
+
+  if (DATABASE_URL) {
+    pool.query(
+      'INSERT INTO users (id, full_name, email, username, password_hash, salt, chips) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [newUser.id, newUser.fullName, newUser.email, newUser.username, newUser.passwordHash, newUser.salt, newUser.chips]
+    )
+    .then(() => console.log(`💾 Usuario @${newUser.username} guardado en PostgreSQL.`))
+    .catch(err => console.error('Error insertando usuario en BD:', err));
+  }
 
   return { success: true, message: 'Registro exitoso.', user: newUser };
 }
 
 export function loginUser(usernameOrEmail: string, password: string): { success: boolean; message: string; user?: User } {
-  const users = readUsers();
   const target = (usernameOrEmail || '').trim().toLowerCase();
 
-  const userIndex = users.findIndex(u =>
+  const user = usersCache.find(u =>
     (u.username && u.username.toLowerCase() === target) ||
     (u.email && u.email.toLowerCase() === target)
   );
 
-  if (userIndex === -1) {
+  if (!user) {
     return { success: false, message: 'Usuario o correo no encontrado.' };
   }
 
-  const user = users[userIndex];
-  let isValid = false;
-
-  // Validación 1: Hash PBKDF2 + Salt (Nuevo formato)
   if (user.passwordHash && user.salt) {
-    if (hashPbkdf2(password, user.salt) === user.passwordHash) {
-      isValid = true;
+    if (hashPbkdf2(password, user.salt) !== user.passwordHash) {
+      return { success: false, message: 'Contraseña incorrecta.' };
     }
-  }
-
-  // Validación 2: Texto plano en campo password (Cuentas viejas)
-  if (!isValid && user.password && user.password === password) {
-    isValid = true;
-  }
-
-  // Validación 3: Texto plano guardado directamente en passwordHash
-  if (!isValid && user.passwordHash && user.passwordHash === password) {
-    isValid = true;
-  }
-
-  // Validación 4: Hash SHA-256 (Versiones intermedias)
-  if (!isValid && user.passwordHash && hashSha256(password) === user.passwordHash) {
-    isValid = true;
-  }
-
-  if (!isValid) {
+  } else {
     return { success: false, message: 'Contraseña incorrecta.' };
-  }
-
-  // Si entró por compatibilidad vieja, migramos su cuenta al formato seguro automáticamente
-  if (!user.salt || user.password) {
-    user.salt = crypto.randomBytes(16).toString('hex');
-    user.passwordHash = hashPbkdf2(password, user.salt);
-    delete user.password;
-    writeUsers(users);
   }
 
   return { success: true, message: 'Inicio de sesión exitoso.', user };
 }
 
 export function resetUserPassword(username: string, newPass: string): boolean {
-  const users = readUsers();
   const clean = username.trim().toLowerCase();
-  const user = users.find(u => (u.username || '').toLowerCase() === clean);
+  const user = usersCache.find(u => (u.username || '').toLowerCase() === clean);
   if (!user) return false;
 
   user.salt = crypto.randomBytes(16).toString('hex');
   user.passwordHash = hashPbkdf2(newPass, user.salt);
-  delete user.password;
-  writeUsers(users);
+
+  if (DATABASE_URL) {
+    pool.query(
+      'UPDATE users SET password_hash = $1, salt = $2 WHERE id = $3',
+      [user.passwordHash, user.salt, user.id]
+    ).catch(err => console.error('Error actualizando password en BD:', err));
+  }
+
   return true;
 }
 
 export function getUserChips(username: string): number {
-  const users = readUsers();
   const clean = (username || '').trim().toLowerCase();
-  const user = users.find(u => (u.username || '').toLowerCase() === clean);
+  const user = usersCache.find(u => (u.username || '').toLowerCase() === clean);
   return user ? (user.chips || 0) : 0;
 }
 
 export function modifyUserChips(username: string, amount: number): boolean {
-  const users = readUsers();
   const clean = (username || '').trim().toLowerCase();
-  const user = users.find(u => (u.username || '').toLowerCase() === clean);
+  const user = usersCache.find(u => (u.username || '').toLowerCase() === clean);
   if (!user) return false;
 
   const current = user.chips || 0;
   if (current + amount < 0) return false;
 
   user.chips = current + amount;
-  writeUsers(users);
+
+  if (DATABASE_URL) {
+    pool.query(
+      'UPDATE users SET chips = $1 WHERE id = $2',
+      [user.chips, user.id]
+    ).catch(err => console.error('Error actualizando fichas en BD:', err));
+  }
+
   return true;
 }
 
 export function getAllUsersList() {
-  const users = readUsers();
-  return users.map(u => ({
+  return usersCache.map(u => ({
     username: u.username,
     fullName: u.fullName,
     email: u.email,
@@ -208,7 +195,6 @@ export function getAllUsersList() {
 }
 
 export function requestDeposit(username: string, amount: number, reference: string): { success: boolean; message: string } {
-  const deposits = readDeposits();
   const newDep: DepositRequest = {
     id: 'dep_' + crypto.randomBytes(4).toString('hex'),
     username: (username || '').trim().toLowerCase(),
@@ -217,24 +203,38 @@ export function requestDeposit(username: string, amount: number, reference: stri
     status: 'PENDING',
     createdAt: new Date().toISOString()
   };
-  deposits.push(newDep);
-  writeDeposits(deposits);
+
+  depositsCache.push(newDep);
+
+  if (DATABASE_URL) {
+    pool.query(
+      'INSERT INTO deposits (id, username, amount, reference, status) VALUES ($1, $2, $3, $4, $5)',
+      [newDep.id, newDep.username, newDep.amount, newDep.reference, newDep.status]
+    ).catch(err => console.error('Error guardando depósito en BD:', err));
+  }
+
   return { success: true, message: 'Solicitud enviada correctamente.' };
 }
 
 export function getPendingDeposits(): DepositRequest[] {
-  const deposits = readDeposits();
-  return deposits.filter(d => d.status === 'PENDING');
+  return depositsCache.filter(d => d.status === 'PENDING');
 }
 
 export function approveDeposit(depositId: string): { success: boolean; message: string } {
-  const deposits = readDeposits();
-  const dep = deposits.find(d => d.id === depositId);
+  const dep = depositsCache.find(d => d.id === depositId);
   if (!dep || dep.status !== 'PENDING') {
     return { success: false, message: 'Solicitud no válida o ya procesada.' };
   }
+
   dep.status = 'APPROVED';
-  writeDeposits(deposits);
   modifyUserChips(dep.username, dep.amount);
+
+  if (DATABASE_URL) {
+    pool.query(
+      'UPDATE deposits SET status = $1 WHERE id = $2',
+      ['APPROVED', dep.id]
+    ).catch(err => console.error('Error aprobando depósito en BD:', err));
+  }
+
   return { success: true, message: `Acreditados $${dep.amount} a ${dep.username}.` };
 }
