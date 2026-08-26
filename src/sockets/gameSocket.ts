@@ -92,6 +92,7 @@ export function setupSocketEvents(io: Server) {
         winnerBalance: getUserChips(matchWinner)
       });
       rooms.delete(room.roomId);
+      broadcastTables();
       return true;
     }
     return false;
@@ -404,7 +405,6 @@ export function setupSocketEvents(io: Server) {
     startTurnTimer(room, 25);
   }
 
-  // CÁLCULO ESTRICTO DE PUNTOS AL DECIR NO QUIERO / IRSE AL MAZO
   function resolveTrucoFold(room: ActiveRoom, folderUserId: string) {
     if (!room.gameRound) return;
     clearTurnTimer(room);
@@ -413,12 +413,10 @@ export function setupSocketEvents(io: Server) {
 
     let pts = 1;
     if (room.gameRound.awaitingResponseFrom) {
-      // Se respondió NO QUIERO a un canto activo
-      if (room.gameRound.trucoPointsAtStake === 2) pts = 1;      // No quiero al Truco -> 1 punto
-      else if (room.gameRound.trucoPointsAtStake === 3) pts = 2; // No quiero al Retruco -> 2 puntos
-      else if (room.gameRound.trucoPointsAtStake === 4) pts = 3; // No quiero al Vale 4 -> 3 puntos
+      if (room.gameRound.trucoPointsAtStake === 2) pts = 1;
+      else if (room.gameRound.trucoPointsAtStake === 3) pts = 2;
+      else if (room.gameRound.trucoPointsAtStake === 4) pts = 3;
     } else {
-      // Se fue al mazo en su turno sin un canto pendiente
       pts = room.trucoLevel || 1;
     }
 
@@ -494,17 +492,22 @@ export function setupSocketEvents(io: Server) {
     const isP1 = userId.toLowerCase() === room.creatorId.toLowerCase();
     const myHand = isP1 ? room.gameRound.p1 : room.gameRound.p2;
     const rivalHand = isP1 ? room.gameRound.p2 : room.gameRound.p1;
+    const rivalUsername = isP1 ? (room.guestId || '') : room.creatorId;
 
     const tricksData: { [trickIdx: number]: { userId: string; cardId: string }[] } = { 0: [], 1: [], 2: [] };
     for (let i = 0; i < 3; i++) {
       const p1Card = room.gameRound.p1.cardsPlayed[i];
       const p2Card = room.gameRound.p2.cardsPlayed[i];
       if (p1Card) tricksData[i].push({ userId: room.creatorId, cardId: p1Card.id });
-      if (p2Card) tricksData[i].push({ userId: room.guestId!, cardId: p2Card.id });
+      if (p2Card && room.guestId) tricksData[i].push({ userId: room.guestId, cardId: p2Card.id });
     }
 
     socket.emit('sync_game_state', {
       roomId: room.roomId,
+      creatorId: room.creatorId,
+      guestId: room.guestId,
+      rivalUsername,
+      manoId: room.manoId,
       scores: getScoreMap(room),
       targetPoints: room.targetPoints,
       withFlor: room.withFlor,
@@ -523,6 +526,9 @@ export function setupSocketEvents(io: Server) {
 
   io.on('connection', (socket: Socket) => {
 
+    // Enviar mesas apenas se conecta
+    socket.emit('update_tables', getAvailableRooms());
+
     socket.on('request_tables', () => {
       socket.emit('update_tables', getAvailableRooms());
     });
@@ -532,6 +538,8 @@ export function setupSocketEvents(io: Server) {
       if (room && (room.creatorId.toLowerCase() === userId.toLowerCase() || (room.guestId && room.guestId.toLowerCase() === userId.toLowerCase()))) {
         socket.join(roomId);
         sendFullSync(socket, room, userId);
+      } else {
+        socket.emit('reconnect_failed');
       }
     });
 

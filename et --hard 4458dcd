@@ -1,0 +1,6 @@
+[33mb19d450[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m Permitir crear mesas gratis con 0 fichas y mesas por dinero
+[33mc3ff3b9[m Sincronizacion de mesas en vivo y reconexion F5
+[33m4458dcd[m Proteger panel de administracion con contrasena maestra
+[33m5d50c6a[m Sincronizar motor de truco y eliminar rutas viejas
+[33mb14bb8d[m Corregir tipos y limpiar modulos viejos
+[33m2657a96[m Corregir tsconfig y remover archivos no usados

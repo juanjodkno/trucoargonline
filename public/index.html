@@ -3,17 +3,20 @@
 <html lang="es">
 <head>
   <link rel="manifest" href="/manifest.json" />
-<meta name="theme-color" content="#0077b6" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<link rel="apple-touch-icon" href="/logo.png" />
+  <meta name="theme-color" content="#0077b6" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="apple-touch-icon" href="/logo.png" />
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Truco Argentino Online - Fichas ARS</title>
   <link rel="icon" type="image/png" href="/logo.png" />
-  <script src="/socket.io/socket.io.js">if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW error:', err));
-}</script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW error:', err));
+    }
+  </script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
     body { background: radial-gradient(circle at center, #1b2838 0%, #080c10 100%); color: white; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 10px; }
@@ -274,7 +277,7 @@
     <div class="table-list" id="tableList"></div>
   </div>
 
-  <!-- Modal Cargar Fichas (Sin campo de referencia) -->
+  <!-- Modal Cargar Fichas -->
   <div class="modal-overlay" id="depositModal">
     <div class="modal-card">
       <h3 style="color:#ffd166; margin-bottom:10px;">💳 Cargar Fichas (1 ARS = 1 Ficha)</h3>
@@ -326,6 +329,7 @@
     </div>
   </div>
 
+  <!-- MESA DE JUEGO -->
   <div id="gameContainer">
     <div class="header-bar">
       <div><strong>Mesa:</strong> <span id="lblRoom">...</span></div>
@@ -394,14 +398,14 @@
     <div class="winner-card">
       <div style="font-size:2.2rem; font-weight:900; margin-bottom:10px; color:#ffd166;" id="winnerTitle">🏆 ¡PARTIDA FINALIZADA!</div>
       <div style="font-size:1.1rem; color:#e0e1dd; margin-bottom:25px;" id="winnerDesc">...</div>
-      <button class="action-btn" onclick="window.location.reload()" style="background:#2ec4b6; font-size:1.1rem; padding:12px 28px;">Volver al Lobby</button>
+      <button class="action-btn" onclick="returnToLobbyAfterMatch()" style="background:#2ec4b6; font-size:1.1rem; padding:12px 28px;">Volver al Lobby</button>
     </div>
   </div>
 
   <script>
     let socket = null;
     let currentUser = null;
-    let activeRoomId = null;
+    let activeRoomId = sessionStorage.getItem('truco_active_room') || null;
     let pendingCategory = null;
     let currentMyCards = [];
     let roomTargetPoints = 30;
@@ -446,6 +450,7 @@
     }
 
     function logoutUser() {
+      sessionStorage.removeItem('truco_active_room');
       localStorage.removeItem('truco_saved_user');
       sessionStorage.removeItem('truco_saved_user');
       window.location.reload();
@@ -501,9 +506,17 @@
       document.getElementById('lobbyUsername').innerText = currentUser.username;
       updateChipsDisplay(currentUser.chips || 0);
 
-      socket = io({ transports: ['websocket', 'polling'] });
-      setupSocketListeners();
-      socket.emit('request_tables');
+      if (!socket) {
+        socket = io({ transports: ['websocket', 'polling'] });
+        setupSocketListeners();
+      } else {
+        socket.emit('request_tables');
+      }
+
+      // Comprobar si veníamos de apretar F5 durante una partida activa
+      if (activeRoomId) {
+        socket.emit('reconnect_game', { roomId: activeRoomId, userId: currentUser.username });
+      }
     }
 
     function updateChipsDisplay(chips) {
@@ -566,13 +579,11 @@
           return;
         }
 
-        // Actualizar saldo de inmediato en pantalla y memoria
         updateChipsDisplay(data.chips);
         currentUser.chips = data.chips;
         const storage = localStorage.getItem('truco_saved_user') ? localStorage : sessionStorage;
         storage.setItem('truco_saved_user', JSON.stringify(currentUser));
 
-        // Abrir WhatsApp con la solicitud detallada
         const phone = '5493815811724';
         const textMsg = encodeURIComponent(`¡Hola! Solicito un retiro de fondos de Truco Online:\n\n👤 Usuario: ${currentUser.username}\n🪙 Monto a retirar: $${amount} ARS\n🏦 Alias / CBU a nombre del titular: ${aliasCbu}\n\n(Fichas ya descontadas de mi cuenta)`);
         window.open(`https://wa.me/${phone}?text=${textMsg}`, '_blank');
@@ -635,9 +646,10 @@
 
     function renderTables(tables) {
       const container = document.getElementById('tableList');
+      if (!container) return;
       container.innerHTML = '';
 
-      if (tables.length === 0) {
+      if (!tables || tables.length === 0) {
         container.innerHTML = '<div style="color:#64748b; text-align:center; padding:20px;">No hay mesas esperando rival. ¡Creá una!</div>';
         return;
       }
@@ -665,6 +677,7 @@
 
     function enterGameInterface(roomId, points, flor, bet) {
       activeRoomId = roomId;
+      sessionStorage.setItem('truco_active_room', roomId);
       roomTargetPoints = Number(points) || 30;
       roomWithFlor = (flor === true || flor === 'true' || flor === undefined);
 
@@ -674,6 +687,12 @@
       const betLabel = bet > 0 ? `$${new Intl.NumberFormat('es-AR').format(bet)} ARS` : 'Gratis (Amistoso)';
       document.getElementById('lblRoom').innerText = `${roomId} (${betLabel} | ${roomTargetPoints} pts | ${roomWithFlor ? 'Con Flor' : 'Sin Flor'})`;
       log(`🟢 Ingresaste a la mesa: ${roomId}. Esperando rival...`);
+    }
+
+    function returnToLobbyAfterMatch() {
+      sessionStorage.removeItem('truco_active_room');
+      activeRoomId = null;
+      window.location.reload();
     }
 
     function getCardSrc(cardId) {
@@ -812,12 +831,14 @@
 
     function setupSocketListeners() {
       socket.on('connect', () => {
+        socket.emit('request_tables');
         if (activeRoomId && currentUser) {
           socket.emit('reconnect_game', { roomId: activeRoomId, userId: currentUser.username });
         }
       });
 
       socket.on('sync_game_state', (data) => {
+        enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount);
         document.getElementById('envidoOverlay').style.display = 'none';
         setScores(data.scores);
         currentTrickIndex = data.currentTrick;
@@ -866,7 +887,16 @@
         updateTurnControls(data.currentTurn);
       });
 
-      socket.on('update_tables', (tables) => { renderTables(tables); });
+      socket.on('reconnect_failed', () => {
+        sessionStorage.removeItem('truco_active_room');
+        activeRoomId = null;
+        document.getElementById('gameContainer').style.display = 'none';
+        document.getElementById('lobbyContainer').style.display = 'flex';
+      });
+
+      socket.on('update_tables', (tables) => { 
+        renderTables(tables); 
+      });
 
       socket.on('room_created', (data) => {
         updateChipsDisplay(data.newBalance);
@@ -874,7 +904,7 @@
       });
 
       socket.on('game_ready', (data) => {
-        if (!activeRoomId) enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount);
+        enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount);
         roomWithFlor = (data.withFlor === true || data.withFlor === 'true' || data.withFlor === undefined);
         const potMsg = data.pot > 0 ? `Pozo en juego: $${new Intl.NumberFormat('es-AR').format(data.pot)} ARS` : '¡Partida Amistosa (Gratis)!';
         log(`🏆 ¡Rival encontrado! ${potMsg}`);
@@ -1168,7 +1198,7 @@
         currentTrucoOwner = data.trucoOwner;
 
         playAudio('flor');
-        log(`🌸 <strong>${data.winnerId}</strong> cantó FLOR (${data.score} pts) $\\rightarrow$ +${data.pointsAwarded} pts`);
+        log(`🌸 <strong>${data.winnerId}</strong> cantó FLOR (${data.score} pts) -> +${data.pointsAwarded} pts`);
         setScores(data.scores);
         updateTurnControls(data.currentTurn || currentTurnPlayer);
       });
@@ -1209,6 +1239,7 @@
       });
 
       socket.on('match_finished', (data) => {
+        sessionStorage.removeItem('truco_active_room');
         setScores(data.scores);
         document.getElementById('gameActions').style.display = 'none';
         currentTurnPlayer = '';
