@@ -526,7 +526,6 @@ export function setupSocketEvents(io: Server) {
 
   io.on('connection', (socket: Socket) => {
 
-    // Enviar mesas apenas se conecta
     socket.emit('update_tables', getAvailableRooms());
 
     socket.on('request_tables', () => {
@@ -569,6 +568,48 @@ export function setupSocketEvents(io: Server) {
         });
         broadcastTables();
       } catch (err) { console.error('Error creando mesa:', err); }
+    });
+
+    // Cancelar mesa en espera (reembolsa al creador)
+    socket.on('cancel_waiting_table', ({ roomId, userId }) => {
+      const room = rooms.get(roomId);
+      if (room && !room.guestId && room.creatorId.toLowerCase() === userId.toLowerCase()) {
+        if (room.betAmount > 0) {
+          modifyUserChips(room.creatorId, room.betAmount);
+        }
+        rooms.delete(roomId);
+        socket.emit('table_cancelled_ok', { newBalance: getUserChips(userId) });
+        broadcastTables();
+      }
+    });
+
+    // Abandonar en pleno partido (se penaliza entregando el pozo al rival)
+    socket.on('surrender_match', ({ roomId, userId }) => {
+      const room = rooms.get(roomId);
+      if (!room || !room.guestId) return;
+
+      const isP1 = room.creatorId.toLowerCase() === userId.toLowerCase();
+      const isP2 = room.guestId.toLowerCase() === userId.toLowerCase();
+      if (!isP1 && !isP2) return;
+
+      clearTurnTimer(room);
+      const winnerId = isP1 ? room.guestId : room.creatorId;
+      const netPot = room.betAmount > 0 ? room.betAmount * 2 * 0.9 : 0;
+
+      if (netPot > 0) {
+        modifyUserChips(winnerId, netPot);
+      }
+
+      io.to(roomId).emit('player_surrendered', {
+        surrenderedUser: userId,
+        winnerId,
+        pot: netPot,
+        scores: getScoreMap(room),
+        winnerBalance: getUserChips(winnerId)
+      });
+
+      rooms.delete(roomId);
+      broadcastTables();
     });
 
     socket.on('join_room', ({ roomId, userId }) => {

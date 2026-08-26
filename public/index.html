@@ -97,7 +97,7 @@
 
     /* MESA DE JUEGO */
     #gameContainer { display: none; width: 100%; flex-direction: column; align-items: center; }
-    .header-bar { background: rgba(255, 255, 255, 0.07); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.15); width: 100%; max-width: 880px; padding: 8px 20px; border-radius: 12px; margin-bottom: 10px; display: flex; gap: 20px; align-items: center; justify-content: space-between; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+    .header-bar { background: rgba(255, 255, 255, 0.07); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.15); width: 100%; max-width: 880px; padding: 8px 20px; border-radius: 12px; margin-bottom: 10px; display: flex; gap: 14px; align-items: center; justify-content: space-between; box-shadow: 0 8px 24px rgba(0,0,0,0.4); flex-wrap: wrap; }
     .score-badge { background: #0077b6; padding: 5px 12px; border-radius: 20px; font-weight: bold; font-size: 1rem; }
     .turn-badge { color: #ffd166; font-weight: bold; }
     .timer-badge { background: #d90429; padding: 4px 10px; border-radius: 15px; font-weight: bold; font-size: 0.95rem; }
@@ -336,7 +336,7 @@
       <div class="score-badge">Nosotros: <span id="scoreNosotros">0</span> | Ellos: <span id="scoreEllos">0</span></div>
       <div class="turn-badge">Turno: <span id="lblTurn">-</span></div>
       <div class="timer-badge">⏱️ <span id="lblTimer">25</span>s</div>
-      <button onclick="surrenderMatch()" style="background:#e63946; color:white; border:none; padding:5px 12px; border-radius:8px; font-weight:bold; font-size:0.8rem; cursor:pointer; transition:0.2s;">🚪 Abandonar</button>
+      <button id="btnAbandonar" onclick="handleLeaveButton()" style="background:#e63946; color:white; border:none; padding:6px 14px; border-radius:8px; font-weight:bold; font-size:0.85rem; cursor:pointer; transition:0.2s;">Abandonar mesa</button>
     </div>
 
     <div class="truco-table">
@@ -407,6 +407,7 @@
     let socket = null;
     let currentUser = null;
     let activeRoomId = sessionStorage.getItem('truco_active_room') || null;
+    let isGameStarted = false; // Controla si ya hay rival jugando
     let pendingCategory = null;
     let currentMyCards = [];
     let roomTargetPoints = 30;
@@ -423,13 +424,6 @@
       const src = `/audio/${cleanName}.mp3`;
       const audio = new Audio(src);
       audio.play().catch(err => console.warn('Audio no disponible:', src, err));
-    }
-    function surrenderMatch() {
-      const confirmar = confirm('⚠️ ¿Estás seguro de que deseás abandonar la partida?\n\nSi salís ahora, se te dará por perdida la partida y el pozo de fichas pasará directamente a tu rival.');
-      if (confirmar) {
-        sessionStorage.removeItem('truco_active_room');
-        socket.emit('surrender_match', { roomId: activeRoomId, userId: currentUser.username });
-      }
     }
 
     function switchTab(tab) {
@@ -517,11 +511,19 @@
       if (!socket) {
         socket = io({ transports: ['websocket', 'polling'] });
         setupSocketListeners();
-      } else {
-        socket.emit('request_tables');
       }
 
-      // Comprobar si veníamos de apretar F5 durante una partida activa
+      socket.emit('request_tables');
+
+      // Polling de seguridad para actualizar mesas en segundo plano
+      if (!window.tablesInterval) {
+        window.tablesInterval = setInterval(() => {
+          if (socket && document.getElementById('lobbyContainer').style.display !== 'none') {
+            socket.emit('request_tables');
+          }
+        }, 2000);
+      }
+
       if (activeRoomId) {
         socket.emit('reconnect_game', { roomId: activeRoomId, userId: currentUser.username });
       }
@@ -532,7 +534,6 @@
       document.getElementById('lobbyChips').innerText = new Intl.NumberFormat('es-AR').format(chips);
     }
 
-    // Modal Cargar Fichas
     function openDepositModal() { document.getElementById('depositModal').style.display = 'flex'; }
     function closeDepositModal() { document.getElementById('depositModal').style.display = 'none'; }
 
@@ -555,7 +556,6 @@
       closeDepositModal();
     }
 
-    // Modal Retirar Saldo
     function openWithdrawModal() { document.getElementById('withdrawModal').style.display = 'flex'; }
     function closeWithdrawModal() { document.getElementById('withdrawModal').style.display = 'none'; }
 
@@ -683,8 +683,9 @@
       });
     }
 
-    function enterGameInterface(roomId, points, flor, bet) {
+    function enterGameInterface(roomId, points, flor, bet, isPlaying = false) {
       activeRoomId = roomId;
+      isGameStarted = isPlaying;
       sessionStorage.setItem('truco_active_room', roomId);
       roomTargetPoints = Number(points) || 30;
       roomWithFlor = (flor === true || flor === 'true' || flor === undefined);
@@ -694,13 +695,44 @@
       
       const betLabel = bet > 0 ? `$${new Intl.NumberFormat('es-AR').format(bet)} ARS` : 'Gratis (Amistoso)';
       document.getElementById('lblRoom').innerText = `${roomId} (${betLabel} | ${roomTargetPoints} pts | ${roomWithFlor ? 'Con Flor' : 'Sin Flor'})`;
-      log(`🟢 Ingresaste a la mesa: ${roomId}. Esperando rival...`);
+      
+      const btnLeave = document.getElementById('btnAbandonar');
+      if (isGameStarted) {
+        btnLeave.innerText = 'Abandonar partida';
+      } else {
+        btnLeave.innerText = 'Abandonar mesa';
+        log(`🟢 Creaste la mesa ${roomId}. Esperando que se una un rival...`);
+      }
+    }
+
+    // LÓGICA DE ABANDONAR / SALIR
+    function handleLeaveButton() {
+      if (!isGameStarted) {
+        // EN ESPERA DE RIVAL: Sale sin perder fichas
+        socket.emit('cancel_waiting_table', { roomId: activeRoomId, userId: currentUser.username });
+      } else {
+        // EN JUEGO: Pregunta confirmación advirtiendo pérdida de fichas
+        const confirmar = confirm('⚠️ ¿Estás seguro de que deseás abandonar la partida?\n\nSi salís ahora, perderás las fichas de tu apuesta y se le acreditarán a tu rival.');
+        if (confirmar) {
+          sessionStorage.removeItem('truco_active_room');
+          socket.emit('surrender_match', { roomId: activeRoomId, userId: currentUser.username });
+          // Redirigir de inmediato al lobby al abandonar
+          returnToLobbyAfterMatch();
+        }
+      }
     }
 
     function returnToLobbyAfterMatch() {
       sessionStorage.removeItem('truco_active_room');
       activeRoomId = null;
-      window.location.reload();
+      isGameStarted = false;
+      document.getElementById('winnerModal').style.display = 'none';
+      document.getElementById('gameContainer').style.display = 'none';
+      document.getElementById('lobbyContainer').style.display = 'flex';
+      socket.emit('request_tables');
+      fetch(`/api/wallet/balance/${currentUser.username}`)
+        .then(res => res.json())
+        .then(d => { if (d.chips !== undefined) updateChipsDisplay(d.chips); });
     }
 
     function getCardSrc(cardId) {
@@ -844,36 +876,9 @@
           socket.emit('reconnect_game', { roomId: activeRoomId, userId: currentUser.username });
         }
       });
-      socket.on('player_surrendered', (data) => {
-        sessionStorage.removeItem('truco_active_room');
-        setScores(data.scores);
-        document.getElementById('gameActions').style.display = 'none';
-        currentTurnPlayer = '';
-        document.getElementById('lblTurn').innerText = 'Partida Concluida';
-
-        const isWinner = (data.winnerId || '').toLowerCase() === currentUser.username.toLowerCase();
-        const modal = document.getElementById('winnerModal');
-        const title = document.getElementById('winnerTitle');
-        const desc = document.getElementById('winnerDesc');
-
-        if (isWinner) {
-          title.innerText = '🏆 ¡TU RIVAL ABANDONÓ!';
-          title.style.color = '#48cae4';
-          const potText = data.pot > 0 
-            ? `Pozo ganado: $${new Intl.NumberFormat('es-AR').format(data.pot)} ARS` 
-            : 'Partida Amistosa';
-          desc.innerText = `@${data.surrenderedUser} abandonó la mesa. ¡Ganaste los puntos y las fichas! (${potText})`;
-        } else {
-          title.innerText = '🚪 ABANDONASTE LA PARTIDA';
-          title.style.color = '#e63946';
-          desc.innerText = `Te retiraste del partido. Las fichas de la apuesta fueron entregadas a @${data.winnerId}.`;
-        }
-
-        modal.style.display = 'flex';
-      });
 
       socket.on('sync_game_state', (data) => {
-        enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount);
+        enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, true);
         document.getElementById('envidoOverlay').style.display = 'none';
         setScores(data.scores);
         currentTrickIndex = data.currentTrick;
@@ -923,10 +928,12 @@
       });
 
       socket.on('reconnect_failed', () => {
-        sessionStorage.removeItem('truco_active_room');
-        activeRoomId = null;
-        document.getElementById('gameContainer').style.display = 'none';
-        document.getElementById('lobbyContainer').style.display = 'flex';
+        returnToLobbyAfterMatch();
+      });
+
+      socket.on('table_cancelled_ok', (data) => {
+        if (data.newBalance !== undefined) updateChipsDisplay(data.newBalance);
+        returnToLobbyAfterMatch();
       });
 
       socket.on('update_tables', (tables) => { 
@@ -935,11 +942,11 @@
 
       socket.on('room_created', (data) => {
         updateChipsDisplay(data.newBalance);
-        enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount);
+        enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, false);
       });
 
       socket.on('game_ready', (data) => {
-        enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount);
+        enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, true);
         roomWithFlor = (data.withFlor === true || data.withFlor === 'true' || data.withFlor === undefined);
         const potMsg = data.pot > 0 ? `Pozo en juego: $${new Intl.NumberFormat('es-AR').format(data.pot)} ARS` : '¡Partida Amistosa (Gratis)!';
         log(`🏆 ¡Rival encontrado! ${potMsg}`);
@@ -1271,6 +1278,28 @@
         document.getElementById('florGroup').style.display = 'none';
         document.getElementById('trucoGroup').style.display = 'none';
         document.getElementById('btnMazo').style.display = 'none';
+      });
+
+      // El rival abandonó la partida (yo gané)
+      socket.on('player_surrendered', (data) => {
+        sessionStorage.removeItem('truco_active_room');
+        setScores(data.scores);
+        document.getElementById('gameActions').style.display = 'none';
+        currentTurnPlayer = '';
+        document.getElementById('lblTurn').innerText = 'Partida Concluida';
+
+        const isWinner = (data.winnerId || '').toLowerCase() === currentUser.username.toLowerCase();
+        if (isWinner) {
+          if (data.winnerBalance !== undefined) updateChipsDisplay(data.winnerBalance);
+          const modal = document.getElementById('winnerModal');
+          const title = document.getElementById('winnerTitle');
+          const desc = document.getElementById('winnerDesc');
+          title.innerText = '🏆 ¡TU RIVAL ABANDONÓ!';
+          title.style.color = '#48cae4';
+          const potText = data.pot > 0 ? `Pozo ganado: $${new Intl.NumberFormat('es-AR').format(data.pot)} ARS` : 'Partida Amistosa';
+          desc.innerText = `@${data.surrenderedUser} abandonó la mesa. ¡Ganaste los puntos y las fichas! (${potText})`;
+          modal.style.display = 'flex';
+        }
       });
 
       socket.on('match_finished', (data) => {
