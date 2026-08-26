@@ -1,164 +1,176 @@
 // src/game/trucoGame.ts
-import { Card, generateDeck, compareCards } from './trucoEngine';
+import { Card, createDeck, shuffleDeck, compareCards } from './trucoEngine';
 
-export interface PlayerHand {
-  id: string;
+export interface PlayerRoundHand {
+  userId: string;
   cards: Card[];
   cardsPlayed: (Card | null)[];
 }
 
-export interface TrickRecord {
-  trickIndex: number;          // 0 = 1ra, 1 = 2da, 2 = 3ra
-  p1Card: Card | null;
-  p2Card: Card | null;
-  winnerId: string | 'PARDA' | null;
-  firstPlayerId: string;       // Quién tiró primero en este lance
+export interface PlayCardResult {
+  success: boolean;
+  message?: string;
+  trickIndex?: number;
+  isTrickOver?: boolean;
+  trickWinnerId?: string;
+  nextTurn?: string;
+  roundOver?: boolean;
+  winnerId?: string;
+  points?: number;
 }
 
 export class TrucoRound {
-  public p1: PlayerHand;
-  public p2: PlayerHand;
+  public p1: PlayerRoundHand;
+  public p2: PlayerRoundHand;
   public manoId: string;
   public currentTurn: string;
-  public currentTrickIndex: number = 0; // 0, 1, o 2
-  public tricks: TrickRecord[] = [];
-  
-  public trucoPointsAtStake: number = 1;
+  public currentTrickIndex: number = 0;
+  public trickWinners: (string | null)[] = [null, null, null];
+  public isFinished: boolean = false;
+  public winnerId: string | null = null;
   public targetPoints: number;
   public withFlor: boolean;
+
+  // Propiedades requeridas por gameSocket
+  public envidoResolved: boolean = false;
+  public trucoPointsAtStake: number = 1;
   public awaitingResponseFrom: string | null = null;
 
-  constructor(p1Id: string, p2Id: string, manoId: string, targetPoints: number = 30, withFlor: boolean = false) {
+  constructor(p1Id: string, p2Id: string, manoId: string, targetPoints: number = 30, withFlor: boolean = true) {
     this.manoId = manoId;
-    this.currentTurn = manoId; // En 1ra mano arranca SIEMPRE el que es mano
+    this.currentTurn = manoId;
     this.targetPoints = targetPoints;
     this.withFlor = withFlor;
 
-    const deck = generateDeck();
-    this.p1 = { id: p1Id, cards: [deck[0], deck[1], deck[2]], cardsPlayed: [] };
-    this.p2 = { id: p2Id, cards: [deck[3], deck[4], deck[5]], cardsPlayed: [] };
+    const deck = shuffleDeck(createDeck());
 
-    // Inicializamos el registro del primer lance (1ra mano)
-    this.tricks.push({
-      trickIndex: 0,
-      p1Card: null,
-      p2Card: null,
-      winnerId: null,
-      firstPlayerId: manoId,
-    });
-  }
+    this.p1 = {
+      userId: p1Id,
+      cards: [deck[0], deck[2], deck[4]],
+      cardsPlayed: [null, null, null]
+    };
 
-  public playCard(playerId: string, cardId: string) {
-    if (this.awaitingResponseFrom) {
-      return { success: false, message: 'Hay un canto pendiente de respuesta.' };
-    }
-    if (this.currentTurn !== playerId) {
-      return { success: false, message: 'No es tu turno de jugar.' };
-    }
-
-    const player = playerId === this.p1.id ? this.p1 : this.p2;
-    const cardIndex = player.cards.findIndex(c => c.id === cardId);
-    if (cardIndex === -1) {
-      return { success: false, message: 'No tenés esa carta en tu mano.' };
-    }
-
-    const [playedCard] = player.cards.splice(cardIndex, 1);
-    player.cardsPlayed.push(playedCard);
-
-    const activeTrick = this.tricks[this.currentTrickIndex];
-    if (playerId === this.p1.id) activeTrick.p1Card = playedCard;
-    else activeTrick.p2Card = playedCard;
-
-    const rivalId = playerId === this.p1.id ? this.p2.id : this.p1.id;
-
-    // CASO A: Es la primera carta tirada en esta mano
-    if (!activeTrick.p1Card || !activeTrick.p2Card) {
-      this.currentTurn = rivalId; // Le toca tirar la segunda carta al rival
-      return {
-        success: true,
-        isTrickOver: false,
-        trickIndex: this.currentTrickIndex,
-        nextTurn: this.currentTurn,
-      };
-    }
-
-    // CASO B: Ambos ya tiraron en esta mano -> Definimos quién mató
-    const comp = compareCards(activeTrick.p1Card, activeTrick.p2Card);
-    let trickWinnerId: string | 'PARDA' = 'PARDA';
-
-    if (comp === 'P1') trickWinnerId = this.p1.id;
-    else if (comp === 'P2') trickWinnerId = this.p2.id;
-    activeTrick.winnerId = trickWinnerId;
-
-    // Verificamos si ya hay un ganador definitivo de la ronda
-    const roundWinner = this.evaluateRoundWinner();
-
-    if (roundWinner) {
-      return {
-        success: true,
-        isTrickOver: true,
-        trickIndex: this.currentTrickIndex,
-        trickWinnerId,
-        roundOver: true,
-        winnerId: roundWinner,
-        points: this.trucoPointsAtStake,
-      };
-    }
-
-    // Si la ronda no terminó, pasamos a la siguiente mano (de 1ra a 2da, o de 2da a 3ra)
-    this.currentTrickIndex++;
-    
-    // El que mató sale tirando primero en la siguiente mano (si fue parda, tira el que tiró primero en la anterior)
-    const nextLeader = trickWinnerId !== 'PARDA' ? trickWinnerId : activeTrick.firstPlayerId;
-    this.currentTurn = nextLeader;
-
-    this.tricks.push({
-      trickIndex: this.currentTrickIndex,
-      p1Card: null,
-      p2Card: null,
-      winnerId: null,
-      firstPlayerId: nextLeader,
-    });
-
-    return {
-      success: true,
-      isTrickOver: true,
-      trickIndex: this.currentTrickIndex - 1,
-      trickWinnerId,
-      roundOver: false,
-      nextTurn: this.currentTurn,
+    this.p2 = {
+      userId: p2Id,
+      cards: [deck[1], deck[3], deck[5]],
+      cardsPlayed: [null, null, null]
     };
   }
 
-  private evaluateRoundWinner(): string | null {
-    const t = this.tricks;
-    const p1Id = this.p1.id;
-    const p2Id = this.p2.id;
-
-    const p1Wins = t.filter(x => x.winnerId === p1Id).length;
-    const p2Wins = t.filter(x => x.winnerId === p2Id).length;
-
-    // 1. Ganar 2 manos limpias (ej: 1ra y 2da -> 2-0 / o 1ra y 3ra)
-    if (p1Wins === 2) return p1Id;
-    if (p2Wins === 2) return p2Id;
-
-    // 2. Si hubo Parda en 1ra mano -> El que gana la 2da se lleva todo
-    if (t.length >= 2 && t[0].winnerId === 'PARDA' && t[1]?.winnerId) {
-      if (t[1].winnerId !== 'PARDA') return t[1].winnerId;
+  public playCard(userId: string, cardId: string): PlayCardResult {
+    if (this.isFinished) {
+      return { success: false, message: 'La mano ya ha finalizado.' };
     }
 
-    // 3. Si hubo Parda en 2da mano -> Gana el que ganó la 1ra
-    if (t.length >= 2 && t[1]?.winnerId === 'PARDA' && t[0].winnerId !== 'PARDA') {
-      return t[0].winnerId;
+    if (this.currentTurn !== userId) {
+      return { success: false, message: 'No es tu turno.' };
     }
 
-    // 4. Si se jugó la 3ra mano
-    if (t.length === 3 && t[2]?.winnerId) {
-      if (t[2].winnerId === p1Id) return p1Id;
-      if (t[2].winnerId === p2Id) return p2Id;
-      if (t[2].winnerId === 'PARDA') return this.manoId; // Triple parda gana el mano
+    const hand = userId === this.p1.userId ? this.p1 : this.p2;
+    const cardIdx = hand.cards.findIndex(c => c.id === cardId);
+
+    if (cardIdx === -1) {
+      return { success: false, message: 'No posees esa carta.' };
     }
 
-    return null;
+    const [playedCard] = hand.cards.splice(cardIdx, 1);
+    hand.cardsPlayed[this.currentTrickIndex] = playedCard;
+
+    const p1Played = this.p1.cardsPlayed[this.currentTrickIndex];
+    const p2Played = this.p2.cardsPlayed[this.currentTrickIndex];
+
+    const rivalId = userId === this.p1.userId ? this.p2.userId : this.p1.userId;
+
+    // Si aún falta que juegue el rival la baza actual
+    if (!p1Played || !p2Played) {
+      this.currentTurn = rivalId;
+      return {
+        success: true,
+        trickIndex: this.currentTrickIndex,
+        isTrickOver: false,
+        nextTurn: this.currentTurn,
+        roundOver: false
+      };
+    }
+
+    // Baza completa: determinar ganador de la baza
+    const comparison = compareCards(p1Played, p2Played);
+    let trickWinner = 'PARDA';
+
+    if (comparison > 0) trickWinner = this.p1.userId;
+    else if (comparison < 0) trickWinner = this.p2.userId;
+
+    this.trickWinners[this.currentTrickIndex] = trickWinner;
+
+    const roundStatus = this.checkRoundWinner();
+    if (roundStatus.roundOver) {
+      this.isFinished = true;
+      this.winnerId = roundStatus.winnerId || null;
+      return {
+        success: true,
+        trickIndex: this.currentTrickIndex,
+        isTrickOver: true,
+        trickWinnerId: trickWinner,
+        roundOver: true,
+        winnerId: this.winnerId || undefined,
+        points: this.trucoPointsAtStake
+      };
+    }
+
+    // Avanzar a la siguiente baza
+    this.currentTrickIndex++;
+    this.currentTurn = trickWinner === 'PARDA' ? this.manoId : trickWinner;
+
+    return {
+      success: true,
+      trickIndex: this.currentTrickIndex - 1,
+      isTrickOver: true,
+      trickWinnerId: trickWinner,
+      nextTurn: this.currentTurn,
+      roundOver: false
+    };
+  }
+
+  private checkRoundWinner(): { roundOver: boolean; winnerId?: string } {
+    const t0 = this.trickWinners[0];
+    const t1 = this.trickWinners[1];
+    const t2 = this.trickWinners[2];
+
+    const p1 = this.p1.userId;
+    const p2 = this.p2.userId;
+
+    // Caso 1: Alguien ganó 2 bazas
+    let p1Wins = 0;
+    let p2Wins = 0;
+    if (t0 === p1) p1Wins++; if (t0 === p2) p2Wins++;
+    if (t1 === p1) p1Wins++; if (t1 === p2) p2Wins++;
+    if (t2 === p1) p1Wins++; if (t2 === p2) p2Wins++;
+
+    if (p1Wins >= 2) return { roundOver: true, winnerId: p1 };
+    if (p2Wins >= 2) return { roundOver: true, winnerId: p2 };
+
+    // Caso 2: Parda en 1ra mano
+    if (t0 === 'PARDA') {
+      if (t1 && t1 !== 'PARDA') return { roundOver: true, winnerId: t1 };
+      if (t1 === 'PARDA' && t2 && t2 !== 'PARDA') return { roundOver: true, winnerId: t2 };
+      if (t1 === 'PARDA' && t2 === 'PARDA') return { roundOver: true, winnerId: this.manoId };
+    }
+
+    // Caso 3: Parda en 2da mano (gana quien ganó la 1ra)
+    if (t1 === 'PARDA' && t0 && t0 !== 'PARDA') {
+      return { roundOver: true, winnerId: t0 };
+    }
+
+    // Caso 4: Parda en 3ra mano (gana quien ganó la 1ra)
+    if (t2 === 'PARDA' && t0 && t0 !== 'PARDA') {
+      return { roundOver: true, winnerId: t0 };
+    }
+
+    // Si ya se jugaron las 3 manos y no hubo definición directa
+    if (this.currentTrickIndex === 2 && t0 && t1 && t2) {
+      return { roundOver: true, winnerId: this.manoId };
+    }
+
+    return { roundOver: false };
   }
 }
