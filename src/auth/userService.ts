@@ -41,6 +41,31 @@ export async function initDatabase() {
 
   try {
     const client = await pool.connect();
+
+    // Asegurar que las tablas existan
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id VARCHAR(50) PRIMARY KEY,
+        full_name VARCHAR(255) NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        username VARCHAR(100) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        salt VARCHAR(100) NOT NULL,
+        chips BIGINT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS deposits (
+        id VARCHAR(50) PRIMARY KEY,
+        username VARCHAR(100) NOT NULL,
+        amount BIGINT NOT NULL,
+        reference VARCHAR(255),
+        status VARCHAR(20) DEFAULT 'PENDING',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
     
     // Cargar usuarios a memoria
     const uRes = await client.query('SELECT * FROM users');
@@ -104,7 +129,7 @@ export async function registerUser(fullName: string, email: string, username: st
     createdAt: new Date().toISOString()
   };
 
-  // Guardar en base de datos PostgreSQL primero
+  // Guardar en base de datos PostgreSQL
   if (DATABASE_URL) {
     try {
       await pool.query(
@@ -264,7 +289,9 @@ export function approveDeposit(depositId: string): { success: boolean; message: 
   }
 
   return { success: true, message: `Acreditados $${dep.amount} a ${dep.username}.` };
-}export async function deleteUser(username: string): Promise<boolean> {
+}
+
+export async function deleteUser(username: string): Promise<boolean> {
   const clean = (username || '').trim().toLowerCase();
   const index = usersCache.findIndex(u => (u.username || '').toLowerCase() === clean);
   if (index === -1) return false;
