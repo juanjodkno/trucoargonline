@@ -36,7 +36,7 @@
     }
     .auth-subtitle { font-size: 0.9rem; color: #94a3b8; margin-bottom: 20px; }
     .auth-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
-    .auth-tab { flex: 1; padding: 8px; background: #0f172a; border: none; color: #94a3b8; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+    .auth-tab { flex: 1; padding: 10px; background: #0f172a; border: none; color: #94a3b8; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; }
     .auth-tab.active { background: #0077b6; color: white; }
 
     .form-group { margin-bottom: 14px; text-align: left; }
@@ -407,7 +407,7 @@
     let socket = null;
     let currentUser = null;
     let activeRoomId = sessionStorage.getItem('truco_active_room') || null;
-    let isGameStarted = false; // Controla si ya hay rival jugando
+    let isGameStarted = false;
     let pendingCategory = null;
     let currentMyCards = [];
     let roomTargetPoints = 30;
@@ -430,17 +430,21 @@
       const err = document.getElementById('authError');
       if (err) err.style.display = 'none';
 
+      const tabReg = document.getElementById('tabRegister');
+      const tabLog = document.getElementById('tabLogin');
+      const formReg = document.getElementById('formRegister');
+      const formLog = document.getElementById('formLogin');
+
       if (tab === 'register') {
-        document.getElementById('tabRegister').classList.add('active');
-        document.getElementById('tabLogin').classList.remove('active');
-        document.getElementById('formRegister').style.display = 'block';
-        document.getElementById('formLogin').style.display = 'none';
+        tabReg.classList.add('active');
+        tabLog.classList.remove('active');
+        formReg.style.display = 'block';
+        formLog.style.display = 'none';
       } else {
-        document.getElementById('tabLogin').classList.add('active');
-        document.getElementById('tabRegister').classList.remove('active');
-        document.getElementById('formLogin').style.display = 'none';
-        document.getElementById('formRegister').style.display = 'none';
-        document.getElementById('formLogin').style.display = 'block';
+        tabLog.classList.add('active');
+        tabReg.classList.remove('active');
+        formReg.style.display = 'none';
+        formLog.style.display = 'block';
       }
     }
 
@@ -518,7 +522,6 @@
 
       socket.emit('request_tables');
 
-      // Polling de seguridad para actualizar mesas en segundo plano
       if (!window.tablesInterval) {
         window.tablesInterval = setInterval(() => {
           if (socket && document.getElementById('lobbyContainer').style.display !== 'none') {
@@ -708,18 +711,14 @@
       }
     }
 
-    // LÓGICA DE ABANDONAR / SALIR
     function handleLeaveButton() {
       if (!isGameStarted) {
-        // EN ESPERA DE RIVAL: Sale sin perder fichas
         socket.emit('cancel_waiting_table', { roomId: activeRoomId, userId: currentUser.username });
       } else {
-        // EN JUEGO: Pregunta confirmación advirtiendo pérdida de fichas
         const confirmar = confirm('⚠️ ¿Estás seguro de que deseás abandonar la partida?\n\nSi salís ahora, perderás las fichas de tu apuesta y se le acreditarán a tu rival.');
         if (confirmar) {
           sessionStorage.removeItem('truco_active_room');
           socket.emit('surrender_match', { roomId: activeRoomId, userId: currentUser.username });
-          // Redirigir de inmediato al lobby al abandonar
           returnToLobbyAfterMatch();
         }
       }
@@ -833,7 +832,7 @@
       const userHasFlor = checkIfIHaveFlor();
       const hasPlayedAnyCard = currentMyCards.length < 3;
 
-      if (currentTrickIndex === 0 && !envidoDone && !hasPlayedAnyCard) {
+      if (currentTrickIndex === 0 && !envidoDone && !hasPlayedAnyCard && currentTrucoLevel === 1) {
         if (userHasFlor) {
           document.getElementById('florGroup').style.display = 'inline-block';
           document.getElementById('envidoGroup').style.display = 'none';
@@ -1066,25 +1065,49 @@
         else if (data.callType === 'ME_VOY_AL_MAZO') playAudio('me voy al mazo');
 
         const userHasFlor = checkIfIHaveFlor();
-      const hasPlayedAnyCard = currentMyCards.length < 3;
+        const hasPlayedAnyCard = currentMyCards.length < 3;
+        const isForMe = (data.awaitingResponseFrom || '').toLowerCase() === currentUser.username.toLowerCase();
 
-      // Envido/Flor disponible en 1ra mano solo si NO se resolvió el envido y NO hay un truco ya aceptado/subido
-      if (currentTrickIndex === 0 && !envidoDone && !hasPlayedAnyCard && currentTrucoLevel === 1) {
-        if (userHasFlor) {
-          document.getElementById('florGroup').style.display = 'inline-block';
-          document.getElementById('envidoGroup').style.display = 'none';
-        } else {
-          document.getElementById('florGroup').style.display = 'none';
-          document.getElementById('envidoGroup').style.display = 'inline-block';
-          document.getElementById('btnEnvido').style.display = 'inline-block';
-          document.getElementById('btnEnvidoEnvido').style.display = 'none';
-          document.getElementById('btnRealEnvido').style.display = 'inline-block';
-          document.getElementById('btnFaltaEnvido').style.display = 'inline-block';
-        }
-      } else {
-        document.getElementById('florGroup').style.display = 'none';
-        document.getElementById('envidoGroup').style.display = 'none';
-      }
+        if (data.category === 'ENVIDO') {
+          document.getElementById('trucoGroup').style.display = 'none';
+
+          if (isForMe) {
+            document.getElementById('responseGroup').style.display = 'inline-block';
+
+            if (userHasFlor) {
+              document.getElementById('florGroup').style.display = 'inline-block';
+              document.getElementById('envidoGroup').style.display = 'none';
+            } else {
+              document.getElementById('florGroup').style.display = 'none';
+              document.getElementById('envidoGroup').style.display = 'inline-block';
+
+              const chain = data.chain || [data.callType];
+              const lastCall = chain[chain.length - 1];
+
+              if (lastCall === 'ENVIDO') {
+                document.getElementById('btnEnvido').style.display = 'none';
+                document.getElementById('btnEnvidoEnvido').style.display = 'inline-block';
+                document.getElementById('btnRealEnvido').style.display = 'inline-block';
+                document.getElementById('btnFaltaEnvido').style.display = 'inline-block';
+              } else if (lastCall === 'ENVIDO_ENVIDO') {
+                document.getElementById('btnEnvido').style.display = 'none';
+                document.getElementById('btnEnvidoEnvido').style.display = 'none';
+                document.getElementById('btnRealEnvido').style.display = 'inline-block';
+                document.getElementById('btnFaltaEnvido').style.display = 'inline-block';
+              } else if (lastCall === 'REAL_ENVIDO') {
+                document.getElementById('btnEnvido').style.display = 'none';
+                document.getElementById('btnEnvidoEnvido').style.display = 'none';
+                document.getElementById('btnRealEnvido').style.display = 'none';
+                document.getElementById('btnFaltaEnvido').style.display = 'inline-block';
+              } else if (lastCall === 'FALTA_ENVIDO') {
+                document.getElementById('envidoGroup').style.display = 'none';
+              }
+            }
+          } else {
+            document.getElementById('envidoGroup').style.display = 'none';
+            document.getElementById('florGroup').style.display = 'none';
+            document.getElementById('responseGroup').style.display = 'none';
+          }
         } else if (data.category === 'TRUCO') {
           if (isForMe) {
             document.getElementById('responseGroup').style.display = 'inline-block';
@@ -1134,7 +1157,7 @@
 
       socket.on('truco_accepted', (data) => {
         playAudio('quiero');
-        envidoDone = true
+        envidoDone = true;
         currentTrucoLevel = data.trucoLevel;
         currentTrucoOwner = data.trucoOwner;
         updateTurnControls(currentTurnPlayer);
@@ -1260,7 +1283,6 @@
         document.getElementById('btnMazo').style.display = 'none';
       });
 
-      // El rival abandonó la partida (yo gané)
       socket.on('player_surrendered', (data) => {
         sessionStorage.removeItem('truco_active_room');
         setScores(data.scores);
@@ -1340,7 +1362,7 @@
             })
             .catch(() => initLobby());
         } catch {
-          // Ignorar y mostrar login
+          // Ignorar y mostrar formulario
         }
       }
     });
