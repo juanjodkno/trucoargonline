@@ -75,6 +75,7 @@
     <div class="tabs">
       <button class="tab-btn active" id="tabChips" onclick="switchAdminTab('chips')">Gestión de Fichas</button>
       <button class="tab-btn" id="tabPass" onclick="switchAdminTab('pass')">Cambiar Contraseña</button>
+      <button class="btn-action" style="background:#ef4444; color:white;" onclick="deleteUserPrompt('${u.username}')">🗑️ Eliminar</button>
     </div>
 
     <!-- Form Gestión Fichas -->
@@ -210,6 +211,28 @@
         tbody.appendChild(tr);
       });
     }
+    async function deleteUserPrompt(username) {
+  const confirmar = confirm(`⚠️ ¿Estás seguro de que deseás eliminar permanentemente al usuario @${username}?\n\nEsta acción borrará su cuenta y saldo de Supabase.`);
+  if (!confirmar) return;
+
+  const adminPin = localStorage.getItem('admin_pin') || sessionStorage.getItem('admin_pin');
+  const res = await fetch('/api/admin/delete-user', {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'x-admin-pin': adminPin
+    },
+    body: JSON.stringify({ username })
+  });
+
+  const data = await res.json();
+  if (res.ok) {
+    alert(data.message);
+    loadUsers(); // o la función que uses para refrescar la lista
+  } else {
+    alert(data.message);
+  }
+}
 
     async function handleChipsAction(actionType) {
       const username = document.getElementById('targetUser').value.trim();

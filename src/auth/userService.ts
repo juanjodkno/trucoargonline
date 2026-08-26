@@ -264,4 +264,22 @@ export function approveDeposit(depositId: string): { success: boolean; message: 
   }
 
   return { success: true, message: `Acreditados $${dep.amount} a ${dep.username}.` };
+}export async function deleteUser(username: string): Promise<boolean> {
+  const clean = (username || '').trim().toLowerCase();
+  const index = usersCache.findIndex(u => (u.username || '').toLowerCase() === clean);
+  if (index === -1) return false;
+
+  const userToDelete = usersCache[index];
+  usersCache.splice(index, 1);
+
+  if (DATABASE_URL) {
+    try {
+      await pool.query('DELETE FROM users WHERE id = $1', [userToDelete.id]);
+      console.log(`🗑️ Usuario @${clean} eliminado de Supabase.`);
+    } catch (err) {
+      console.error('Error eliminando usuario de BD:', err);
+    }
+  }
+
+  return true;
 }

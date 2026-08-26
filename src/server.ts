@@ -15,6 +15,7 @@ import {
   modifyUserChips,
   getAllUsersList,
   resetUserPassword
+  deleteUser
 } from './auth/userService';
 
 const app = express();
@@ -146,6 +147,14 @@ app.post('/api/admin/reset-password', requireAdminAuth, (req, res) => {
     return res.status(400).json({ success: false, message: 'Usuario no encontrado.' });
   }
   return res.json({ success: true, message: `Contraseña de @${username} actualizada con éxito.` });
+});
+app.post('/api/admin/delete-user', requireAdminAuth, async (req, res) => {
+  const { username } = req.body;
+  const ok = await deleteUser(username);
+  if (!ok) {
+    return res.status(400).json({ success: false, message: 'Usuario no encontrado.' });
+  }
+  return res.json({ success: true, message: `Usuario @${username} eliminado correctamente.` });
 });
 
 app.get('/api/admin/pending-deposits', requireAdminAuth, (req, res) => {
