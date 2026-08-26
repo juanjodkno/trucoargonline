@@ -167,8 +167,8 @@
       <div class="auth-subtitle">Ingresá a tu cuenta para jugar por fichas reales o gratis</div>
 
       <div class="auth-tabs">
-        <button class="auth-tab active" id="tabRegister" onclick="switchTab('register')">Registro</button>
-        <button class="auth-tab" id="tabLogin" onclick="switchTab('login')">Ingresar</button>
+        <button type="button" class="auth-tab active" id="tabRegister" onclick="switchTab('register')">Registro</button>
+        <button type="button" class="auth-tab" id="tabLogin" onclick="switchTab('login')">Ingresar</button>
       </div>
 
       <!-- Formulario Registro -->
@@ -427,7 +427,9 @@
     }
 
     function switchTab(tab) {
-      document.getElementById('authError').style.display = 'none';
+      const err = document.getElementById('authError');
+      if (err) err.style.display = 'none';
+
       if (tab === 'register') {
         document.getElementById('tabRegister').classList.add('active');
         document.getElementById('tabLogin').classList.remove('active');
@@ -436,8 +438,9 @@
       } else {
         document.getElementById('tabLogin').classList.add('active');
         document.getElementById('tabRegister').classList.remove('active');
-        document.getElementById('formLogin').style.display = 'block';
+        document.getElementById('formLogin').style.display = 'none';
         document.getElementById('formRegister').style.display = 'none';
+        document.getElementById('formLogin').style.display = 'block';
       }
     }
 
