@@ -4,16 +4,27 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Panel Admin - Control de Usuarios y Fichas</title>
+  <title>Panel Admin - Control Protegido</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
-    body { background: #0b1320; color: white; padding: 20px; display: flex; flex-direction: column; align-items: center; }
-    .admin-card { background: #16222f; width: 100%; max-width: 700px; border-radius: 16px; padding: 25px; border: 1px solid #334155; box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
+    body { background: #0b1320; color: white; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+    
+    /* Modal de Bloqueo */
+    .lock-overlay {
+      position: fixed; inset: 0; background: rgba(8, 12, 16, 0.98); backdrop-filter: blur(10px);
+      display: flex; justify-content: center; align-items: center; z-index: 500;
+    }
+    .lock-card {
+      background: #16222f; width: 100%; max-width: 380px; padding: 30px; border-radius: 16px;
+      border: 1px solid #334155; text-align: center; box-shadow: 0 16px 36px rgba(0,0,0,0.7);
+    }
+
+    .admin-card { background: #16222f; width: 100%; max-width: 700px; border-radius: 16px; padding: 25px; border: 1px solid #334155; box-shadow: 0 8px 24px rgba(0,0,0,0.5); display: none; }
     h2 { color: #ffd166; margin-bottom: 20px; text-align: center; }
     .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
     .tab-btn { flex: 1; padding: 10px; background: #080c10; border: 1px solid #334155; color: #cbd5e1; border-radius: 8px; font-weight: bold; cursor: pointer; }
     .tab-btn.active { background: #0077b6; color: white; border-color: #0077b6; }
-    .form-group { margin-bottom: 14px; }
+    .form-group { margin-bottom: 14px; text-align: left; }
     label { display: block; font-size: 0.85rem; color: #cbd5e1; margin-bottom: 6px; }
     input { width: 100%; padding: 12px; background: #080c10; border: 1px solid #334155; border-radius: 8px; color: white; font-size: 1rem; outline: none; }
     input:focus { border-color: #2a9d8f; }
@@ -31,12 +42,35 @@
     .msg { margin-top: 12px; padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; display: none; }
     .msg.ok { background: #2ec4b6; color: #081c15; }
     .msg.err { background: #e63946; color: white; }
+    .btn-logout { background: #475569; color: white; border: none; padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: bold; cursor: pointer; float: right; }
+    .btn-logout:hover { background: #ef4444; }
   </style>
 </head>
 <body>
 
-  <div class="admin-card">
-    <h2>🪙 Panel de Administración</h2>
+  <!-- Pantalla de Login Administrador -->
+  <div class="lock-overlay" id="lockScreen">
+    <div class="lock-card">
+      <div style="font-size: 2.5rem; margin-bottom: 10px;">🔒</div>
+      <h3 style="color:#ffd166; margin-bottom: 6px;">Panel de Administrador</h3>
+      <p style="color:#94a3b8; font-size:0.85rem; margin-bottom: 18px;">Ingresá la contraseña maestra para continuar</p>
+      
+      <form onsubmit="handleAdminLogin(event)">
+        <div class="form-group">
+          <input type="password" id="inputAdminPin" placeholder="••••••••••••" required />
+        </div>
+        <button type="submit" class="btn-submit" style="width:100%; background:#2a9d8f; margin-top: 8px;">Desbloquear Panel</button>
+      </form>
+      <div id="lockErr" style="color:#ef4444; font-size:0.85rem; margin-top:10px; display:none;"></div>
+    </div>
+  </div>
+
+  <!-- Panel Principal -->
+  <div class="admin-card" id="adminPanel">
+    <div>
+      <button class="btn-logout" onclick="adminLogout()">Cerrar Sesión</button>
+      <h2>🪙 Panel de Administración</h2>
+    </div>
 
     <div class="tabs">
       <button class="tab-btn active" id="tabChips" onclick="switchAdminTab('chips')">Gestión de Fichas</button>
@@ -92,6 +126,53 @@
   </div>
 
   <script>
+    let adminToken = localStorage.getItem('truco_admin_key') || '';
+
+    function getHeaders() {
+      return {
+        'Content-Type': 'application/json',
+        'x-admin-pin': adminToken
+      };
+    }
+
+    async function handleAdminLogin(e) {
+      e.preventDefault();
+      const pin = document.getElementById('inputAdminPin').value;
+      const err = document.getElementById('lockErr');
+
+      try {
+        const res = await fetch('/api/admin/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          adminToken = pin;
+          localStorage.setItem('truco_admin_key', adminToken);
+          unlockInterface();
+        } else {
+          err.innerText = data.message || 'Contraseña incorrecta.';
+          err.style.display = 'block';
+        }
+      } catch {
+        err.innerText = 'Error de conexión.';
+        err.style.display = 'block';
+      }
+    }
+
+    function unlockInterface() {
+      document.getElementById('lockScreen').style.display = 'none';
+      document.getElementById('adminPanel').style.display = 'block';
+      loadUsers();
+    }
+
+    function adminLogout() {
+      localStorage.removeItem('truco_admin_key');
+      window.location.reload();
+    }
+
     function switchAdminTab(tab) {
       document.getElementById('statusMsg').style.display = 'none';
       if (tab === 'chips') {
@@ -108,7 +189,9 @@
     }
 
     async function loadUsers() {
-      const res = await fetch('/api/admin/users-list');
+      const res = await fetch('/api/admin/users-list', { headers: getHeaders() });
+      if (res.status === 401) { adminLogout(); return; }
+
       const data = await res.json();
       const tbody = document.getElementById('userRows');
       tbody.innerHTML = '';
@@ -145,7 +228,7 @@
       try {
         const res = await fetch(endpoint, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getHeaders(),
           body: JSON.stringify({ username, amount })
         });
         const data = await res.json();
@@ -176,7 +259,7 @@
       try {
         const res = await fetch('/api/admin/reset-password', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: getHeaders(),
           body: JSON.stringify({ username, newPassword })
         });
         const data = await res.json();
@@ -197,7 +280,21 @@
       }
     }
 
-    loadUsers();
+    // Comprobar si ya había una clave guardada
+    window.addEventListener('DOMContentLoaded', async () => {
+      if (adminToken) {
+        const res = await fetch('/api/admin/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin: adminToken })
+        });
+        if (res.ok) {
+          unlockInterface();
+        } else {
+          adminLogout();
+        }
+      }
+    });
   </script>
 </body>
 </html>

@@ -19,6 +19,9 @@ import {
 const app = express();
 const server = http.createServer(app);
 
+// 🔐 CONTRASEÑA MAESTRA DEL PANEL ADMIN (Cambiála por la que prefieras)
+const ADMIN_PIN = process.env.ADMIN_PIN || '36049655Dk,';
+
 const io = new Server(server, {
   cors: { origin: '*' },
   pingTimeout: 30000,
@@ -29,7 +32,25 @@ const io = new Server(server, {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Auth
+// Middleware de seguridad para el Panel Admin
+const requireAdminAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const pinReceived = req.headers['x-admin-pin'];
+  if (!pinReceived || pinReceived !== ADMIN_PIN) {
+    return res.status(401).json({ success: false, message: 'Acceso no autorizado. Contraseña de Administrador requerida.' });
+  }
+  next();
+};
+
+// Validar login del Admin
+app.post('/api/admin/auth', (req, res) => {
+  const { pin } = req.body;
+  if (pin === ADMIN_PIN) {
+    return res.json({ success: true, message: 'Acceso autorizado.' });
+  }
+  return res.status(401).json({ success: false, message: 'Contraseña de Administrador incorrecta.' });
+});
+
+// Auth Usuarios
 app.post('/api/auth/register', (req, res) => {
   const { fullName, email, username, password } = req.body;
   const result = registerUser(fullName, email, username, password);
@@ -42,20 +63,18 @@ app.post('/api/auth/login', (req, res) => {
   return res.status(result.success ? 200 : 401).json(result);
 });
 
-// Billetera: Saldo
+// Billetera
 app.get('/api/wallet/balance/:username', (req, res) => {
   const chips = getUserChips(req.params.username);
   return res.json({ chips });
 });
 
-// Billetera: Solicitud de Carga
 app.post('/api/wallet/deposit-request', (req, res) => {
   const { username, amount, reference } = req.body;
   const result = requestDeposit(username, Number(amount), reference);
   return res.status(result.success ? 200 : 400).json(result);
 });
 
-// Billetera: Retiro con descuento automático de saldo
 app.post('/api/wallet/withdraw-request', (req, res) => {
   const { username, amount } = req.body;
   const numAmount = Number(amount);
@@ -77,14 +96,13 @@ app.post('/api/wallet/withdraw-request', (req, res) => {
   });
 });
 
-// Panel Admin: Listar usuarios
-app.get('/api/admin/users-list', (req, res) => {
+// PANEL ADMIN (Rutas protegidas con clave)
+app.get('/api/admin/users-list', requireAdminAuth, (req, res) => {
   const users = getAllUsersList();
   return res.json(users);
 });
 
-// Panel Admin: Cargar fichas (+)
-app.post('/api/admin/add-chips', (req, res) => {
+app.post('/api/admin/add-chips', requireAdminAuth, (req, res) => {
   const { username, amount } = req.body;
   const numAmount = Number(amount);
   if (!numAmount || numAmount <= 0) {
@@ -103,8 +121,7 @@ app.post('/api/admin/add-chips', (req, res) => {
   });
 });
 
-// Panel Admin: Descontar fichas (-)
-app.post('/api/admin/remove-chips', (req, res) => {
+app.post('/api/admin/remove-chips', requireAdminAuth, (req, res) => {
   const { username, amount } = req.body;
   const numAmount = Number(amount);
   if (!numAmount || numAmount <= 0) {
@@ -123,8 +140,7 @@ app.post('/api/admin/remove-chips', (req, res) => {
   });
 });
 
-// Panel Admin: Resetear Contraseña
-app.post('/api/admin/reset-password', (req, res) => {
+app.post('/api/admin/reset-password', requireAdminAuth, (req, res) => {
   const { username, newPassword } = req.body;
   const ok = resetUserPassword(username, newPassword);
   if (!ok) {
@@ -133,11 +149,11 @@ app.post('/api/admin/reset-password', (req, res) => {
   return res.json({ success: true, message: `Contraseña de @${username} actualizada con éxito.` });
 });
 
-app.get('/api/admin/pending-deposits', (req, res) => {
+app.get('/api/admin/pending-deposits', requireAdminAuth, (req, res) => {
   return res.json(getPendingDeposits());
 });
 
-app.post('/api/admin/approve-deposit', (req, res) => {
+app.post('/api/admin/approve-deposit', requireAdminAuth, (req, res) => {
   const { depositId } = req.body;
   const result = approveDeposit(depositId);
   return res.status(result.success ? 200 : 400).json(result);
