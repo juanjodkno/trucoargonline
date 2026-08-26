@@ -14,7 +14,7 @@ import {
   getUserChips,
   modifyUserChips,
   getAllUsersList,
-  resetUserPassword
+  resetUserPassword,
   deleteUser
 } from './auth/userService';
 
