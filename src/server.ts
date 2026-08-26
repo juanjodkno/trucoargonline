@@ -5,6 +5,7 @@ import path from 'path';
 import { Server } from 'socket.io';
 import { setupSocketEvents } from './sockets/gameSocket';
 import { 
+  initDatabase,
   registerUser, 
   loginUser, 
   requestDeposit, 
@@ -19,7 +20,10 @@ import {
 const app = express();
 const server = http.createServer(app);
 
-// 🔐 CONTRASEÑA MAESTRA DEL PANEL ADMIN (Cambiála por la que prefieras)
+// 🔌 Inicializar conexión y tablas con PostgreSQL
+initDatabase();
+
+// 🔐 CONTRASEÑA MAESTRA DEL PANEL ADMIN
 const ADMIN_PIN = process.env.ADMIN_PIN || '36049655Dk,';
 
 const io = new Server(server, {
