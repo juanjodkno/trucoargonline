@@ -1285,6 +1285,14 @@
       });
 
       socket.on('round_ended', (data) => {
+        if (data.reason === 'ME_VOY_AL_MAZO') {
+          playAudio('me voy al mazo');
+          if (data.folderUserId) log(`🏳️ <strong>${data.folderUserId}</strong> se fue al mazo.`);
+        } else if (data.reason === 'NO_QUIERO_TRUCO') {
+          playAudio('no quiero');
+          if (data.folderUserId) log(`✋ <strong>${data.folderUserId}</strong> dijo: <strong>No Quiero</strong>.`);
+        }
+
         log(`✨ Fin de la mano. Ganó <strong>${data.winnerId}</strong> (+${data.pointsAwarded} pts).`);
         setScores(data.scores);
         currentTurnPlayer = '';

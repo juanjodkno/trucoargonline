@@ -118,6 +118,11 @@ export function setupSocketEvents(io: Server) {
 
   function handleTimeout(room: ActiveRoom) {
     if (!room.gameRound) return;
+    if (room.envidoPendingCaller) {
+        resolveEnvidoDeclined(room, responderId);
+      } else {
+        resolveTrucoFold(room, responderId, 'NO_QUIERO_TRUCO');
+      }
 
     if (room.isDeclaringEnvido && room.envidoDeclarer) {
       const activeUser = room.envidoDeclarer;
@@ -423,7 +428,7 @@ export function setupSocketEvents(io: Server) {
     startTurnTimer(room, 25);
   }
 
-  function resolveTrucoFold(room: ActiveRoom, folderUserId: string) {
+  function resolveTrucoFold(room: ActiveRoom, folderUserId: string, reason: string = 'NO_QUIERO_TRUCO') {
     if (!room.gameRound) return;
     clearTurnTimer(room);
 
@@ -442,7 +447,11 @@ export function setupSocketEvents(io: Server) {
     else room.scoreP2 += pts;
 
     io.to(room.roomId).emit('round_ended', {
-      winnerId, pointsAwarded: pts, scores: getScoreMap(room),
+      winnerId, 
+      pointsAwarded: pts, 
+      scores: getScoreMap(room),
+      reason,
+      folderUserId
     });
     handleRoundTransition(room);
   }
@@ -799,7 +808,8 @@ export function setupSocketEvents(io: Server) {
 
         if (callType === 'NO_QUIERO_TRUCO' || callType === 'ME_VOY_AL_MAZO') {
           room.pendingTrucoAfterEnvido = null;
-          return resolveTrucoFold(room, userId);
+          return resolveTrucoFold(room, userId, callType);
+        }
         }
 
       } catch (err) { console.error('Error en send_call:', err); }
