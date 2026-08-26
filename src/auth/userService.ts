@@ -67,7 +67,7 @@ export async function initDatabase() {
     }));
 
     client.release();
-    console.log(`✅ Base de datos conectada. ${usersCache.length} usuarios cargados.`);
+    console.log(`✅ Base de datos conectada. ${usersCache.length} usuarios sincronizados.`);
   } catch (err) {
     console.error('❌ Error conectando a PostgreSQL:', err);
   }
@@ -79,7 +79,7 @@ function hashPbkdf2(password: string, salt: string): string {
   return crypto.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
 }
 
-export function registerUser(fullName: string, email: string, username: string, password: string): { success: boolean; message: string; user?: User } {
+export async function registerUser(fullName: string, email: string, username: string, password: string): Promise<{ success: boolean; message: string; user?: User }> {
   const cleanUser = username.trim().toLowerCase();
   const cleanEmail = email.trim().toLowerCase();
 
@@ -104,27 +104,54 @@ export function registerUser(fullName: string, email: string, username: string, 
     createdAt: new Date().toISOString()
   };
 
-  usersCache.push(newUser);
-
+  // Guardar en base de datos PostgreSQL primero
   if (DATABASE_URL) {
-    pool.query(
-      'INSERT INTO users (id, full_name, email, username, password_hash, salt, chips) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [newUser.id, newUser.fullName, newUser.email, newUser.username, newUser.passwordHash, newUser.salt, newUser.chips]
-    )
-    .then(() => console.log(`💾 Usuario @${newUser.username} guardado en PostgreSQL.`))
-    .catch(err => console.error('Error insertando usuario en BD:', err));
+    try {
+      await pool.query(
+        'INSERT INTO users (id, full_name, email, username, password_hash, salt, chips) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+        [newUser.id, newUser.fullName, newUser.email, newUser.username, newUser.passwordHash, newUser.salt, newUser.chips]
+      );
+      console.log(`💾 Usuario @${newUser.username} guardado exitosamente en Supabase.`);
+    } catch (dbErr) {
+      console.error('❌ Error guardando en Supabase:', dbErr);
+      return { success: false, message: 'Error al conectar con la base de datos.' };
+    }
   }
 
+  usersCache.push(newUser);
   return { success: true, message: 'Registro exitoso.', user: newUser };
 }
 
-export function loginUser(usernameOrEmail: string, password: string): { success: boolean; message: string; user?: User } {
+export async function loginUser(usernameOrEmail: string, password: string): Promise<{ success: boolean; message: string; user?: User }> {
   const target = (usernameOrEmail || '').trim().toLowerCase();
 
-  const user = usersCache.find(u =>
+  let user = usersCache.find(u =>
     (u.username && u.username.toLowerCase() === target) ||
     (u.email && u.email.toLowerCase() === target)
   );
+
+  // Si no está en cache, buscarlo directamente en PostgreSQL
+  if (!user && DATABASE_URL) {
+    try {
+      const res = await pool.query('SELECT * FROM users WHERE LOWER(username) = $1 OR LOWER(email) = $1', [target]);
+      if (res.rows.length > 0) {
+        const r = res.rows[0];
+        user = {
+          id: r.id,
+          fullName: r.full_name,
+          email: r.email,
+          username: r.username,
+          passwordHash: r.password_hash,
+          salt: r.salt,
+          chips: Number(r.chips) || 0,
+          createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
+        };
+        usersCache.push(user);
+      }
+    } catch (err) {
+      console.error('Error buscando usuario en BD:', err);
+    }
+  }
 
   if (!user) {
     return { success: false, message: 'Usuario o correo no encontrado.' };

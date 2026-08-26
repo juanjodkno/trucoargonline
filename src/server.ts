@@ -20,10 +20,9 @@ import {
 const app = express();
 const server = http.createServer(app);
 
-// 🔌 Inicializar conexión y tablas con PostgreSQL
+// Inicializar conexión
 initDatabase();
 
-// 🔐 CONTRASEÑA MAESTRA DEL PANEL ADMIN
 const ADMIN_PIN = process.env.ADMIN_PIN || '36049655Dk,';
 
 const io = new Server(server, {
@@ -36,7 +35,6 @@ const io = new Server(server, {
 app.use(express.json());
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Middleware de seguridad para el Panel Admin
 const requireAdminAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
   const pinReceived = req.headers['x-admin-pin'];
   if (!pinReceived || pinReceived !== ADMIN_PIN) {
@@ -45,7 +43,6 @@ const requireAdminAuth = (req: express.Request, res: express.Response, next: exp
   next();
 };
 
-// Validar login del Admin
 app.post('/api/admin/auth', (req, res) => {
   const { pin } = req.body;
   if (pin === ADMIN_PIN) {
@@ -54,20 +51,19 @@ app.post('/api/admin/auth', (req, res) => {
   return res.status(401).json({ success: false, message: 'Contraseña de Administrador incorrecta.' });
 });
 
-// Auth Usuarios
-app.post('/api/auth/register', (req, res) => {
+// Rutas asíncronas con persistencia asegurada
+app.post('/api/auth/register', async (req, res) => {
   const { fullName, email, username, password } = req.body;
-  const result = registerUser(fullName, email, username, password);
+  const result = await registerUser(fullName, email, username, password);
   return res.status(result.success ? 201 : 400).json(result);
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const { usernameOrEmail, password } = req.body;
-  const result = loginUser(usernameOrEmail, password);
+  const result = await loginUser(usernameOrEmail, password);
   return res.status(result.success ? 200 : 401).json(result);
 });
 
-// Billetera
 app.get('/api/wallet/balance/:username', (req, res) => {
   const chips = getUserChips(req.params.username);
   return res.json({ chips });
@@ -100,7 +96,6 @@ app.post('/api/wallet/withdraw-request', (req, res) => {
   });
 });
 
-// PANEL ADMIN (Rutas protegidas con clave)
 app.get('/api/admin/users-list', requireAdminAuth, (req, res) => {
   const users = getAllUsersList();
   return res.json(users);
