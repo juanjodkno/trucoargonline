@@ -1,4 +1,5 @@
 // src/game/trucoEngine.ts
+
 export type Suit = 'ESPADA' | 'BASTO' | 'ORO' | 'COPA';
 
 export interface Card {
@@ -6,128 +7,141 @@ export interface Card {
   number: number;
   suit: Suit;
   hierarchy: number;
+  envidoValue: number;
 }
 
-export function getCardEnvidoValue(num: number): number {
-  if (num >= 10 && num <= 12) return 0;
-  return num;
+export const CARDS_DATA: Omit<Card, 'id'>[] = [
+  // 1 de Espada (Macho)
+  { number: 1, suit: 'ESPADA', hierarchy: 1, envidoValue: 1 },
+  // 1 de Basto (Hembra)
+  { number: 1, suit: 'BASTO', hierarchy: 2, envidoValue: 1 },
+  // 7 de Espada
+  { number: 7, suit: 'ESPADA', hierarchy: 3, envidoValue: 7 },
+  // 7 de Oro
+  { number: 7, suit: 'ORO', hierarchy: 4, envidoValue: 7 },
+  // 3s
+  { number: 3, suit: 'ESPADA', hierarchy: 5, envidoValue: 3 },
+  { number: 3, suit: 'BASTO', hierarchy: 5, envidoValue: 3 },
+  { number: 3, suit: 'ORO', hierarchy: 5, envidoValue: 3 },
+  { number: 3, suit: 'COPA', hierarchy: 5, envidoValue: 3 },
+  // 2s
+  { number: 2, suit: 'ESPADA', hierarchy: 6, envidoValue: 2 },
+  { number: 2, suit: 'BASTO', hierarchy: 6, envidoValue: 2 },
+  { number: 2, suit: 'ORO', hierarchy: 6, envidoValue: 2 },
+  { number: 2, suit: 'COPA', hierarchy: 6, envidoValue: 2 },
+  // 1s falsos
+  { number: 1, suit: 'ORO', hierarchy: 7, envidoValue: 1 },
+  { number: 1, suit: 'COPA', hierarchy: 7, envidoValue: 1 },
+  // 12s
+  { number: 12, suit: 'ESPADA', hierarchy: 8, envidoValue: 0 },
+  { number: 12, suit: 'BASTO', hierarchy: 8, envidoValue: 0 },
+  { number: 12, suit: 'ORO', hierarchy: 8, envidoValue: 0 },
+  { number: 12, suit: 'COPA', hierarchy: 8, envidoValue: 0 },
+  // 11s
+  { number: 11, suit: 'ESPADA', hierarchy: 9, envidoValue: 0 },
+  { number: 11, suit: 'BASTO', hierarchy: 9, envidoValue: 0 },
+  { number: 11, suit: 'ORO', hierarchy: 9, envidoValue: 0 },
+  { number: 11, suit: 'COPA', hierarchy: 9, envidoValue: 0 },
+  // 10s
+  { number: 10, suit: 'ESPADA', hierarchy: 10, envidoValue: 0 },
+  { number: 10, suit: 'BASTO', hierarchy: 10, envidoValue: 0 },
+  { number: 10, suit: 'ORO', hierarchy: 10, envidoValue: 0 },
+  { number: 10, suit: 'COPA', hierarchy: 10, envidoValue: 0 },
+  // 7s falsos
+  { number: 7, suit: 'COPA', hierarchy: 11, envidoValue: 7 },
+  { number: 7, suit: 'BASTO', hierarchy: 11, envidoValue: 7 },
+  // 6s
+  { number: 6, suit: 'ESPADA', hierarchy: 12, envidoValue: 6 },
+  { number: 6, suit: 'BASTO', hierarchy: 12, envidoValue: 6 },
+  { number: 6, suit: 'ORO', hierarchy: 12, envidoValue: 6 },
+  { number: 6, suit: 'COPA', hierarchy: 12, envidoValue: 6 },
+  // 5s
+  { number: 5, suit: 'ESPADA', hierarchy: 13, envidoValue: 5 },
+  { number: 5, suit: 'BASTO', hierarchy: 13, envidoValue: 5 },
+  { number: 5, suit: 'ORO', hierarchy: 13, envidoValue: 5 },
+  { number: 5, suit: 'COPA', hierarchy: 13, envidoValue: 5 },
+  // 4s
+  { number: 4, suit: 'ESPADA', hierarchy: 14, envidoValue: 4 },
+  { number: 4, suit: 'BASTO', hierarchy: 14, envidoValue: 4 },
+  { number: 4, suit: 'ORO', hierarchy: 14, envidoValue: 4 },
+  { number: 4, suit: 'COPA', hierarchy: 14, envidoValue: 4 },
+];
+
+export function createDeck(): Card[] {
+  return CARDS_DATA.map(c => ({
+    ...c,
+    id: `${c.number}_${c.suit.toLowerCase()}`
+  }));
+}
+
+export function shuffleDeck(deck: Card[]): Card[] {
+  const shuffled = [...deck];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+}
+
+export function getShuffledDeck(): Card[] {
+  return shuffleDeck(createDeck());
+}
+
+export function compareCards(c1: Card, c2: Card): number {
+  if (c1.hierarchy < c2.hierarchy) return 1;
+  if (c1.hierarchy > c2.hierarchy) return -1;
+  return 0;
 }
 
 export function hasFlor(cards: Card[]): boolean {
   if (!cards || cards.length < 3) return false;
-  return cards[0].suit === cards[1].suit && cards[1].suit === cards[2].suit;
+  const s0 = cards[0].suit;
+  return cards.every(c => c.suit === s0);
 }
 
 export function calculateFlor(cards: Card[]): number {
   if (!hasFlor(cards)) return 0;
-  return 20 + getCardEnvidoValue(cards[0].number) + getCardEnvidoValue(cards[1].number) + getCardEnvidoValue(cards[2].number);
-}
-
-export function calculateEnvido(cards: Card[]): number {
-  return getEnvidoDetails(cards).score;
+  return 20 + cards.reduce((acc, c) => acc + c.envidoValue, 0);
 }
 
 export function getEnvidoDetails(cards: Card[]): { score: number; envidoCards: Card[] } {
-  const suits: { [key in Suit]?: Card[] } = {};
-  for (const c of cards) {
-    if (!suits[c.suit]) suits[c.suit] = [];
-    suits[c.suit]!.push(c);
-  }
+  if (!cards || cards.length === 0) return { score: 0, envidoCards: [] };
 
-  let bestScore = -1;
-  let bestCards: Card[] = [];
+  const suitsMap: { [key: string]: Card[] } = {};
+  cards.forEach(c => {
+    suitsMap[c.suit] = suitsMap[c.suit] || [];
+    suitsMap[c.suit].push(c);
+  });
 
-  for (const s in suits) {
-    const list = suits[s as Suit]!;
+  let maxScore = -1;
+  let bestPair: Card[] = [];
+
+  for (const suit in suitsMap) {
+    const list = suitsMap[suit];
     if (list.length >= 2) {
       for (let i = 0; i < list.length; i++) {
         for (let j = i + 1; j < list.length; j++) {
-          const val = 20 + getCardEnvidoValue(list[i].number) + getCardEnvidoValue(list[j].number);
-          if (val > bestScore) {
-            bestScore = val;
-            bestCards = [list[i], list[j]];
+          const score = 20 + list[i].envidoValue + list[j].envidoValue;
+          if (score > maxScore) {
+            maxScore = score;
+            bestPair = [list[i], list[j]];
           }
         }
       }
     }
   }
 
-  if (bestScore === -1) {
-    let maxVal = -1;
-    let maxCard = cards[0];
-    for (const c of cards) {
-      const v = getCardEnvidoValue(c.number);
-      if (v > maxVal) {
-        maxVal = v;
-        maxCard = c;
-      }
-    }
-    bestScore = maxVal;
-    bestCards = [maxCard];
+  if (maxScore === -1) {
+    let highestCard = cards[0];
+    cards.forEach(c => {
+      if (c.envidoValue > highestCard.envidoValue) highestCard = c;
+    });
+    return { score: highestCard.envidoValue, envidoCards: [highestCard] };
   }
 
-  return { score: bestScore, envidoCards: bestCards };
+  return { score: maxScore, envidoCards: bestPair };
 }
 
-export const DECK_DEFINITIONS: { number: number; suit: Suit; hierarchy: number }[] = [
-  { number: 1, suit: 'ESPADA', hierarchy: 14 },
-  { number: 1, suit: 'BASTO', hierarchy: 13 },
-  { number: 7, suit: 'ESPADA', hierarchy: 12 },
-  { number: 7, suit: 'ORO', hierarchy: 11 },
-  { number: 3, suit: 'ESPADA', hierarchy: 10 },
-  { number: 3, suit: 'BASTO', hierarchy: 10 },
-  { number: 3, suit: 'ORO', hierarchy: 10 },
-  { number: 3, suit: 'COPA', hierarchy: 10 },
-  { number: 2, suit: 'ESPADA', hierarchy: 9 },
-  { number: 2, suit: 'BASTO', hierarchy: 9 },
-  { number: 2, suit: 'ORO', hierarchy: 9 },
-  { number: 2, suit: 'COPA', hierarchy: 9 },
-  { number: 1, suit: 'ORO', hierarchy: 8 },
-  { number: 1, suit: 'COPA', hierarchy: 8 },
-  { number: 12, suit: 'ESPADA', hierarchy: 7 },
-  { number: 12, suit: 'BASTO', hierarchy: 7 },
-  { number: 12, suit: 'ORO', hierarchy: 7 },
-  { number: 12, suit: 'COPA', hierarchy: 7 },
-  { number: 11, suit: 'ESPADA', hierarchy: 6 },
-  { number: 11, suit: 'BASTO', hierarchy: 6 },
-  { number: 11, suit: 'ORO', hierarchy: 6 },
-  { number: 11, suit: 'COPA', hierarchy: 6 },
-  { number: 10, suit: 'ESPADA', hierarchy: 5 },
-  { number: 10, suit: 'BASTO', hierarchy: 5 },
-  { number: 10, suit: 'ORO', hierarchy: 5 },
-  { number: 10, suit: 'COPA', hierarchy: 5 },
-  { number: 7, suit: 'COPA', hierarchy: 4 },
-  { number: 7, suit: 'BASTO', hierarchy: 4 },
-  { number: 6, suit: 'ESPADA', hierarchy: 3 },
-  { number: 6, suit: 'BASTO', hierarchy: 3 },
-  { number: 6, suit: 'ORO', hierarchy: 3 },
-  { number: 6, suit: 'COPA', hierarchy: 3 },
-  { number: 5, suit: 'ESPADA', hierarchy: 2 },
-  { number: 5, suit: 'BASTO', hierarchy: 2 },
-  { number: 5, suit: 'ORO', hierarchy: 2 },
-  { number: 5, suit: 'COPA', hierarchy: 2 },
-  { number: 4, suit: 'ESPADA', hierarchy: 1 },
-  { number: 4, suit: 'BASTO', hierarchy: 1 },
-  { number: 4, suit: 'ORO', hierarchy: 1 },
-  { number: 4, suit: 'COPA', hierarchy: 1 },
-];
-
-export function generateDeck(): Card[] {
-  const deck: Card[] = DECK_DEFINITIONS.map(d => ({
-    id: `${d.number}_${d.suit}`,
-    number: d.number,
-    suit: d.suit,
-    hierarchy: d.hierarchy,
-  }));
-  for (let i = deck.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [deck[i], deck[j]] = [deck[j], deck[i]];
-  }
-  return deck;
-}
-
-export function compareCards(c1: Card, c2: Card): 'P1' | 'P2' | 'PARDA' {
-  if (c1.hierarchy > c2.hierarchy) return 'P1';
-  if (c2.hierarchy > c1.hierarchy) return 'P2';
-  return 'PARDA';
+export function calculateEnvido(cards: Card[]): number {
+  return getEnvidoDetails(cards).score;
 }

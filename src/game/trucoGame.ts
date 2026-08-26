@@ -31,7 +31,6 @@ export class TrucoRound {
   public targetPoints: number;
   public withFlor: boolean;
 
-  // Propiedades requeridas por gameSocket
   public envidoResolved: boolean = false;
   public trucoPointsAtStake: number = 1;
   public awaitingResponseFrom: string | null = null;
@@ -81,7 +80,6 @@ export class TrucoRound {
 
     const rivalId = userId === this.p1.userId ? this.p2.userId : this.p1.userId;
 
-    // Si aún falta que juegue el rival la baza actual
     if (!p1Played || !p2Played) {
       this.currentTurn = rivalId;
       return {
@@ -93,12 +91,11 @@ export class TrucoRound {
       };
     }
 
-    // Baza completa: determinar ganador de la baza
-    const comparison = compareCards(p1Played, p2Played);
+    const comp = compareCards(p1Played, p2Played);
     let trickWinner = 'PARDA';
 
-    if (comparison > 0) trickWinner = this.p1.userId;
-    else if (comparison < 0) trickWinner = this.p2.userId;
+    if (comp > 0) trickWinner = this.p1.userId;
+    else if (comp < 0) trickWinner = this.p2.userId;
 
     this.trickWinners[this.currentTrickIndex] = trickWinner;
 
@@ -117,7 +114,6 @@ export class TrucoRound {
       };
     }
 
-    // Avanzar a la siguiente baza
     this.currentTrickIndex++;
     this.currentTurn = trickWinner === 'PARDA' ? this.manoId : trickWinner;
 
@@ -139,7 +135,6 @@ export class TrucoRound {
     const p1 = this.p1.userId;
     const p2 = this.p2.userId;
 
-    // Caso 1: Alguien ganó 2 bazas
     let p1Wins = 0;
     let p2Wins = 0;
     if (t0 === p1) p1Wins++; if (t0 === p2) p2Wins++;
@@ -149,24 +144,20 @@ export class TrucoRound {
     if (p1Wins >= 2) return { roundOver: true, winnerId: p1 };
     if (p2Wins >= 2) return { roundOver: true, winnerId: p2 };
 
-    // Caso 2: Parda en 1ra mano
     if (t0 === 'PARDA') {
       if (t1 && t1 !== 'PARDA') return { roundOver: true, winnerId: t1 };
       if (t1 === 'PARDA' && t2 && t2 !== 'PARDA') return { roundOver: true, winnerId: t2 };
       if (t1 === 'PARDA' && t2 === 'PARDA') return { roundOver: true, winnerId: this.manoId };
     }
 
-    // Caso 3: Parda en 2da mano (gana quien ganó la 1ra)
     if (t1 === 'PARDA' && t0 && t0 !== 'PARDA') {
       return { roundOver: true, winnerId: t0 };
     }
 
-    // Caso 4: Parda en 3ra mano (gana quien ganó la 1ra)
     if (t2 === 'PARDA' && t0 && t0 !== 'PARDA') {
       return { roundOver: true, winnerId: t0 };
     }
 
-    // Si ya se jugaron las 3 manos y no hubo definición directa
     if (this.currentTrickIndex === 2 && t0 && t1 && t2) {
       return { roundOver: true, winnerId: this.manoId };
     }
