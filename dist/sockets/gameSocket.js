@@ -74,6 +74,12 @@ function setupSocketEvents(io) {
     function handleTimeout(room) {
         if (!room.gameRound)
             return;
+        if (room.envidoPendingCaller) {
+            resolveEnvidoDeclined(room, responderId);
+        }
+        else {
+            resolveTrucoFold(room, responderId, 'NO_QUIERO_TRUCO');
+        }
         if (room.isDeclaringEnvido && room.envidoDeclarer) {
             const activeUser = room.envidoDeclarer;
             const hand = activeUser.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
@@ -140,45 +146,41 @@ function setupSocketEvents(io) {
         });
         startTurnTimer(room, 25);
     }
-    function calculateEnvidoPoints(chain) {
-        let accepted = 0;
+    function calculateEnvidoPoints(chain, room) {
+        if (!chain || chain.length === 0)
+            return { acceptedPts: 0, declinedPts: 1 };
+        const getCallValue = (call) => {
+            if (call === 'ENVIDO' || call === 'ENVIDO_ENVIDO')
+                return 2;
+            if (call === 'REAL_ENVIDO')
+                return 3;
+            return 0;
+        };
+        const lastCall = chain[chain.length - 1];
+        // Puntos acumulados en caso de "No quiero"
         let declined = 1;
-        if (chain.length === 1) {
-            if (chain[0] === 'ENVIDO') {
-                accepted = 2;
-                declined = 1;
+        if (chain.length > 1) {
+            declined = 0;
+            for (let i = 0; i < chain.length - 1; i++) {
+                declined += getCallValue(chain[i]);
             }
-            if (chain[0] === 'REAL_ENVIDO') {
-                accepted = 3;
+            if (declined === 0)
                 declined = 1;
-            }
-            if (chain[0] === 'FALTA_ENVIDO') {
-                accepted = 30;
-                declined = 1;
-            }
         }
-        else if (chain.length === 2) {
-            if (chain[0] === 'ENVIDO' && chain[1] === 'ENVIDO_ENVIDO') {
-                accepted = 4;
-                declined = 2;
-            }
-            if (chain[0] === 'ENVIDO' && chain[1] === 'REAL_ENVIDO') {
-                accepted = 5;
-                declined = 2;
-            }
-            if (chain[0] === 'REAL_ENVIDO' && chain[1] === 'FALTA_ENVIDO') {
-                accepted = 30;
-                declined = 3;
-            }
-        }
-        else if (chain.length >= 3) {
-            if (chain.includes('REAL_ENVIDO')) {
-                accepted = 7;
-                declined = 4;
+        // Puntos en caso de "Quiero"
+        let accepted = 0;
+        if (lastCall === 'FALTA_ENVIDO') {
+            if (room) {
+                const highestScore = Math.max(room.scoreP1, room.scoreP2);
+                accepted = Math.max(1, room.targetPoints - highestScore);
             }
             else {
-                accepted = 4;
-                declined = 2;
+                accepted = 15;
+            }
+        }
+        else {
+            for (const call of chain) {
+                accepted += getCallValue(call);
             }
         }
         return { acceptedPts: accepted, declinedPts: declined };
@@ -252,12 +254,8 @@ function setupSocketEvents(io) {
         room.gameRound.envidoResolved = true;
         room.gameRound.awaitingResponseFrom = null;
         room.envidoPendingCaller = null;
-        const { acceptedPts } = calculateEnvidoPoints(room.envidoChain);
-        let pts = acceptedPts;
-        if (room.envidoChain.includes('FALTA_ENVIDO')) {
-            const highestScore = Math.max(room.scoreP1, room.scoreP2);
-            pts = room.targetPoints - highestScore;
-        }
+        const { acceptedPts } = calculateEnvidoPoints(room.envidoChain, room);
+        const pts = acceptedPts;
         if (winnerId.toLowerCase() === room.creatorId.toLowerCase())
             room.scoreP1 += pts;
         else
@@ -292,7 +290,7 @@ function setupSocketEvents(io) {
         const rivalId = answeringUserId.toLowerCase() === room.creatorId.toLowerCase() ? room.guestId : room.creatorId;
         const callerId = room.envidoPendingCaller || rivalId;
         room.envidoPendingCaller = null;
-        const { declinedPts } = calculateEnvidoPoints(room.envidoChain);
+        const { declinedPts } = calculateEnvidoPoints(room.envidoChain, room);
         if (callerId.toLowerCase() === room.creatorId.toLowerCase())
             room.scoreP1 += declinedPts;
         else
@@ -368,7 +366,7 @@ function setupSocketEvents(io) {
             return;
         startTurnTimer(room, 25);
     }
-    function resolveTrucoFold(room, folderUserId) {
+    function resolveTrucoFold(room, folderUserId, reason = 'NO_QUIERO_TRUCO') {
         if (!room.gameRound)
             return;
         clearTurnTimer(room);
@@ -390,7 +388,11 @@ function setupSocketEvents(io) {
         else
             room.scoreP2 += pts;
         io.to(room.roomId).emit('round_ended', {
-            winnerId, pointsAwarded: pts, scores: getScoreMap(room),
+            winnerId,
+            pointsAwarded: pts,
+            scores: getScoreMap(room),
+            reason,
+            folderUserId
         });
         handleRoundTransition(room);
     }
@@ -503,7 +505,7 @@ function setupSocketEvents(io) {
         socket.on('create_room', ({ userId, betAmount, targetPoints, withFlor }) => {
             try {
                 const bet = Number(betAmount) >= 0 ? Number(betAmount) : 0;
-                const pts = targetPoints === 15 ? 15 : 30;
+                const pts = Number(targetPoints) === 15 ? 15 : 30;
                 const flor = (withFlor === true || withFlor === 'true' || withFlor === undefined);
                 if (bet > 0) {
                     const successDeduct = (0, userService_1.modifyUserChips)(userId, -bet);
@@ -528,7 +530,6 @@ function setupSocketEvents(io) {
                 console.error('Error creando mesa:', err);
             }
         });
-        // Cancelar mesa en espera (reembolsa al creador)
         socket.on('cancel_waiting_table', ({ roomId, userId }) => {
             const room = rooms.get(roomId);
             if (room && !room.guestId && room.creatorId.toLowerCase() === userId.toLowerCase()) {
@@ -540,7 +541,6 @@ function setupSocketEvents(io) {
                 broadcastTables();
             }
         });
-        // Abandonar en pleno partido (se penaliza entregando el pozo al rival)
         socket.on('surrender_match', ({ roomId, userId }) => {
             const room = rooms.get(roomId);
             if (!room || !room.guestId)
@@ -653,7 +653,6 @@ function setupSocketEvents(io) {
                     if (currentTrick > 0 || room.gameRound.envidoResolved) {
                         return socket.emit('error_action', { message: 'El Envido ya cerró.' });
                     }
-                    // Si se inicia el Envido de cero (no es contra-canto ni respuesta a Truco)
                     if (room.envidoChain.length === 0) {
                         if (callerCardsPlayed > 0 && !room.gameRound.awaitingResponseFrom) {
                             return socket.emit('error_action', { message: 'Ya jugaste tu carta, no podés iniciar el Envido.' });
@@ -727,12 +726,16 @@ function setupSocketEvents(io) {
                 }
                 if (callType === 'NO_QUIERO_TRUCO' || callType === 'ME_VOY_AL_MAZO') {
                     room.pendingTrucoAfterEnvido = null;
-                    return resolveTrucoFold(room, userId);
+                    return resolveTrucoFold(room, userId, callType);
                 }
             }
-            catch (err) {
-                console.error('Error en send_call:', err);
+            finally {
             }
         });
+        try { }
+        catch (err) {
+            console.error('Error en send_call:', err);
+        }
     });
 }
+;
