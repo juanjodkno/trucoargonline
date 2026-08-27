@@ -437,8 +437,14 @@ export function setupSocketEvents(io: Server) {
     }
 
     let pts = trucoPts;
-    // Si se va al mazo en primera mano antes de resolverse o cerrarse el envido, se suma 1 punto extra por el envido
-    if (reason === 'ME_VOY_AL_MAZO' && !room.gameRound.envidoResolved && room.gameRound.currentTrickIndex === 0) {
+
+    // Verificar si alguien tiró alguna carta en la primera mano
+    const p1PlayedInTrick0 = room.gameRound.p1.cardsPlayed[0] !== null;
+    const p2PlayedInTrick0 = room.gameRound.p2.cardsPlayed[0] !== null;
+    const totalCardsPlayedInTrick0 = (p1PlayedInTrick0 ? 1 : 0) + (p2PlayedInTrick0 ? 1 : 0);
+
+    // Solo se penaliza con el punto extra de Envido si el mano se va al mazo directamente al empezar (0 cartas en la mesa)
+    if (reason === 'ME_VOY_AL_MAZO' && !room.gameRound.envidoResolved && room.gameRound.currentTrickIndex === 0 && totalCardsPlayedInTrick0 === 0) {
       pts = trucoPts + 1;
     }
 
