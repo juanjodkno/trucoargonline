@@ -23,18 +23,25 @@
 
     /* Animaciones Generales */
     @keyframes dealIn {
-      0% { transform: translateY(80px) scale(0.6); opacity: 0; }
+      0% { transform: translateY(40px) scale(0.6); opacity: 0; }
       100% { transform: translateY(0) scale(1); opacity: 1; }
     }
 
-    @keyframes dropOppCard {
-      0% { transform: translateY(-48px) scale(1.2); opacity: 0.7; }
-      100% { transform: translateY(-28px) scale(1); opacity: 1; }
+    @keyframes dropBottomCard {
+      0% { transform: translateY(45px) scale(1.15); opacity: 0.7; }
+      100% { transform: translateY(22px) scale(1); opacity: 1; }
     }
-
-    @keyframes dropMyCard {
-      0% { transform: translateY(48px) scale(1.2); opacity: 0.7; }
-      100% { transform: translateY(28px) scale(1); opacity: 1; }
+    @keyframes dropTopCard {
+      0% { transform: translateY(-45px) scale(1.15); opacity: 0.7; }
+      100% { transform: translateY(-22px) scale(1); opacity: 1; }
+    }
+    @keyframes dropRightCard {
+      0% { transform: translateX(45px) scale(1.15); opacity: 0.7; }
+      100% { transform: translateX(20px) scale(1); opacity: 1; }
+    }
+    @keyframes dropLeftCard {
+      0% { transform: translateX(-45px) scale(1.15); opacity: 0.7; }
+      100% { transform: translateX(-20px) scale(1); opacity: 1; }
     }
 
     /* Modal de Autenticación */
@@ -113,74 +120,82 @@
     .modal-card { background: #16222f; width: 100%; max-width: 440px; padding: 25px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.15); }
     .cbu-box { background: #080c10; padding: 14px; border-radius: 8px; font-size: 0.92rem; color: #ffd166; margin-bottom: 15px; border: 1px dashed #334155; line-height: 1.6; }
 
-    /* Selector de Avatar Grid */
-    .avatar-grid {
-      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0 16px 0;
-    }
-    .avatar-card-btn {
-      background: #0b1320; border: 2px solid #334155; border-radius: 12px; padding: 8px 4px;
-      display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; transition: 0.2s;
-    }
+    .avatar-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0 16px 0; }
+    .avatar-card-btn { background: #0b1320; border: 2px solid #334155; border-radius: 12px; padding: 8px 4px; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; transition: 0.2s; }
     .avatar-card-btn:hover { border-color: #0077b6; background: #1e293b; transform: translateY(-3px); }
     .avatar-card-btn.active { border-color: #ffd166; background: rgba(255, 209, 102, 0.15); box-shadow: 0 0 10px rgba(255, 209, 102, 0.4); }
     .avatar-emoji { font-size: 1.8rem; line-height: 1; }
     .avatar-name { font-size: 0.7rem; color: #cbd5e1; font-weight: bold; }
 
-    /* MESA DE JUEGO */
+    /* MESA DE JUEGO CIRCULAR */
     #gameContainer { display: none; width: 100%; flex-direction: column; align-items: center; }
-    .header-bar { background: rgba(255, 255, 255, 0.07); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.15); width: 100%; max-width: 880px; padding: 8px 20px; border-radius: 12px; margin-bottom: 10px; display: flex; gap: 14px; align-items: center; justify-content: space-between; box-shadow: 0 8px 24px rgba(0,0,0,0.4); flex-wrap: wrap; }
-    .score-badge { background: #0077b6; padding: 5px 14px; border-radius: 20px; font-weight: bold; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
-    .turn-badge { color: #ffd166; font-weight: bold; }
-    .timer-badge { background: #d90429; padding: 4px 10px; border-radius: 15px; font-weight: bold; font-size: 0.95rem; }
+    .header-bar { background: rgba(255, 255, 255, 0.07); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.15); width: 100%; max-width: 900px; padding: 8px 20px; border-radius: 12px; margin-bottom: 10px; display: flex; gap: 14px; align-items: center; justify-content: space-between; box-shadow: 0 8px 24px rgba(0,0,0,0.4); flex-wrap: wrap; }
+    .score-badge { background: #0077b6; padding: 5px 14px; border-radius: 20px; font-weight: bold; font-size: 0.92rem; display: flex; align-items: center; gap: 8px; }
+    .turn-badge { color: #ffd166; font-weight: bold; font-size: 0.95rem; }
+    .timer-badge { background: #d90429; padding: 4px 10px; border-radius: 15px; font-weight: bold; font-size: 0.92rem; }
 
-    .truco-table { width: 100%; max-width: 880px; height: 550px; background: radial-gradient(circle, #1e6b3b 0%, #0d381e 100%); border: 12px solid #3e2723; border-radius: 40px; position: relative; display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: 15px 30px; box-shadow: inset 0 0 35px rgba(0,0,0,0.85), 0 12px 30px rgba(0,0,0,0.6); }
-    .opponent-cards, .my-cards { display: flex; gap: 15px; min-height: 135px; align-items: center; }
-    
-    .table-tricks { display: flex; gap: 40px; width: 100%; justify-content: center; align-items: center; padding: 10px; }
-    .trick-slot { width: 125px; height: 195px; position: relative; display: flex; justify-content: center; align-items: center; }
-    .trick-label { position: absolute; font-size: 0.85rem; color: rgba(255, 255, 255, 0.35); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; pointer-events: none; z-index: 1; user-select: none; }
+    .truco-table { 
+      width: 100%; max-width: 900px; height: 570px; 
+      background: radial-gradient(circle, #1e6b3b 0%, #0d381e 100%); 
+      border: 12px solid #3e2723; border-radius: 40px; 
+      position: relative; display: flex; flex-direction: column; 
+      justify-content: space-between; align-items: center; padding: 12px 18px; 
+      box-shadow: inset 0 0 35px rgba(0,0,0,0.85), 0 12px 30px rgba(0,0,0,0.6); 
+    }
+
+    .table-seat { display: flex; flex-direction: column; align-items: center; gap: 4px; z-index: 10; }
+    .seat-badge { 
+      background: rgba(11, 19, 32, 0.85); border: 1px solid rgba(255,255,255,0.2); 
+      padding: 2px 10px; border-radius: 12px; font-size: 0.78rem; font-weight: bold; 
+      display: flex; align-items: center; gap: 5px; box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+    }
+    .seat-cards { display: flex; gap: 6px; align-items: center; justify-content: center; }
+
+    .table-middle-row { 
+      display: flex; width: 100%; justify-content: space-between; align-items: center; padding: 0 10px; 
+    }
+    .side-seat { width: 90px; }
 
     .card-img { 
-      width: 88px; height: 140px; border-radius: 8px; box-shadow: 0 6px 12px rgba(0,0,0,0.45); 
+      width: 68px; height: 108px; border-radius: 6px; box-shadow: 0 4px 10px rgba(0,0,0,0.45); 
       cursor: pointer; user-select: none; object-fit: cover; 
-      transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s, filter 0.2s; 
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s, filter 0.2s; 
     }
+    .card-mini { width: 44px; height: 68px; border-radius: 4px; }
     
     .card-deal-anim {
-      animation: dealIn 0.38s cubic-bezier(0.18, 0.89, 0.32, 1.28) backwards;
+      animation: dealIn 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28) backwards;
     }
 
-    .my-cards .card-img:hover { transform: translateY(-16px) scale(1.08); box-shadow: 0 14px 26px rgba(0,0,0,0.75); }
+    .my-cards .card-img:hover { transform: translateY(-14px) scale(1.08); box-shadow: 0 12px 22px rgba(0,0,0,0.75); }
     .my-cards.disabled .card-img { cursor: not-allowed; filter: brightness(0.65); transform: none !important; box-shadow: 0 4px 6px rgba(0,0,0,0.3) !important; }
-    .opponent-cards .card-img { cursor: default; }
 
-    /* CARTAS EN MESA: Posiciones adaptadas */
-    .card-in-trick { 
-      position: absolute; 
-      transition: transform 0.2s ease, box-shadow 0.2s ease; 
-    }
-    .card-in-trick.opp-played-card { 
-      transform: translateY(-28px); 
-      z-index: 2; 
-      animation: dropOppCard 0.25s cubic-bezier(0.2, 0.8, 0.2, 1.1) forwards;
-    }
-    .card-in-trick.my-played-card { 
-      transform: translateY(28px); 
-      z-index: 2; 
-      animation: dropMyCard 0.25s cubic-bezier(0.2, 0.8, 0.2, 1.1) forwards;
-    }
-    .card-in-trick.matada { 
-      z-index: 2 !important; 
-      filter: brightness(0.85); 
-      box-shadow: 0 4px 10px rgba(0,0,0,0.6); 
-    }
-    .card-in-trick.matadora { 
-      z-index: 10 !important; 
-      box-shadow: 0 0 18px #ffd166, 0 10px 22px rgba(0,0,0,0.8) !important; 
-    }
+    .table-tricks { display: flex; gap: 20px; justify-content: center; align-items: center; }
+    .trick-slot { width: 120px; height: 170px; position: relative; display: flex; justify-content: center; align-items: center; }
+    .trick-label { position: absolute; font-size: 0.78rem; color: rgba(255, 255, 255, 0.3); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; pointer-events: none; z-index: 1; user-select: none; }
 
-    .actions-bar { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; justify-content: center; max-width: 880px; width: 100%; min-height: 42px; }
-    button.action-btn { background: #0077b6; color: white; border: none; padding: 8px 14px; font-size: 0.88rem; font-weight: bold; border-radius: 8px; cursor: pointer; transition: 0.15s; user-select: none; }
+    .card-in-trick { position: absolute; transition: transform 0.2s ease, box-shadow 0.2s ease; }
+    .card-in-trick.played-bottom {
+      transform: translateY(22px); z-index: 5;
+      animation: dropBottomCard 0.22s cubic-bezier(0.2, 0.8, 0.2, 1.1) forwards;
+    }
+    .card-in-trick.played-top {
+      transform: translateY(-22px); z-index: 4;
+      animation: dropTopCard 0.22s cubic-bezier(0.2, 0.8, 0.2, 1.1) forwards;
+    }
+    .card-in-trick.played-right {
+      transform: translateX(20px); z-index: 3;
+      animation: dropRightCard 0.22s cubic-bezier(0.2, 0.8, 0.2, 1.1) forwards;
+    }
+    .card-in-trick.played-left {
+      transform: translateX(-20px); z-index: 2;
+      animation: dropLeftCard 0.22s cubic-bezier(0.2, 0.8, 0.2, 1.1) forwards;
+    }
+    .card-in-trick.matada { filter: brightness(0.85); box-shadow: 0 3px 8px rgba(0,0,0,0.6); }
+    .card-in-trick.matadora { z-index: 15 !important; box-shadow: 0 0 16px #ffd166, 0 8px 18px rgba(0,0,0,0.85) !important; }
+
+    .actions-bar { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; justify-content: center; max-width: 900px; width: 100%; min-height: 40px; }
+    button.action-btn { background: #0077b6; color: white; border: none; padding: 7px 13px; font-size: 0.85rem; font-weight: bold; border-radius: 8px; cursor: pointer; transition: 0.15s; user-select: none; }
     button.action-btn:hover { background: #0096c7; transform: translateY(-2px); }
     button.action-btn:active { transform: scale(0.96); }
     button.btn-truco { background: #d90429; }
@@ -189,13 +204,27 @@
     button.btn-buenas { background: #4a5568; }
     button.btn-mazo { background: #495057; }
 
-    .console-log { margin-top: 10px; width: 100%; max-width: 880px; height: 75px; background: #06090e; border-radius: 8px; padding: 8px 12px; overflow-y: auto; font-size: 0.8rem; color: #adb5bd; border: 1px solid #1e293b; }
+    /* Barra de Chat Privado de Equipo */
+    .team-chat-bar {
+      display: none; width: 100%; max-width: 900px; margin-top: 8px;
+      gap: 8px; align-items: center; background: rgba(11, 19, 32, 0.85);
+      border: 1px solid #1e293b; padding: 6px 12px; border-radius: 10px;
+    }
+    .team-chat-input {
+      flex: 1; padding: 7px 12px; background: #06090e; border: 1px solid #334155;
+      border-radius: 6px; color: white; font-size: 0.85rem; outline: none;
+    }
+    .team-chat-input:focus { border-color: #2ec4b6; }
+
+    .console-log { margin-top: 8px; width: 100%; max-width: 900px; height: 75px; background: #06090e; border-radius: 8px; padding: 8px 12px; overflow-y: auto; font-size: 0.8rem; color: #adb5bd; border: 1px solid #1e293b; }
+    .team-msg-log { color: #2ec4b6; font-weight: 600; background: rgba(46, 196, 182, 0.08); padding: 2px 6px; border-radius: 4px; margin: 2px 0; }
+
     .envido-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(6px); border-radius: 28px; display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 50; }
-    .envido-title { font-size: 1.6rem; font-weight: 900; color: #ffd166; margin-bottom: 6px; }
-    .envido-cards-row { display: flex; gap: 20px; justify-content: center; }
+    .envido-title { font-size: 1.5rem; font-weight: 900; color: #ffd166; margin-bottom: 4px; }
+    .envido-cards-row { display: flex; gap: 15px; justify-content: center; }
 
     .winner-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.88); backdrop-filter: blur(10px); display: none; justify-content: center; align-items: center; z-index: 100; }
-    .winner-card { background: #1c2541; padding: 35px 45px; border-radius: 20px; text-align: center; border: 3px solid #ffd166; }
+    .winner-card { background: #1c2541; padding: 30px 40px; border-radius: 20px; text-align: center; border: 3px solid #ffd166; }
   </style>
 </head>
 <body>
@@ -214,7 +243,6 @@
         <button type="button" class="auth-tab" id="tabLogin" onclick="switchTab('login')">Ingresar</button>
       </div>
 
-      <!-- Formulario Registro -->
       <form id="formRegister" onsubmit="handleRegister(event)">
         <div class="form-group">
           <label>Nombre Completo</label>
@@ -241,7 +269,6 @@
         <button type="submit" class="btn-submit">Crear Cuenta</button>
       </form>
 
-      <!-- Formulario Login -->
       <form id="formLogin" onsubmit="handleLogin(event)" style="display:none;">
         <div class="form-group">
           <label>Usuario o Correo</label>
@@ -341,7 +368,6 @@
       
       <div class="avatar-grid" id="avatarPickerGrid"></div>
 
-      <!-- Datos no editables -->
       <div class="form-group" style="margin-bottom:10px;">
         <label>Nombre de Usuario</label>
         <input type="text" id="profUsername" class="form-control" style="background:#080c10; color:#94a3b8; cursor:not-allowed;" readonly />
@@ -351,7 +377,6 @@
         <input type="text" id="profEmail" class="form-control" style="background:#080c10; color:#94a3b8; cursor:not-allowed;" readonly />
       </div>
 
-      <!-- Botones Soporte y Cerrar Sesión en la misma línea -->
       <div style="display:flex; gap:10px; margin-top:10px;">
         <button type="button" class="btn-submit" style="margin:0; background:#25d366; flex:1; font-size:0.9rem;" onclick="openSupportWhatsApp()">
           💬 Soporte
@@ -429,7 +454,7 @@
     </div>
   </div>
 
-  <!-- MESA DE JUEGO -->
+  <!-- MESA DE JUEGO CIRCULAR -->
   <div id="gameContainer">
     <div class="header-bar">
       <div><strong>Mesa:</strong> <span id="lblRoom">...</span></div>
@@ -444,20 +469,60 @@
     </div>
 
     <div class="truco-table">
-      <div class="opponent-cards" id="opponentCards"></div>
-
-      <div class="table-tricks">
-        <div class="trick-slot" id="trick-0"><span class="trick-label">1ra Mano</span></div>
-        <div class="trick-slot" id="trick-1"><span class="trick-label">2da Mano</span></div>
-        <div class="trick-slot" id="trick-2"><span class="trick-label">3ra Mano</span></div>
+      
+      <!-- PUESTO SUPERIOR (Compañero en 2v2 o Rival en 1v1) -->
+      <div class="table-seat seat-top" id="seatTop">
+        <div class="seat-badge" id="seatTopBadge">
+          <span id="seatTopAvatar">🤠</span>
+          <span id="seatTopName">Rival</span>
+        </div>
+        <div class="seat-cards" id="seatTopCards"></div>
       </div>
 
-      <div class="my-cards" id="myCards"></div>
+      <!-- FILA MEDIA (Rival Izquierda | 3 Manos del Centro | Rival Derecha) -->
+      <div class="table-middle-row">
+        
+        <!-- PUESTO IZQUIERDA (Rival 2 en 2v2) -->
+        <div class="table-seat side-seat seat-left" id="seatLeft" style="display:none;">
+          <div class="seat-badge" id="seatLeftBadge">
+            <span id="seatLeftAvatar">🤠</span>
+            <span id="seatLeftName">Rival 2</span>
+          </div>
+          <div class="seat-cards" id="seatLeftCards" style="flex-direction: column;"></div>
+        </div>
 
+        <!-- 3 BAZAS DEL CENTRO -->
+        <div class="table-tricks">
+          <div class="trick-slot" id="trick-0"><span class="trick-label">1ra Mano</span></div>
+          <div class="trick-slot" id="trick-1"><span class="trick-label">2da Mano</span></div>
+          <div class="trick-slot" id="trick-2"><span class="trick-label">3ra Mano</span></div>
+        </div>
+
+        <!-- PUESTO DERECHA (Rival 1 en 2v2) -->
+        <div class="table-seat side-seat seat-right" id="seatRight" style="display:none;">
+          <div class="seat-badge" id="seatRightBadge">
+            <span id="seatRightAvatar">🤠</span>
+            <span id="seatRightName">Rival 1</span>
+          </div>
+          <div class="seat-cards" id="seatRightCards" style="flex-direction: column;"></div>
+        </div>
+
+      </div>
+
+      <!-- PUESTO INFERIOR (Vos) -->
+      <div class="table-seat seat-bottom" id="seatBottom">
+        <div class="my-cards" id="myCards"></div>
+        <div class="seat-badge" id="seatBottomBadge" style="margin-top:4px;">
+          <span id="seatBottomAvatar">🤠</span>
+          <span id="seatBottomName">Vos</span>
+        </div>
+      </div>
+
+      <!-- Overlay Envido -->
       <div class="envido-overlay" id="envidoOverlay">
         <div style="text-align:center;">
           <div class="envido-title" id="envidoTitle">🃏 TANTOS</div>
-          <div style="font-size:1.05rem; color:#e0e1dd; margin-bottom:18px;" id="envidoSubtitle">...</div>
+          <div style="font-size:1rem; color:#e0e1dd; margin-bottom:14px;" id="envidoSubtitle">...</div>
           <div class="envido-cards-row" id="envidoCardsRow"></div>
         </div>
       </div>
@@ -494,6 +559,12 @@
       <button id="btnMazo" class="action-btn btn-mazo" style="display:none;" onclick="sendCall('ME_VOY_AL_MAZO')">Al Mazo</button>
     </div>
 
+    <!-- Barra de Chat Privado Exclusivo para Compañeros de Equipo (2 vs 2) -->
+    <div class="team-chat-bar" id="teamChatBar">
+      <input type="text" id="teamChatInput" class="team-chat-input" placeholder="🔒 Mensaje privado a tu compañero..." maxlength="100" onkeypress="handleTeamChatKeyPress(event)" />
+      <button type="button" class="action-btn" style="background:#2ec4b6; font-size:0.8rem; padding:7px 12px;" onclick="sendTeamChatMessage()">💬 Enviar</button>
+    </div>
+
     <div class="console-log" id="gameLogs">
       <div>🟢 Esperando jugadores para comenzar...</div>
     </div>
@@ -501,9 +572,9 @@
 
   <div class="winner-overlay" id="winnerModal">
     <div class="winner-card">
-      <div style="font-size:2.2rem; font-weight:900; margin-bottom:10px; color:#ffd166;" id="winnerTitle">🏆 ¡PARTIDA FINALIZADA!</div>
-      <div style="font-size:1.1rem; color:#e0e1dd; margin-bottom:25px;" id="winnerDesc">...</div>
-      <button class="action-btn" onclick="returnToLobbyAfterMatch()" style="background:#2ec4b6; font-size:1.1rem; padding:12px 28px;">Volver al Lobby</button>
+      <div style="font-size:2rem; font-weight:900; margin-bottom:8px; color:#ffd166;" id="winnerTitle">🏆 ¡PARTIDA FINALIZADA!</div>
+      <div style="font-size:1.05rem; color:#e0e1dd; margin-bottom:20px;" id="winnerDesc">...</div>
+      <button class="action-btn" onclick="returnToLobbyAfterMatch()" style="background:#2ec4b6; font-size:1.05rem; padding:10px 24px;">Volver al Lobby</button>
     </div>
   </div>
 
@@ -654,6 +725,26 @@
       audio.play().catch(err => console.warn('Audio no disponible:', src, err));
     }
 
+    function getRelativeSeat(userId) {
+      if (!currentUser || !currentPlayers || currentPlayers.length === 0) return 'bottom';
+      const myIdx = currentPlayers.findIndex(p => p.userId.toLowerCase() === currentUser.username.toLowerCase());
+      if (myIdx === -1) return 'bottom';
+      
+      if (currentMode === '1v1' || currentPlayers.length <= 2) {
+        return (userId.toLowerCase() === currentUser.username.toLowerCase()) ? 'bottom' : 'top';
+      }
+      
+      const targetIdx = currentPlayers.findIndex(p => p.userId.toLowerCase() === (userId || '').toLowerCase());
+      if (targetIdx === -1) return 'top';
+      
+      const diff = (targetIdx - myIdx + 4) % 4;
+      if (diff === 0) return 'bottom';
+      if (diff === 1) return 'right';
+      if (diff === 2) return 'top';
+      if (diff === 3) return 'left';
+      return 'top';
+    }
+
     function switchTab(tab) {
       triggerHaptic(15);
       const err = document.getElementById('authError');
@@ -769,6 +860,8 @@
       const emoji = getAvatarEmoji(currentAvatar);
       const lobbyBadge = document.getElementById('lobbyUserAvatar');
       if (lobbyBadge) lobbyBadge.innerText = emoji;
+      const bottomAvatar = document.getElementById('seatBottomAvatar');
+      if (bottomAvatar) bottomAvatar.innerText = emoji;
     }
 
     async function handleRegister(e) {
@@ -1036,6 +1129,50 @@
       });
     }
 
+    function renderSeatsCards() {
+      const is2v2 = currentMode === '2v2';
+      document.getElementById('seatLeft').style.display = is2v2 ? 'flex' : 'none';
+      document.getElementById('seatRight').style.display = is2v2 ? 'flex' : 'none';
+      document.getElementById('teamChatBar').style.display = (is2v2 && isGameStarted) ? 'flex' : 'none';
+
+      if (!currentPlayers || currentPlayers.length === 0) return;
+
+      currentPlayers.forEach(p => {
+        const seat = getRelativeSeat(p.userId);
+        const avatarEmoji = getAvatarEmoji(p.avatar || 'gaucho');
+
+        if (seat === 'bottom') {
+          document.getElementById('seatBottomAvatar').innerText = avatarEmoji;
+          document.getElementById('seatBottomName').innerText = `${p.userId} (Vos)`;
+        } else if (seat === 'top') {
+          document.getElementById('seatTopAvatar').innerText = avatarEmoji;
+          document.getElementById('seatTopName').innerText = is2v2 ? `${p.userId} (Compañero)` : `${p.userId}`;
+          renderFaceDownCards('seatTopCards', p.cardsCount !== undefined ? p.cardsCount : 3, false);
+        } else if (seat === 'left') {
+          document.getElementById('seatLeftAvatar').innerText = avatarEmoji;
+          document.getElementById('seatLeftName').innerText = `${p.userId}`;
+          renderFaceDownCards('seatLeftCards', p.cardsCount !== undefined ? p.cardsCount : 3, true);
+        } else if (seat === 'right') {
+          document.getElementById('seatRightAvatar').innerText = avatarEmoji;
+          document.getElementById('seatRightName').innerText = `${p.userId}`;
+          renderFaceDownCards('seatRightCards', p.cardsCount !== undefined ? p.cardsCount : 3, true);
+        }
+      });
+    }
+
+    function renderFaceDownCards(containerId, count, isVertical = false) {
+      const container = document.getElementById(containerId);
+      if (!container) return;
+      container.innerHTML = '';
+      for (let i = 0; i < count; i++) {
+        const img = document.createElement('img');
+        img.className = `card-img ${isVertical ? 'card-mini' : ''}`;
+        img.src = getCardSrc('BACK');
+        img.alt = 'Dorso';
+        container.appendChild(img);
+      }
+    }
+
     function resetTableVisuals(isPlaying = false) {
       currentMyCards = [];
       currentTurnPlayer = '';
@@ -1056,14 +1193,7 @@
         if (slot) slot.innerHTML = `<span class="trick-label">${getTrickLabel(i)}</span>`;
       }
 
-      const opp = document.getElementById('opponentCards');
-      if (opp) {
-        opp.innerHTML = `
-          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
-          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
-          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
-        `;
-      }
+      renderSeatsCards();
 
       const myCardsContainer = document.getElementById('myCards');
       if (myCardsContainer) {
@@ -1157,6 +1287,32 @@
       const box = document.getElementById('gameLogs');
       box.innerHTML += `<div>${msg}</div>`;
       box.scrollTop = box.scrollHeight;
+    }
+
+    function logTeamChat(sender, message, avatar) {
+      const box = document.getElementById('gameLogs');
+      const isMe = (sender || '').toLowerCase() === currentUser.username.toLowerCase();
+      const emoji = getAvatarEmoji(avatar || 'gaucho');
+      box.innerHTML += `<div class="team-msg-log">🔒 [Equipo] ${emoji} <strong>${isMe ? 'Vos' : '@' + sender}</strong>: ${message}</div>`;
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function sendTeamChatMessage() {
+      const input = document.getElementById('teamChatInput');
+      if (!input) return;
+      const msg = input.value.trim();
+      if (!msg) return;
+
+      triggerHaptic(15);
+      socket.emit('send_team_chat', { roomId: activeRoomId, message: msg });
+      input.value = '';
+    }
+
+    function handleTeamChatKeyPress(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendTeamChatMessage();
+      }
     }
 
     function getCardEnvidoVal(num) { return (num >= 10 && num <= 12) ? 0 : num; }
@@ -1301,6 +1457,7 @@
         myTeam = data.myTeam || 'TEAM_1';
         currentPlayers = data.players || [];
         setScores(data.scores);
+        renderSeatsCards();
 
         currentTrickIndex = data.currentTrick;
         envidoDone = data.envidoResolved;
@@ -1326,11 +1483,10 @@
           slot.innerHTML = `<span class="trick-label">${getTrickLabel(i)}</span>`;
           if (data.tricks[i]) {
             data.tricks[i].forEach((cardObj) => {
-              const isMineOrMyTeam = cardObj.team === myTeam;
+              const seatPos = getRelativeSeat(cardObj.userId);
               const img = document.createElement('img');
-              img.className = `card-img card-in-trick ${isMineOrMyTeam ? 'my-played-card' : 'opp-played-card'}`;
+              img.className = `card-img card-in-trick played-${seatPos}`;
               img.dataset.owner = cardObj.userId;
-              img.dataset.team = cardObj.team;
               img.src = getCardSrc(cardObj.cardId);
               slot.appendChild(img);
             });
@@ -1341,7 +1497,14 @@
       });
 
       socket.on('player_joined_waiting', (data) => {
+        currentPlayers = data.players || [];
+        renderSeatsCards();
         log(`👤 Jugador conectado (${data.playersCount}/${data.maxPlayers}). Esperando...`);
+      });
+
+      socket.on('team_chat_received', (data) => {
+        triggerHaptic(15);
+        logTeamChat(data.sender, data.message, data.avatar);
       });
 
       socket.on('player_disconnected_grace', (data) => {
@@ -1408,6 +1571,7 @@
         document.getElementById('lblTurn').innerText = currentTurnPlayer;
         log(`🃏 Mano iniciada. Sale jugando: <strong>${currentTurnPlayer}</strong>`);
         setScores(data.scores);
+        renderSeatsCards();
 
         if (data.withFlor !== undefined) {
           roomWithFlor = parseBoolean(data.withFlor);
@@ -1420,12 +1584,6 @@
         for (let i = 0; i < 3; i++) {
           document.getElementById(`trick-${i}`).innerHTML = `<span class="trick-label">${getTrickLabel(i)}</span>`;
         }
-        const opp = document.getElementById('opponentCards');
-        opp.innerHTML = `
-          <img class="card-img card-deal-anim" style="animation-delay:0s;" src="${getCardSrc('BACK')}" alt="Dorso" />
-          <img class="card-img card-deal-anim" style="animation-delay:0.08s;" src="${getCardSrc('BACK')}" alt="Dorso" />
-          <img class="card-img card-deal-anim" style="animation-delay:0.16s;" src="${getCardSrc('BACK')}" alt="Dorso" />
-        `;
 
         updateTurnControls(currentTurnPlayer);
       });
@@ -1467,17 +1625,20 @@
         if (isMine) {
           const cardElem = document.getElementById(`card-${data.cardId}`);
           if (cardElem) cardElem.remove();
+        } else {
+          const seatPos = getRelativeSeat(data.userId);
+          const seatCardsContainer = seatPos === 'top' ? document.getElementById('seatTopCards') : (seatPos === 'left' ? document.getElementById('seatLeftCards') : document.getElementById('seatRightCards'));
+          if (seatCardsContainer && seatCardsContainer.children.length > 0) {
+            seatCardsContainer.removeChild(seatCardsContainer.children[0]);
+          }
         }
 
         const trickSlot = document.getElementById(`trick-${data.trickIndex}`);
-
-        const playerObj = currentPlayers.find(p => p.userId.toLowerCase() === data.userId.toLowerCase());
-        const isMyTeamCard = (playerObj?.team || (isMine ? myTeam : 'TEAM_2')) === myTeam;
+        const seatPos = getRelativeSeat(data.userId);
 
         const img = document.createElement('img');
-        img.className = `card-img card-in-trick ${isMyTeamCard ? 'my-played-card' : 'opp-played-card'}`;
+        img.className = `card-img card-in-trick played-${seatPos}`;
         img.dataset.owner = data.userId;
-        img.dataset.team = playerObj?.team || '';
         img.src = getCardSrc(data.cardId);
         img.alt = data.cardId;
         trickSlot.appendChild(img);
@@ -1758,7 +1919,7 @@
           title.innerText = data.reason === 'DISCONNECT_TIMEOUT' ? '⏱️ ¡TIEMPO AGOTADO POR DESCONEXIÓN!' : '🏆 ¡EL EQUIPO RIVAL ABANDONÓ!';
           title.style.color = '#48cae4';
           const potText = data.pot > 0 ? `Pozo ganado: $${new Intl.NumberFormat('es-AR').format(data.pot)} ARS` : 'Partida Gratis';
-          desc.innerText = `@${data.surrenderedUser} abandonó la mesa. ¡Ganaste los puntos y las fichas! (${potText})`;
+          desc.innerText = `@${data.surrenderedUser} abandonó la mesa. ¡Ganaron los puntos y las fichas! (${potText})`;
           modal.style.display = 'flex';
         }
       });

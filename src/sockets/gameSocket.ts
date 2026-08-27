@@ -295,7 +295,6 @@ export function setupSocketEvents(io: Server) {
       mode: room.mode
     });
 
-    // Enviar cartas privadas a cada socket
     room.players.forEach(p => {
       const hand = round.getPlayerHand(p.userId);
       if (hand && p.socketId) {
@@ -373,7 +372,6 @@ export function setupSocketEvents(io: Server) {
       room.highestEnvidoUser = userId;
       room.highestEnvidoTeam = team;
 
-      // El siguiente en cantar es el primer rival del equipo contrario
       const rivals = room.gameRound.getRivals(userId);
       const nextDeclarer = rivals[0] || userId;
       room.envidoDeclarer = nextDeclarer;
@@ -871,7 +869,6 @@ export function setupSocketEvents(io: Server) {
           if (!successDeduct) return socket.emit('error_action', { message: 'Saldo insuficiente.' });
         }
 
-        // Distribución de equipos: Slot 0 = Team 1, Slot 1 = Team 2, Slot 2 = Team 1, Slot 3 = Team 2
         const nextTeam: 'TEAM_1' | 'TEAM_2' = (room.players.length % 2 === 0) ? 'TEAM_1' : 'TEAM_2';
         const newPlayer: PlayerSlot = {
           userId,
@@ -918,13 +915,11 @@ export function setupSocketEvents(io: Server) {
 
         const player = room.players[playerIndex];
 
-        // Si la mesa aún no arrancó en el lobby
         if (room.players.length < room.maxPlayers) {
           if (room.betAmount > 0) modifyUserChips(player.userId, room.betAmount);
           room.players.splice(playerIndex, 1);
 
           if (room.players.length === 0 || player.userId === room.creatorId) {
-            // Reembolsar a los que queden y cerrar mesa
             room.players.forEach(p => {
               if (room.betAmount > 0) modifyUserChips(p.userId, room.betAmount);
             });
@@ -934,8 +929,36 @@ export function setupSocketEvents(io: Server) {
           continue;
         }
 
-        // Si la partida ya está en curso
         startDisconnectGracePeriod(room, player.userId);
+      }
+    });
+
+    // CHAT PRIVADO EXCLUSIVO PARA COMPAÑEROS DE EQUIPO (2 vs 2)
+    socket.on('send_team_chat', ({ roomId, message }) => {
+      try {
+        const room = rooms.get(roomId);
+        if (!room || !message) return;
+
+        const authUser = getAuthenticatedPlayer(room, socket.id);
+        if (!authUser) return;
+
+        const cleanMsg = String(message).trim().slice(0, 100);
+        if (!cleanMsg) return;
+
+        // Enviar solo a los integrantes del mismo equipo
+        const teammates = room.players.filter(p => p.team === authUser.team);
+        teammates.forEach(tm => {
+          if (tm.socketId) {
+            io.to(tm.socketId).emit('team_chat_received', {
+              sender: authUser.userId,
+              message: cleanMsg,
+              avatar: authUser.avatar,
+              team: authUser.team
+            });
+          }
+        });
+      } catch (err) {
+        console.error('Error en send_team_chat:', err);
       }
     });
 
