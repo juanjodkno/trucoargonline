@@ -567,6 +567,7 @@
         console.error('Error al copiar al portapapeles:', err);
       });
     }
+
     function openDepositModal() { document.getElementById('depositModal').style.display = 'flex'; }
     function closeDepositModal() { document.getElementById('depositModal').style.display = 'none'; }
 
@@ -726,7 +727,6 @@
 
       document.getElementById('lobbyContainer').style.display = 'none';
       document.getElementById('gameContainer').style.display = 'flex';
-      document.getElementById('gameActions').style.display = 'flex';
       
       const betLabel = bet > 0 ? `$${new Intl.NumberFormat('es-AR').format(bet)} ARS` : 'Gratis (Amistoso)';
       document.getElementById('lblRoom').innerText = `${roomId} (${betLabel} | ${roomTargetPoints} pts | ${roomWithFlor ? 'Con Flor' : 'Sin Flor'})`;
@@ -737,6 +737,39 @@
       } else {
         btnLeave.innerText = 'Abandonar mesa';
         log(`🟢 Creaste la mesa ${roomId}. Esperando que se una un rival...`);
+
+        // Mesa en espera: limpiar jugadas previas y poner las 6 cartas dadas vuelta
+        currentMyCards = [];
+        currentTurnPlayer = '';
+        document.getElementById('lblTurn').innerText = 'Esperando rival...';
+        document.getElementById('scoreNosotros').innerText = '0';
+        document.getElementById('scoreEllos').innerText = '0';
+
+        for (let i = 0; i < 3; i++) {
+          document.getElementById(`trick-${i}`).innerHTML = `<span class="trick-label">${i + 1}ra Mano</span>`;
+        }
+
+        const opp = document.getElementById('opponentCards');
+        opp.innerHTML = `
+          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
+          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
+          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
+        `;
+
+        const myCardsContainer = document.getElementById('myCards');
+        myCardsContainer.classList.add('disabled');
+        myCardsContainer.innerHTML = `
+          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
+          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
+          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
+        `;
+
+        document.getElementById('florGroup').style.display = 'none';
+        document.getElementById('envidoGroup').style.display = 'none';
+        document.getElementById('envidoDeclareGroup').style.display = 'none';
+        document.getElementById('trucoGroup').style.display = 'none';
+        document.getElementById('responseGroup').style.display = 'none';
+        document.getElementById('btnMazo').style.display = 'none';
       }
     }
 
