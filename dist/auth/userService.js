@@ -3,13 +3,15 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.pool = void 0;
+exports.pool = exports.ALLOWED_AVATARS = void 0;
 exports.initDatabase = initDatabase;
 exports.registerUser = registerUser;
 exports.loginUser = loginUser;
 exports.resetUserPassword = resetUserPassword;
 exports.getUserChips = getUserChips;
 exports.modifyUserChips = modifyUserChips;
+exports.getUserAvatar = getUserAvatar;
+exports.updateUserAvatar = updateUserAvatar;
 exports.getAllUsersList = getAllUsersList;
 exports.requestDeposit = requestDeposit;
 exports.getPendingDeposits = getPendingDeposits;
@@ -18,6 +20,16 @@ exports.deleteUser = deleteUser;
 // src/auth/userService.ts
 const pg_1 = require("pg");
 const crypto_1 = __importDefault(require("crypto"));
+exports.ALLOWED_AVATARS = [
+    'gaucho',
+    'mate',
+    'asado',
+    'sol_mayo',
+    'gardel',
+    'diego',
+    'messi',
+    'tango'
+];
 const DATABASE_URL = process.env.DATABASE_URL || '';
 exports.pool = new pg_1.Pool({
     connectionString: DATABASE_URL,
@@ -41,8 +53,13 @@ async function initDatabase() {
         password_hash VARCHAR(255) NOT NULL,
         salt VARCHAR(100) NOT NULL,
         chips BIGINT DEFAULT 0,
+        avatar VARCHAR(50) DEFAULT 'gaucho',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
+    `);
+        // Migración automática por si la tabla ya existía sin la columna avatar
+        await client.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar VARCHAR(50) DEFAULT 'gaucho';
     `);
         await client.query(`
       CREATE TABLE IF NOT EXISTS deposits (
@@ -63,6 +80,7 @@ async function initDatabase() {
             passwordHash: r.password_hash,
             salt: r.salt,
             chips: Number(r.chips) || 0,
+            avatar: r.avatar || 'gaucho',
             createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
         }));
         const dRes = await client.query('SELECT * FROM deposits');
@@ -89,7 +107,6 @@ async function registerUser(fullName, email, username, password) {
     const cleanUser = (username || '').trim().toLowerCase();
     const cleanEmail = (email || '').trim().toLowerCase();
     const cleanFullName = (fullName || '').trim();
-    // Validación de seguridad contra XSS y nombres inválidos
     const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
     if (!usernameRegex.test(cleanUser)) {
         return {
@@ -97,12 +114,10 @@ async function registerUser(fullName, email, username, password) {
             message: 'El nombre de usuario debe tener entre 3 y 20 caracteres y solo contener letras, números o guion bajo (_).'
         };
     }
-    // Validación de formato de email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(cleanEmail)) {
         return { success: false, message: 'Ingresá un correo electrónico válido.' };
     }
-    // Validación de contraseña
     if (!password || password.length < 6) {
         return { success: false, message: 'La contraseña debe tener al menos 6 caracteres.' };
     }
@@ -122,11 +137,12 @@ async function registerUser(fullName, email, username, password) {
         passwordHash,
         salt,
         chips: 0,
+        avatar: 'gaucho',
         createdAt: new Date().toISOString()
     };
     if (DATABASE_URL) {
         try {
-            await exports.pool.query('INSERT INTO users (id, full_name, email, username, password_hash, salt, chips) VALUES ($1, $2, $3, $4, $5, $6, $7)', [newUser.id, newUser.fullName, newUser.email, newUser.username, newUser.passwordHash, newUser.salt, newUser.chips]);
+            await exports.pool.query('INSERT INTO users (id, full_name, email, username, password_hash, salt, chips, avatar) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)', [newUser.id, newUser.fullName, newUser.email, newUser.username, newUser.passwordHash, newUser.salt, newUser.chips, newUser.avatar]);
             console.log(`💾 Usuario @${newUser.username} guardado exitosamente en Supabase.`);
         }
         catch (dbErr) {
@@ -154,6 +170,7 @@ async function loginUser(usernameOrEmail, password) {
                     passwordHash: r.password_hash,
                     salt: r.salt,
                     chips: Number(r.chips) || 0,
+                    avatar: r.avatar || 'gaucho',
                     createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
                 };
                 usersCache.push(user);
@@ -207,12 +224,31 @@ function modifyUserChips(username, amount) {
     }
     return true;
 }
+function getUserAvatar(username) {
+    const clean = (username || '').trim().toLowerCase();
+    const user = usersCache.find(u => (u.username || '').toLowerCase() === clean);
+    return user?.avatar || 'gaucho';
+}
+function updateUserAvatar(username, avatarId) {
+    const clean = (username || '').trim().toLowerCase();
+    if (!exports.ALLOWED_AVATARS.includes(avatarId))
+        return false;
+    const user = usersCache.find(u => (u.username || '').toLowerCase() === clean);
+    if (!user)
+        return false;
+    user.avatar = avatarId;
+    if (DATABASE_URL) {
+        exports.pool.query('UPDATE users SET avatar = $1 WHERE id = $2', [avatarId, user.id]).catch(err => console.error('Error actualizando avatar en BD:', err));
+    }
+    return true;
+}
 function getAllUsersList() {
     return usersCache.map(u => ({
         username: u.username,
         fullName: u.fullName,
         email: u.email,
-        chips: u.chips || 0
+        chips: u.chips || 0,
+        avatar: u.avatar || 'gaucho'
     }));
 }
 function requestDeposit(username, amount, reference) {

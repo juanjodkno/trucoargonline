@@ -16,7 +16,10 @@ import {
   modifyUserChips,
   getAllUsersList,
   resetUserPassword,
-  deleteUser
+  deleteUser,
+  getUserAvatar,
+  updateUserAvatar,
+  ALLOWED_AVATARS
 } from './auth/userService';
 
 const app = express();
@@ -87,6 +90,31 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   return res.status(result.success ? 200 : 401).json(result);
 });
 
+// Gestión de Avatares
+app.get('/api/user/avatars-list', (req, res) => {
+  return res.json({ avatars: ALLOWED_AVATARS });
+});
+
+app.get('/api/user/avatar/:username', (req, res) => {
+  const avatar = getUserAvatar(req.params.username);
+  return res.json({ avatar });
+});
+
+app.post('/api/user/avatar', (req, res) => {
+  const { username, avatarId } = req.body;
+  if (!username || !avatarId) {
+    return res.status(400).json({ success: false, message: 'Datos incompletos.' });
+  }
+
+  const ok = updateUserAvatar(username, avatarId);
+  if (!ok) {
+    return res.status(400).json({ success: false, message: 'Avatar no válido o usuario inexistente.' });
+  }
+
+  return res.json({ success: true, message: 'Avatar actualizado correctamente.', avatar: avatarId });
+});
+
+// Billetera
 app.get('/api/wallet/balance/:username', (req, res) => {
   const chips = getUserChips(req.params.username);
   return res.json({ chips });
@@ -119,6 +147,7 @@ app.post('/api/wallet/withdraw-request', (req, res) => {
   });
 });
 
+// Panel Administrativo
 app.get('/api/admin/users-list', requireAdminAuth, (req, res) => {
   const users = getAllUsersList();
   return res.json(users);

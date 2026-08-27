@@ -16,6 +16,7 @@ function setupSocketEvents(io) {
             .map(r => ({
             roomId: r.roomId,
             creatorId: r.creatorId,
+            creatorAvatar: (0, userService_1.getUserAvatar)(r.creatorId),
             betAmount: r.betAmount,
             targetPoints: r.targetPoints,
             withFlor: r.withFlor
@@ -504,6 +505,8 @@ function setupSocketEvents(io) {
             trucoLevel: room.trucoLevel,
             trucoOwner: room.trucoOwner,
             awaitingResponseFrom: room.gameRound.awaitingResponseFrom,
+            myAvatar: (0, userService_1.getUserAvatar)(userId),
+            rivalAvatar: rivalUsername ? (0, userService_1.getUserAvatar)(rivalUsername) : 'gaucho'
         });
     }
     io.on('connection', (socket) => {
@@ -561,7 +564,12 @@ function setupSocketEvents(io) {
                 rooms.set(roomId, room);
                 socket.join(roomId);
                 socket.emit('room_created', {
-                    roomId, newBalance: (0, userService_1.getUserChips)(userId), targetPoints: pts, withFlor: flor, betAmount: bet
+                    roomId,
+                    newBalance: (0, userService_1.getUserChips)(userId),
+                    targetPoints: pts,
+                    withFlor: flor,
+                    betAmount: bet,
+                    avatar: (0, userService_1.getUserAvatar)(userId)
                 });
                 broadcastTables();
             }
@@ -620,9 +628,15 @@ function setupSocketEvents(io) {
                 room.guestSocketId = socket.id;
                 socket.join(roomId);
                 io.to(roomId).emit('game_ready', {
-                    roomId: room.roomId, creatorId: room.creatorId, guestId: room.guestId,
+                    roomId: room.roomId,
+                    creatorId: room.creatorId,
+                    creatorAvatar: (0, userService_1.getUserAvatar)(room.creatorId),
+                    guestId: room.guestId,
+                    guestAvatar: (0, userService_1.getUserAvatar)(userId),
                     pot: room.betAmount > 0 ? room.betAmount * 2 * 0.9 : 0,
-                    targetPoints: room.targetPoints, withFlor: room.withFlor, betAmount: room.betAmount
+                    targetPoints: room.targetPoints,
+                    withFlor: room.withFlor,
+                    betAmount: room.betAmount
                 });
                 broadcastTables();
                 setTimeout(() => { dealAutoHand(room); }, 1200);

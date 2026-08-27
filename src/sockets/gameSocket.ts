@@ -3,7 +3,7 @@ import { Server, Socket } from 'socket.io';
 import crypto from 'crypto';
 import { TrucoRound } from '../game/trucoGame';
 import { getEnvidoDetails, hasFlor, calculateFlor, Card } from '../game/trucoEngine';
-import { modifyUserChips, getUserChips } from '../auth/userService';
+import { modifyUserChips, getUserChips, getUserAvatar } from '../auth/userService';
 
 interface EnvidoWinnerRecord {
   winnerId: string;
@@ -56,6 +56,7 @@ export function setupSocketEvents(io: Server) {
       .map(r => ({
         roomId: r.roomId,
         creatorId: r.creatorId,
+        creatorAvatar: getUserAvatar(r.creatorId),
         betAmount: r.betAmount,
         targetPoints: r.targetPoints,
         withFlor: r.withFlor
@@ -573,6 +574,8 @@ export function setupSocketEvents(io: Server) {
       trucoLevel: room.trucoLevel,
       trucoOwner: room.trucoOwner,
       awaitingResponseFrom: room.gameRound.awaitingResponseFrom,
+      myAvatar: getUserAvatar(userId),
+      rivalAvatar: rivalUsername ? getUserAvatar(rivalUsername) : 'gaucho'
     });
   }
 
@@ -635,7 +638,12 @@ export function setupSocketEvents(io: Server) {
         socket.join(roomId);
         
         socket.emit('room_created', { 
-          roomId, newBalance: getUserChips(userId), targetPoints: pts, withFlor: flor, betAmount: bet
+          roomId, 
+          newBalance: getUserChips(userId), 
+          targetPoints: pts, 
+          withFlor: flor, 
+          betAmount: bet,
+          avatar: getUserAvatar(userId)
         });
         broadcastTables();
       } catch (err) { console.error('Error creando mesa:', err); }
@@ -697,9 +705,15 @@ export function setupSocketEvents(io: Server) {
         socket.join(roomId);
 
         io.to(roomId).emit('game_ready', {
-          roomId: room.roomId, creatorId: room.creatorId, guestId: room.guestId,
+          roomId: room.roomId, 
+          creatorId: room.creatorId, 
+          creatorAvatar: getUserAvatar(room.creatorId),
+          guestId: room.guestId,
+          guestAvatar: getUserAvatar(userId),
           pot: room.betAmount > 0 ? room.betAmount * 2 * 0.9 : 0,
-          targetPoints: room.targetPoints, withFlor: room.withFlor, betAmount: room.betAmount
+          targetPoints: room.targetPoints, 
+          withFlor: room.withFlor, 
+          betAmount: room.betAmount
         });
 
         broadcastTables();

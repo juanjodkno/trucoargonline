@@ -56,6 +56,10 @@
       border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: none; flex-direction: column; gap: 20px;
     }
     .lobby-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 15px; }
+    .user-profile-badge { display: flex; align-items: center; gap: 8px; cursor: pointer; background: #0b1320; padding: 4px 10px; border-radius: 20px; border: 1px solid #334155; transition: 0.2s; }
+    .user-profile-badge:hover { border-color: #0077b6; background: #1e293b; }
+    .avatar-icon-sm { font-size: 1.3rem; line-height: 1; }
+    
     .wallet-box { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .chip-badge { background: #2a9d8f; padding: 6px 14px; border-radius: 20px; font-weight: bold; display: flex; align-items: center; gap: 6px; }
     
@@ -95,10 +99,23 @@
     .modal-card { background: #16222f; width: 100%; max-width: 440px; padding: 25px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.15); }
     .cbu-box { background: #080c10; padding: 14px; border-radius: 8px; font-size: 0.92rem; color: #ffd166; margin-bottom: 15px; border: 1px dashed #334155; line-height: 1.6; }
 
+    /* Selector de Avatar Grid */
+    .avatar-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0;
+    }
+    .avatar-card-btn {
+      background: #0b1320; border: 2px solid #334155; border-radius: 12px; padding: 10px 6px;
+      display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; transition: 0.2s;
+    }
+    .avatar-card-btn:hover { border-color: #0077b6; background: #1e293b; transform: translateY(-3px); }
+    .avatar-card-btn.active { border-color: #ffd166; background: rgba(255, 209, 102, 0.15); box-shadow: 0 0 10px rgba(255, 209, 102, 0.4); }
+    .avatar-emoji { font-size: 2rem; line-height: 1; }
+    .avatar-name { font-size: 0.72rem; color: #cbd5e1; font-weight: bold; }
+
     /* MESA DE JUEGO */
     #gameContainer { display: none; width: 100%; flex-direction: column; align-items: center; }
     .header-bar { background: rgba(255, 255, 255, 0.07); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.15); width: 100%; max-width: 880px; padding: 8px 20px; border-radius: 12px; margin-bottom: 10px; display: flex; gap: 14px; align-items: center; justify-content: space-between; box-shadow: 0 8px 24px rgba(0,0,0,0.4); flex-wrap: wrap; }
-    .score-badge { background: #0077b6; padding: 5px 12px; border-radius: 20px; font-weight: bold; font-size: 1rem; }
+    .score-badge { background: #0077b6; padding: 5px 14px; border-radius: 20px; font-weight: bold; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
     .turn-badge { color: #ffd166; font-weight: bold; }
     .timer-badge { background: #d90429; padding: 4px 10px; border-radius: 15px; font-weight: bold; font-size: 0.95rem; }
 
@@ -192,7 +209,7 @@
         
         <div style="display:flex; align-items:center; gap:8px; margin: 12px 0 6px 0; font-size:0.85rem; color:#cbd5e1; text-align:left;">
           <input type="checkbox" id="regRememberMe" checked style="width:17px; height:17px; cursor:pointer;" />
-          <label for="regRememberMe" style="cursor:margin:0;">Mantener sesión iniciada</label>
+          <label for="regRememberMe" style="cursor:pointer; margin:0;">Mantener sesión iniciada</label>
         </div>
 
         <button type="submit" class="btn-submit">Crear Cuenta</button>
@@ -224,12 +241,16 @@
   <!-- LOBBY -->
   <div class="lobby-container" id="lobbyContainer">
     <div class="lobby-header">
-      <div>
-        <h2 style="color:#48cae4; margin-bottom:4px; display:flex; align-items:center; gap:8px;">
+      <div style="display:flex; flex-direction:column; gap:6px;">
+        <h2 style="color:#48cae4; margin-bottom:2px; display:flex; align-items:center; gap:8px;">
           <img src="/logo.png" alt="Logo" style="width: 28px; height: 28px; object-fit: contain;" />
           <span>Mesas de Truco Online</span>
         </h2>
-        <span style="color:#cbd5e1; font-size:0.9rem;">Jugador: <strong id="lobbyUsername"></strong></span>
+        <div class="user-profile-badge" onclick="openAvatarModal()" title="Hacé clic para cambiar tu avatar">
+          <span class="avatar-icon-sm" id="lobbyUserAvatar">🤠</span>
+          <span style="color:#cbd5e1; font-size:0.9rem;">Jugador: <strong id="lobbyUsername"></strong></span>
+          <span style="font-size:0.75rem; color:#ffd166; margin-left:4px;">✏️</span>
+        </div>
       </div>
       <div class="wallet-box">
         <div class="chip-badge">
@@ -275,6 +296,20 @@
 
     <h4 style="color:#94a3b8; border-bottom:1px solid #334155; padding-bottom:8px;">Mesas en Espera de Rival</h4>
     <div class="table-list" id="tableList"></div>
+  </div>
+
+  <!-- Modal Seleccionar Avatar -->
+  <div class="modal-overlay" id="avatarModal">
+    <div class="modal-card">
+      <h3 style="color:#ffd166; margin-bottom:6px;">🎭 Elegí tu Avatar</h3>
+      <p style="font-size:0.85rem; color:#94a3b8; margin-bottom:12px;">Personalizá tu personaje con iconos criollos y futboleros:</p>
+      
+      <div class="avatar-grid" id="avatarPickerGrid"></div>
+
+      <div style="display:flex; justify-content:flex-end; margin-top:12px;">
+        <button type="button" class="btn-submit" style="margin:0; background:#495057; width: auto; padding: 8px 18px;" onclick="closeAvatarModal()">Cerrar</button>
+      </div>
+    </div>
   </div>
 
   <!-- Modal Cargar Fichas -->
@@ -336,7 +371,11 @@
   <div id="gameContainer">
     <div class="header-bar">
       <div><strong>Mesa:</strong> <span id="lblRoom">...</span></div>
-      <div class="score-badge">Nosotros: <span id="scoreNosotros">0</span> | Ellos: <span id="scoreEllos">0</span></div>
+      <div class="score-badge">
+        <span id="myAvatarDisplay">🤠</span> Nosotros: <span id="scoreNosotros">0</span> 
+        | 
+        <span id="rivalAvatarDisplay">🤠</span> Ellos: <span id="scoreEllos">0</span>
+      </div>
       <div class="turn-badge">Turno: <span id="lblTurn">-</span></div>
       <div class="timer-badge">⏱️ <span id="lblTimer">25</span>s</div>
       <button id="btnAbandonar" onclick="handleLeaveButton()" style="background:#e63946; color:white; border:none; padding:6px 14px; border-radius:8px; font-weight:bold; font-size:0.85rem; cursor:pointer; transition:0.2s;">Abandonar mesa</button>
@@ -407,6 +446,27 @@
   </div>
 
   <script>
+    const AVATAR_MAP = {
+      'gaucho': { emoji: '🤠', name: 'Gaucho' },
+      'mate': { emoji: '🧉', name: 'El Mate' },
+      'asado': { emoji: '🥩', name: 'El Asado' },
+      'sol_mayo': { emoji: '☀️', name: 'Sol de Mayo' },
+      'gardel': { emoji: '🎩', name: 'El Zorzal' },
+      'diego': { emoji: '🔟', name: 'El Diez' },
+      'messi': { emoji: '🐐', name: 'La Pulga' },
+      'tango': { emoji: '💃', name: 'El Tango' }
+    };
+
+    function getAvatarEmoji(avatarId) {
+      return AVATAR_MAP[avatarId]?.emoji || '🤠';
+    }
+
+    function getTrickLabel(index) {
+      if (index === 0) return '1ra Mano';
+      if (index === 1) return '2da Mano';
+      return '3ra Mano';
+    }
+
     let socket = null;
     let currentUser = null;
     let activeRoomId = sessionStorage.getItem('truco_active_room') || null;
@@ -420,6 +480,7 @@
     let currentTrucoLevel = 1;
     let currentTrucoOwner = null;
     let currentTurnPlayer = '';
+    let currentRivalAvatar = 'gaucho';
 
     function parseBoolean(val) {
       if (val === true || val === 'true') return true;
@@ -474,6 +535,62 @@
       window.location.reload();
     }
 
+    function openAvatarModal() {
+      const grid = document.getElementById('avatarPickerGrid');
+      grid.innerHTML = '';
+      
+      const myCurrentAvatar = currentUser.avatar || 'gaucho';
+
+      Object.keys(AVATAR_MAP).forEach(id => {
+        const item = AVATAR_MAP[id];
+        const btn = document.createElement('div');
+        btn.className = `avatar-card-btn ${id === myCurrentAvatar ? 'active' : ''}`;
+        btn.innerHTML = `
+          <span class="avatar-emoji">${item.emoji}</span>
+          <span class="avatar-name">${item.name}</span>
+        `;
+        btn.onclick = () => selectAvatar(id);
+        grid.appendChild(btn);
+      });
+
+      document.getElementById('avatarModal').style.display = 'flex';
+    }
+
+    function closeAvatarModal() {
+      document.getElementById('avatarModal').style.display = 'none';
+    }
+
+    async function selectAvatar(avatarId) {
+      try {
+        const res = await fetch('/api/user/avatar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: currentUser.username, avatarId })
+        });
+        const data = await res.json();
+        if (data.success) {
+          currentUser.avatar = avatarId;
+          const storage = localStorage.getItem('truco_saved_user') ? localStorage : sessionStorage;
+          storage.setItem('truco_saved_user', JSON.stringify(currentUser));
+          updateAvatarDisplay();
+          closeAvatarModal();
+        } else {
+          alert(data.message || 'Error al cambiar avatar.');
+        }
+      } catch (err) {
+        console.error('Error actualizando avatar:', err);
+      }
+    }
+
+    function updateAvatarDisplay() {
+      const currentAvatar = currentUser.avatar || 'gaucho';
+      const emoji = getAvatarEmoji(currentAvatar);
+      const lobbyBadge = document.getElementById('lobbyUserAvatar');
+      if (lobbyBadge) lobbyBadge.innerText = emoji;
+      const myTableAvatar = document.getElementById('myAvatarDisplay');
+      if (myTableAvatar) myTableAvatar.innerText = emoji;
+    }
+
     async function handleRegister(e) {
       e.preventDefault();
       const fullName = document.getElementById('regFullName').value;
@@ -522,6 +639,7 @@
       document.getElementById('authOverlay').style.display = 'none';
       document.getElementById('lobbyContainer').style.display = 'flex';
       document.getElementById('lobbyUsername').innerText = currentUser.username;
+      updateAvatarDisplay();
       updateChipsDisplay(currentUser.chips || 0);
 
       if (!socket) {
@@ -702,11 +820,14 @@
       tables.forEach(t => {
         const isFree = t.betAmount === 0;
         const hasFlorOption = parseBoolean(t.withFlor);
+        const creatorEmoji = getAvatarEmoji(t.creatorAvatar || 'gaucho');
         const div = document.createElement('div');
         div.className = 'table-item';
         div.innerHTML = `
           <div class="table-info">
-            <span style="color:white; font-weight:bold;">Mesa de ${t.creatorId}</span>
+            <span style="color:white; font-weight:bold; display:flex; align-items:center; gap:6px;">
+              <span>${creatorEmoji}</span> Mesa de ${t.creatorId}
+            </span>
             <div class="table-tags">
               <span class="tag-badge ${isFree ? 'tag-free' : 'tag-pts'}">${isFree ? 'GRATIS' : '$' + new Intl.NumberFormat('es-AR').format(t.betAmount)}</span>
               <span class="tag-badge tag-pts">${t.targetPoints} Pts</span>
@@ -735,7 +856,7 @@
 
       for (let i = 0; i < 3; i++) {
         const slot = document.getElementById(`trick-${i}`);
-        if (slot) slot.innerHTML = `<span class="trick-label">${i + 1}ra Mano</span>`;
+        if (slot) slot.innerHTML = `<span class="trick-label">${getTrickLabel(i)}</span>`;
       }
 
       const opp = document.getElementById('opponentCards');
@@ -782,6 +903,8 @@
       document.getElementById('gameContainer').style.display = 'flex';
       document.getElementById('gameActions').style.display = 'flex';
       
+      updateAvatarDisplay();
+
       const betLabel = bet > 0 ? `$${new Intl.NumberFormat('es-AR').format(bet)} ARS` : 'Gratis (Amistoso)';
       document.getElementById('lblRoom').innerText = `${roomId} (${betLabel} | ${roomTargetPoints} pts | ${roomWithFlor ? 'Con Flor' : 'Sin Flor'})`;
       
@@ -978,6 +1101,11 @@
         currentTrucoOwner = data.trucoOwner;
         roomWithFlor = parseBoolean(data.withFlor);
 
+        if (data.rivalAvatar) {
+          currentRivalAvatar = data.rivalAvatar;
+          document.getElementById('rivalAvatarDisplay').innerText = getAvatarEmoji(currentRivalAvatar);
+        }
+
         currentMyCards = data.myCards || [];
         const myCardsContainer = document.getElementById('myCards');
         myCardsContainer.innerHTML = '';
@@ -1002,7 +1130,7 @@
 
         for (let i = 0; i < 3; i++) {
           const slot = document.getElementById(`trick-${i}`);
-          slot.innerHTML = `<span class="trick-label">${i + 1}ra Mano</span>`;
+          slot.innerHTML = `<span class="trick-label">${getTrickLabel(i)}</span>`;
           if (data.tricks[i]) {
             data.tricks[i].forEach((cardObj) => {
               const isMine = cardObj.userId.toLowerCase() === currentUser.username.toLowerCase();
@@ -1040,6 +1168,11 @@
         enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, true);
         resetTableVisuals(true);
         roomWithFlor = parseBoolean(data.withFlor);
+
+        const isP1 = (data.creatorId || '').toLowerCase() === currentUser.username.toLowerCase();
+        currentRivalAvatar = isP1 ? data.guestAvatar : data.creatorAvatar;
+        document.getElementById('rivalAvatarDisplay').innerText = getAvatarEmoji(currentRivalAvatar);
+
         const potMsg = data.pot > 0 ? `Pozo en juego: $${new Intl.NumberFormat('es-AR').format(data.pot)} ARS` : '¡Partida Amistosa (Gratis)!';
         log(`🏆 ¡Rival encontrado! ${potMsg}`);
       });
@@ -1066,7 +1199,7 @@
         currentTrucoOwner = null;
 
         for (let i = 0; i < 3; i++) {
-          document.getElementById(`trick-${i}`).innerHTML = `<span class="trick-label">${i + 1}ra Mano</span>`;
+          document.getElementById(`trick-${i}`).innerHTML = `<span class="trick-label">${getTrickLabel(i)}</span>`;
         }
         const opp = document.getElementById('opponentCards');
         opp.innerHTML = `
@@ -1469,4 +1602,4 @@
     });
   </script>
 </body>
-</html> 
+</html>
