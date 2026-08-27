@@ -284,7 +284,10 @@
       <p style="font-size:0.85rem; color:#94a3b8; margin-bottom:12px;">Transferí desde tu banco o billetera virtual a estos datos oficiales:</p>
       
       <div class="cbu-box">
-        <div><strong>Alias:</strong> juanjodecano.ap</div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px;">
+          <div><strong>Alias:</strong> <span>juanjodecano.ap</span></div>
+          <button type="button" id="btnCopyAlias" onclick="copyAlias()" style="background:#0077b6; color:white; border:none; padding:4px 10px; border-radius:6px; font-size:0.75rem; cursor:pointer; font-weight:bold; transition:0.2s;">📋 Copiar</button>
+        </div>
         <div><strong>Titular:</strong> Juan Jose Arancibia Jerez</div>
         <div><strong>Banco:</strong> AstroPay</div>
       </div>
@@ -546,6 +549,24 @@
       document.getElementById('lobbyChips').innerText = new Intl.NumberFormat('es-AR').format(chips);
     }
 
+    function copyAlias() {
+      const alias = 'juanjodecano.ap';
+      navigator.clipboard.writeText(alias).then(() => {
+        const btn = document.getElementById('btnCopyAlias');
+        if (btn) {
+          btn.innerText = '✅ ¡Copiado!';
+          btn.style.background = '#2ec4b6';
+          btn.style.color = '#081c15';
+          setTimeout(() => {
+            btn.innerText = '📋 Copiar';
+            btn.style.background = '#0077b6';
+            btn.style.color = 'white';
+          }, 2000);
+        }
+      }).catch(err => {
+        console.error('Error al copiar al portapapeles:', err);
+      });
+    }
     function openDepositModal() { document.getElementById('depositModal').style.display = 'flex'; }
     function closeDepositModal() { document.getElementById('depositModal').style.display = 'none'; }
 
