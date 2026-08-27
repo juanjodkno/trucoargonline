@@ -427,13 +427,19 @@ export function setupSocketEvents(io: Server) {
 
     const winnerId = folderUserId.toLowerCase() === room.creatorId.toLowerCase() ? room.guestId! : room.creatorId;
 
-    let pts = 1;
+    let trucoPts = 1;
     if (room.gameRound.awaitingResponseFrom) {
-      if (room.gameRound.trucoPointsAtStake === 2) pts = 1;
-      else if (room.gameRound.trucoPointsAtStake === 3) pts = 2;
-      else if (room.gameRound.trucoPointsAtStake === 4) pts = 3;
+      if (room.gameRound.trucoPointsAtStake === 2) trucoPts = 1;
+      else if (room.gameRound.trucoPointsAtStake === 3) trucoPts = 2;
+      else if (room.gameRound.trucoPointsAtStake === 4) trucoPts = 3;
     } else {
-      pts = room.trucoLevel || 1;
+      trucoPts = room.trucoLevel || 1;
+    }
+
+    let pts = trucoPts;
+    // Si se va al mazo en primera mano antes de resolverse o cerrarse el envido, se suma 1 punto extra por el envido
+    if (reason === 'ME_VOY_AL_MAZO' && !room.gameRound.envidoResolved && room.gameRound.currentTrickIndex === 0) {
+      pts = trucoPts + 1;
     }
 
     if (winnerId.toLowerCase() === room.creatorId.toLowerCase()) room.scoreP1 += pts;
