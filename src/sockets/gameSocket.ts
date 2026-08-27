@@ -12,39 +12,29 @@ import {
 
 interface EnvidoWinnerRecord {
   winnerId: string;
-  winnerTeam: 'TEAM_1' | 'TEAM_2';
   score: number;
   cards: Card[];
   pointsAwarded: number;
 }
 
-interface PlayerSlot {
-  userId: string;
-  socketId: string;
-  team: 'TEAM_1' | 'TEAM_2';
-  avatar: string;
-}
-
 interface ActiveRoom {
   roomId: string;
-  mode: '1v1' | '2v2';
-  maxPlayers: number;
   creatorId: string;
-  players: PlayerSlot[];
+  creatorSocketId?: string;
+  guestId?: string;
+  guestSocketId?: string;
   betAmount: number;
   targetPoints: number;
   withFlor: boolean;
-  scoreP1: number; // Puntos Equipo 1
-  scoreP2: number; // Puntos Equipo 2
+  scoreP1: number;
+  scoreP2: number;
   gameRound?: TrucoRound;
-  manoIndex: number;
   manoId: string;
   envidoChain: string[];
   envidoPendingCaller: string | null;
   envidoWinnerRecord?: EnvidoWinnerRecord | null;
   turnInterval?: NodeJS.Timeout;
 
-  // Manejo de Desconexión y Gracia
   disconnectInterval?: NodeJS.Timeout;
   disconnectedUser?: string | null;
 
@@ -52,10 +42,9 @@ interface ActiveRoom {
   envidoDeclarer: string | null;
   highestEnvidoScore: number;
   highestEnvidoUser: string | null;
-  highestEnvidoTeam: 'TEAM_1' | 'TEAM_2' | null;
 
   trucoLevel: number;
-  trucoOwnerTeam: 'TEAM_1' | 'TEAM_2' | null;
+  trucoOwner: string | null;
 
   pendingTrucoAfterEnvido?: {
     callerId: string;
@@ -71,18 +60,14 @@ export function setupSocketEvents(io: Server) {
 
   function getAvailableRooms() {
     return Array.from(rooms.values())
-      .filter(r => r.players.length < r.maxPlayers)
+      .filter(r => !r.guestId)
       .map(r => ({
         roomId: r.roomId,
-        mode: r.mode,
         creatorId: r.creatorId,
         creatorAvatar: getUserAvatar(r.creatorId),
         betAmount: r.betAmount,
         targetPoints: r.targetPoints,
-        withFlor: r.withFlor,
-        playersCount: r.players.length,
-        maxPlayers: r.maxPlayers,
-        players: r.players.map(p => ({ userId: p.userId, avatar: p.avatar, team: p.team }))
+        withFlor: r.withFlor
       }));
   }
 
@@ -91,13 +76,8 @@ export function setupSocketEvents(io: Server) {
   }
 
   function getScoreMap(room: ActiveRoom) {
-    const map: { [key: string]: number } = {
-      TEAM_1: room.scoreP1,
-      TEAM_2: room.scoreP2
-    };
-    room.players.forEach(p => {
-      map[p.userId] = p.team === 'TEAM_1' ? room.scoreP1 : room.scoreP2;
-    });
+    const map: { [userId: string]: number } = { [room.creatorId]: room.scoreP1 };
+    if (room.guestId) map[room.guestId] = room.scoreP2;
     return map;
   }
 
@@ -116,38 +96,32 @@ export function setupSocketEvents(io: Server) {
     room.disconnectedUser = null;
   }
 
-  function getAuthenticatedPlayer(room: ActiveRoom, socketId: string): PlayerSlot | null {
-    return room.players.find(p => p.socketId === socketId) || null;
+  function getAuthenticatedUserId(room: ActiveRoom, socketId: string): string | null {
+    if (room.creatorSocketId === socketId) return room.creatorId;
+    if (room.guestSocketId === socketId) return room.guestId || null;
+    return null;
   }
 
   function checkMatchEnd(room: ActiveRoom): boolean {
     if (room.scoreP1 >= room.targetPoints || room.scoreP2 >= room.targetPoints) {
       clearTurnTimer(room);
       clearDisconnectTimer(room);
-
-      const winningTeam: 'TEAM_1' | 'TEAM_2' = room.scoreP1 >= room.targetPoints ? 'TEAM_1' : 'TEAM_2';
-      const winners = room.players.filter(p => p.team === winningTeam);
-      const grossPot = room.betAmount > 0 ? room.betAmount * room.maxPlayers : 0;
+      const matchWinner = room.scoreP1 >= room.targetPoints ? room.creatorId : room.guestId!;
+      const grossPot = room.betAmount > 0 ? room.betAmount * 2 : 0;
       const netPot = grossPot * 0.9;
       const rake = grossPot * 0.1;
 
-      if (netPot > 0 && winners.length > 0) {
-        const prizePerWinner = netPot / winners.length;
-        winners.forEach(w => {
-          modifyUserChips(w.userId, prizePerWinner);
-        });
-        recordTransaction('COMMISSION_RAKE', winners[0].userId, rake, `Comisión mesa ${room.mode} ${room.roomId} ($${room.betAmount} c/u)`);
+      if (netPot > 0) {
+        modifyUserChips(matchWinner, netPot);
+        recordTransaction('COMMISSION_RAKE', matchWinner, rake, `Comisión mesa ${room.roomId} ($${room.betAmount} c/u)`);
       }
 
       io.to(room.roomId).emit('match_finished', {
-        winningTeam,
-        winnerIds: winners.map(w => w.userId),
-        winnerId: winners[0]?.userId || '',
+        winnerId: matchWinner,
         scores: getScoreMap(room),
         pot: netPot,
-        is2v2: room.mode === '2v2'
+        winnerBalance: getUserChips(matchWinner)
       });
-
       rooms.delete(room.roomId);
       broadcastTables();
       return true;
@@ -179,22 +153,20 @@ export function setupSocketEvents(io: Server) {
 
     if (room.isDeclaringEnvido && room.envidoDeclarer) {
       const activeUser = room.envidoDeclarer;
-      const hand = room.gameRound.getPlayerHand(activeUser);
-      if (hand) {
-        const allCards = hand.cards.concat(hand.cardsPlayed.filter(Boolean) as Card[]);
-        const details = getEnvidoDetails(allCards);
+      const hand = activeUser.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
+      const allCards = hand.cards.concat(hand.cardsPlayed.filter(Boolean) as Card[]);
+      const details = getEnvidoDetails(allCards);
 
-        if (room.highestEnvidoScore === 0) {
+      if (room.highestEnvidoScore === 0) {
+        executeDeclareEnvido(room, activeUser, details.score);
+      } else {
+        if (details.score > room.highestEnvidoScore) {
           executeDeclareEnvido(room, activeUser, details.score);
         } else {
-          if (details.score > room.highestEnvidoScore) {
-            executeDeclareEnvido(room, activeUser, details.score);
-          } else {
-            executeSonBuenas(room, activeUser);
-          }
+          executeSonBuenas(room, activeUser);
         }
-        return;
       }
+      return;
     }
 
     if (room.gameRound.awaitingResponseFrom) {
@@ -208,8 +180,8 @@ export function setupSocketEvents(io: Server) {
     }
 
     const activePlayerId = room.gameRound.currentTurn;
-    const playerHand = room.gameRound.getPlayerHand(activePlayerId);
-    if (playerHand && playerHand.cards.length > 0) {
+    const playerHand = activePlayerId.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
+    if (playerHand.cards.length > 0) {
       const autoCard = playerHand.cards[0];
       executePlayCard(room, activePlayerId, autoCard.id);
     }
@@ -233,30 +205,25 @@ export function setupSocketEvents(io: Server) {
         io.to(room.roomId).emit('disconnect_timer_tick', { secondsLeft: graceLeft });
       } else {
         clearDisconnectTimer(room);
-
-        const discPlayer = room.players.find(p => p.userId.toLowerCase() === disconnectedUser.toLowerCase());
-        const winningTeam: 'TEAM_1' | 'TEAM_2' = discPlayer?.team === 'TEAM_1' ? 'TEAM_2' : 'TEAM_1';
-        const winners = room.players.filter(p => p.team === winningTeam);
-
-        const grossPot = room.betAmount > 0 ? room.betAmount * room.maxPlayers : 0;
+        
+        const isP1 = room.creatorId.toLowerCase() === disconnectedUser.toLowerCase();
+        const winnerId = isP1 ? room.guestId! : room.creatorId;
+        const grossPot = room.betAmount > 0 ? room.betAmount * 2 : 0;
         const netPot = grossPot * 0.9;
         const rake = grossPot * 0.1;
 
-        if (netPot > 0 && winners.length > 0) {
-          const prizePerWinner = netPot / winners.length;
-          winners.forEach(w => modifyUserChips(w.userId, prizePerWinner));
-          recordTransaction('COMMISSION_RAKE', winners[0].userId, rake, `Comisión abandono mesa ${room.mode} ${room.roomId} ($${room.betAmount} c/u)`);
+        if (netPot > 0) {
+          modifyUserChips(winnerId, netPot);
+          recordTransaction('COMMISSION_RAKE', winnerId, rake, `Comisión abandono mesa ${room.roomId} ($${room.betAmount} c/u)`);
         }
 
         io.to(room.roomId).emit('player_surrendered', {
           surrenderedUser: disconnectedUser,
-          winningTeam,
-          winnerIds: winners.map(w => w.userId),
-          winnerId: winners[0]?.userId || '',
+          winnerId,
           pot: netPot,
           scores: getScoreMap(room),
-          reason: 'DISCONNECT_TIMEOUT',
-          is2v2: room.mode === '2v2'
+          winnerBalance: getUserChips(winnerId),
+          reason: 'DISCONNECT_TIMEOUT'
         });
 
         rooms.delete(room.roomId);
@@ -266,12 +233,12 @@ export function setupSocketEvents(io: Server) {
   }
 
   function dealAutoHand(room: ActiveRoom) {
-    if (room.players.length < room.maxPlayers || room.disconnectedUser) return;
+    if (!room.guestId || room.disconnectedUser) return;
     clearTurnTimer(room);
 
-    const playerIds = room.players.map(p => p.userId);
-    const round = new TrucoRound(playerIds, room.manoId, room.targetPoints, room.withFlor);
-
+    const round = new TrucoRound(
+      room.creatorId, room.guestId, room.manoId, room.targetPoints, room.withFlor
+    );
     room.gameRound = round;
     room.gameRound.envidoResolved = false;
     room.envidoChain = [];
@@ -281,9 +248,8 @@ export function setupSocketEvents(io: Server) {
     room.envidoDeclarer = null;
     room.highestEnvidoScore = 0;
     room.highestEnvidoUser = null;
-    room.highestEnvidoTeam = null;
     room.trucoLevel = 1;
-    room.trucoOwnerTeam = null;
+    room.trucoOwner = null;
     room.pendingTrucoAfterEnvido = null;
 
     io.to(room.roomId).emit('hand_started', {
@@ -291,21 +257,28 @@ export function setupSocketEvents(io: Server) {
       currentTurn: round.currentTurn,
       scores: getScoreMap(room),
       withFlor: room.withFlor,
-      targetPoints: room.targetPoints,
-      mode: room.mode
+      targetPoints: room.targetPoints
     });
 
-    room.players.forEach(p => {
-      const hand = round.getPlayerHand(p.userId);
-      if (hand && p.socketId) {
-        io.to(p.socketId).emit('cards_dealt', {
-          myCards: hand.cards,
-          withFlor: room.withFlor,
-          manoId: room.manoId,
-          mode: room.mode
-        });
-      }
-    });
+    if (room.creatorSocketId) {
+      io.to(room.creatorSocketId).emit('cards_dealt', {
+        p1Id: room.creatorId,
+        p1Cards: round.p1.cards,
+        p2Id: room.guestId,
+        p2Cards: [],
+        withFlor: room.withFlor
+      });
+    }
+
+    if (room.guestSocketId) {
+      io.to(room.guestSocketId).emit('cards_dealt', {
+        p1Id: room.creatorId,
+        p1Cards: [],
+        p2Id: room.guestId,
+        p2Cards: round.p2.cards,
+        withFlor: room.withFlor
+      });
+    }
 
     startTurnTimer(room, 25);
   }
@@ -353,7 +326,6 @@ export function setupSocketEvents(io: Server) {
     room.envidoDeclarer = room.manoId;
     room.highestEnvidoScore = 0;
     room.highestEnvidoUser = null;
-    room.highestEnvidoTeam = null;
 
     io.to(room.roomId).emit('start_envido_declaration', {
       firstDeclarer: room.manoId,
@@ -365,19 +337,14 @@ export function setupSocketEvents(io: Server) {
   function executeDeclareEnvido(room: ActiveRoom, userId: string, declaredPoints: number) {
     if (!room.gameRound || !room.isDeclaringEnvido || room.envidoDeclarer !== userId) return;
 
-    const team = room.gameRound.getTeam(userId);
-
     if (room.highestEnvidoScore === 0) {
       room.highestEnvidoScore = declaredPoints;
       room.highestEnvidoUser = userId;
-      room.highestEnvidoTeam = team;
-
-      const rivals = room.gameRound.getRivals(userId);
-      const nextDeclarer = rivals[0] || userId;
-      room.envidoDeclarer = nextDeclarer;
+      const rivalId = userId.toLowerCase() === room.creatorId.toLowerCase() ? room.guestId! : room.creatorId;
+      room.envidoDeclarer = rivalId;
 
       io.to(room.roomId).emit('envido_points_announced', {
-        userId, points: declaredPoints, nextDeclarer,
+        userId, points: declaredPoints, nextDeclarer: rivalId,
         highestScore: declaredPoints, highestUser: userId, isFinal: false,
       });
       startTurnTimer(room, 25);
@@ -386,16 +353,15 @@ export function setupSocketEvents(io: Server) {
         userId, points: declaredPoints, nextDeclarer: null,
         highestScore: declaredPoints, highestUser: userId, isFinal: true,
       });
-      finalizeEnvido(room, userId, team);
+      finalizeEnvido(room, userId);
     }
   }
 
   function executeSonBuenas(room: ActiveRoom, userId: string) {
     if (!room.gameRound || !room.isDeclaringEnvido || room.envidoDeclarer !== userId) return;
     const winnerId = room.highestEnvidoUser!;
-    const winnerTeam = room.highestEnvidoTeam!;
     io.to(room.roomId).emit('son_buenas_said', { userId, winnerId });
-    finalizeEnvido(room, winnerId, winnerTeam);
+    finalizeEnvido(room, winnerId);
   }
 
   function checkAndResumePendingTruco(room: ActiveRoom): boolean {
@@ -420,7 +386,7 @@ export function setupSocketEvents(io: Server) {
     return false;
   }
 
-  function finalizeEnvido(room: ActiveRoom, winnerId: string, winnerTeam: 'TEAM_1' | 'TEAM_2') {
+  function finalizeEnvido(room: ActiveRoom, winnerId: string) {
     if (!room.gameRound) return;
     clearTurnTimer(room);
 
@@ -433,18 +399,18 @@ export function setupSocketEvents(io: Server) {
     const { acceptedPts } = calculateEnvidoPoints(room.envidoChain, room);
     const pts = acceptedPts;
 
-    if (winnerTeam === 'TEAM_1') room.scoreP1 += pts;
+    if (winnerId.toLowerCase() === room.creatorId.toLowerCase()) room.scoreP1 += pts;
     else room.scoreP2 += pts;
 
-    const winnerHand = room.gameRound.getPlayerHand(winnerId);
-    const winnerAllCards = winnerHand ? winnerHand.cards.concat(winnerHand.cardsPlayed.filter(Boolean) as Card[]) : [];
+    const winnerHand = winnerId.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
+    const winnerAllCards = winnerHand.cards.concat(winnerHand.cardsPlayed.filter(Boolean) as Card[]);
     const details = getEnvidoDetails(winnerAllCards);
 
-    room.envidoWinnerRecord = { winnerId, winnerTeam, score: details.score, cards: details.envidoCards, pointsAwarded: pts };
+    room.envidoWinnerRecord = { winnerId, score: details.score, cards: details.envidoCards, pointsAwarded: pts };
 
     io.to(room.roomId).emit('envido_resolved', {
-      winnerId, winnerTeam, pointsAwarded: pts, scores: getScoreMap(room),
-      declined: false, trucoLevel: room.trucoLevel,
+      winnerId, pointsAwarded: pts, scores: getScoreMap(room),
+      declined: false, trucoLevel: room.trucoLevel, trucoOwner: room.trucoOwner,
       currentTurn: room.gameRound.currentTurn
     });
 
@@ -468,20 +434,18 @@ export function setupSocketEvents(io: Server) {
 
     room.gameRound.envidoResolved = true;
     room.gameRound.awaitingResponseFrom = null;
-
-    const answeringTeam = room.gameRound.getTeam(answeringUserId);
-    const winningTeam: 'TEAM_1' | 'TEAM_2' = answeringTeam === 'TEAM_1' ? 'TEAM_2' : 'TEAM_1';
-    const callerId = room.envidoPendingCaller || room.gameRound.getTeamPlayers(winningTeam)[0];
+    const rivalId = answeringUserId.toLowerCase() === room.creatorId.toLowerCase() ? room.guestId! : room.creatorId;
+    const callerId = room.envidoPendingCaller || rivalId;
     room.envidoPendingCaller = null;
 
     const { declinedPts } = calculateEnvidoPoints(room.envidoChain, room);
 
-    if (winningTeam === 'TEAM_1') room.scoreP1 += declinedPts;
+    if (callerId.toLowerCase() === room.creatorId.toLowerCase()) room.scoreP1 += declinedPts;
     else room.scoreP2 += declinedPts;
 
     io.to(room.roomId).emit('envido_resolved', {
-      winnerId: callerId, winnerTeam: winningTeam, pointsAwarded: declinedPts, scores: getScoreMap(room),
-      declined: true, trucoLevel: room.trucoLevel,
+      winnerId: callerId, pointsAwarded: declinedPts, scores: getScoreMap(room),
+      declined: true, trucoLevel: room.trucoLevel, trucoOwner: room.trucoOwner,
       currentTurn: room.gameRound.currentTurn
     });
 
@@ -499,65 +463,44 @@ export function setupSocketEvents(io: Server) {
     room.envidoPendingCaller = null;
     room.gameRound.awaitingResponseFrom = null;
 
-    const callerHand = room.gameRound.getPlayerHand(callerId);
-    const callerAllCards = callerHand ? callerHand.cards.concat(callerHand.cardsPlayed.filter(Boolean) as Card[]) : [];
+    const callerHand = callerId.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
+    const callerAllCards = callerHand.cards.concat(callerHand.cardsPlayed.filter(Boolean) as Card[]);
     const florPoints = calculateFlor(callerAllCards);
-    const callerTeam = room.gameRound.getTeam(callerId);
 
-    const rivals = room.gameRound.getRivals(callerId);
-    let bestRivalFlorPts = 0;
-    let bestRivalId = '';
-    let bestRivalCards: Card[] = [];
+    const rivalId = callerId.toLowerCase() === room.creatorId.toLowerCase() ? room.guestId! : room.creatorId;
+    const rivalHand = rivalId.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
+    const rivalAllCards = rivalHand.cards.concat(rivalHand.cardsPlayed.filter(Boolean) as Card[]);
+    const rivalHasFlor = hasFlor(rivalAllCards);
 
-    rivals.forEach(rId => {
-      const rHand = room.gameRound!.getPlayerHand(rId);
-      const rCards = rHand ? rHand.cards.concat(rHand.cardsPlayed.filter(Boolean) as Card[]) : [];
-      if (hasFlor(rCards)) {
-        const pts = calculateFlor(rCards);
-        if (pts > bestRivalFlorPts) {
-          bestRivalFlorPts = pts;
-          bestRivalId = rId;
-          bestRivalCards = rCards;
-        }
-      }
-    });
-
-    if (bestRivalFlorPts === 0) {
-      if (callerTeam === 'TEAM_1') room.scoreP1 += 3;
+    if (!rivalHasFlor) {
+      if (callerId.toLowerCase() === room.creatorId.toLowerCase()) room.scoreP1 += 3;
       else room.scoreP2 += 3;
 
-      room.envidoWinnerRecord = { winnerId: callerId, winnerTeam: callerTeam, score: florPoints, cards: callerAllCards, pointsAwarded: 3 };
+      room.envidoWinnerRecord = { winnerId: callerId, score: florPoints, cards: callerAllCards, pointsAwarded: 3 };
       io.to(room.roomId).emit('flor_declared', {
         winnerId: callerId, score: florPoints, cards: callerAllCards,
-        pointsAwarded: 3, scores: getScoreMap(room), trucoLevel: room.trucoLevel,
+        pointsAwarded: 3, scores: getScoreMap(room), trucoLevel: room.trucoLevel, trucoOwner: room.trucoOwner,
         currentTurn: room.gameRound.currentTurn
       });
       if (checkMatchEnd(room)) return;
     } else {
-      let winnerId = callerId;
-      let winnerTeam = callerTeam;
-      let winnerPts = florPoints;
-      let winnerCards = callerAllCards;
+      const rivalFlorPts = calculateFlor(rivalAllCards);
+      let winnerId = callerId; let winnerPts = florPoints; let winnerCards = callerAllCards;
 
-      if (bestRivalFlorPts > florPoints) {
-        winnerId = bestRivalId;
-        winnerTeam = room.gameRound.getTeam(bestRivalId);
-        winnerPts = bestRivalFlorPts;
-        winnerCards = bestRivalCards;
-      } else if (bestRivalFlorPts === florPoints) {
-        const manoTeam = room.gameRound.getTeam(room.manoId);
-        winnerTeam = manoTeam;
-        winnerId = manoTeam === callerTeam ? callerId : bestRivalId;
-        winnerCards = manoTeam === callerTeam ? callerAllCards : bestRivalCards;
+      if (rivalFlorPts > florPoints) {
+        winnerId = rivalId; winnerPts = rivalFlorPts; winnerCards = rivalAllCards;
+      } else if (rivalFlorPts === florPoints) {
+        winnerId = room.manoId; winnerPts = florPoints;
+        winnerCards = room.manoId.toLowerCase() === room.creatorId.toLowerCase() ? callerAllCards : rivalAllCards;
       }
 
-      if (winnerTeam === 'TEAM_1') room.scoreP1 += 6;
+      if (winnerId.toLowerCase() === room.creatorId.toLowerCase()) room.scoreP1 += 6;
       else room.scoreP2 += 6;
 
-      room.envidoWinnerRecord = { winnerId, winnerTeam, score: winnerPts, cards: winnerCards, pointsAwarded: 6 };
+      room.envidoWinnerRecord = { winnerId, score: winnerPts, cards: winnerCards, pointsAwarded: 6 };
       io.to(room.roomId).emit('flor_declared', {
         winnerId, score: winnerPts, cards: winnerCards,
-        pointsAwarded: 6, scores: getScoreMap(room), trucoLevel: room.trucoLevel,
+        pointsAwarded: 6, scores: getScoreMap(room), trucoLevel: room.trucoLevel, trucoOwner: room.trucoOwner,
         currentTurn: room.gameRound.currentTurn
       });
       if (checkMatchEnd(room)) return;
@@ -572,10 +515,7 @@ export function setupSocketEvents(io: Server) {
     if (!room.gameRound) return;
     clearTurnTimer(room);
 
-    const folderTeam = room.gameRound.getTeam(folderUserId);
-    const winningTeam: 'TEAM_1' | 'TEAM_2' = folderTeam === 'TEAM_1' ? 'TEAM_2' : 'TEAM_1';
-    const winners = room.gameRound.getTeamPlayers(winningTeam);
-    const winnerId = winners[0] || '';
+    const winnerId = folderUserId.toLowerCase() === room.creatorId.toLowerCase() ? room.guestId! : room.creatorId;
 
     let trucoPts = 1;
     if (room.gameRound.awaitingResponseFrom) {
@@ -588,18 +528,19 @@ export function setupSocketEvents(io: Server) {
 
     let pts = trucoPts;
 
-    const cardsPlayedInTrick0 = room.gameRound.players.reduce((acc, p) => acc + (p.cardsPlayed[0] ? 1 : 0), 0);
+    const p1PlayedInTrick0 = room.gameRound.p1.cardsPlayed[0] !== null;
+    const p2PlayedInTrick0 = room.gameRound.p2.cardsPlayed[0] !== null;
+    const totalCardsPlayedInTrick0 = (p1PlayedInTrick0 ? 1 : 0) + (p2PlayedInTrick0 ? 1 : 0);
 
-    if (reason === 'ME_VOY_AL_MAZO' && !room.gameRound.envidoResolved && room.gameRound.currentTrickIndex === 0 && cardsPlayedInTrick0 === 0) {
+    if (reason === 'ME_VOY_AL_MAZO' && !room.gameRound.envidoResolved && room.gameRound.currentTrickIndex === 0 && totalCardsPlayedInTrick0 === 0) {
       pts = trucoPts + 1;
     }
 
-    if (winningTeam === 'TEAM_1') room.scoreP1 += pts;
+    if (winnerId.toLowerCase() === room.creatorId.toLowerCase()) room.scoreP1 += pts;
     else room.scoreP2 += pts;
 
     io.to(room.roomId).emit('round_ended', {
       winnerId, 
-      winningTeam,
       pointsAwarded: pts, 
       scores: getScoreMap(room),
       reason,
@@ -619,16 +560,14 @@ export function setupSocketEvents(io: Server) {
       room.envidoWinnerRecord = null;
       setTimeout(() => {
         if (checkMatchEnd(room)) return;
-        room.manoIndex = (room.manoIndex + 1) % room.players.length;
-        room.manoId = room.players[room.manoIndex].userId;
+        room.manoId = room.manoId.toLowerCase() === room.creatorId.toLowerCase() ? (room.guestId || room.creatorId) : room.creatorId;
         dealAutoHand(room);
       }, 3800);
       return;
     }
 
     if (checkMatchEnd(room)) return;
-    room.manoIndex = (room.manoIndex + 1) % room.players.length;
-    room.manoId = room.players[room.manoIndex].userId;
+    room.manoId = room.manoId.toLowerCase() === room.creatorId.toLowerCase() ? (room.guestId || room.creatorId) : room.creatorId;
     setTimeout(() => { dealAutoHand(room); }, 3000);
   }
 
@@ -648,26 +587,18 @@ export function setupSocketEvents(io: Server) {
     }
 
     io.to(room.roomId).emit('card_played', {
-      userId, 
-      cardId, 
-      trickIndex: result.trickIndex, 
-      isTrickOver: result.isTrickOver,
-      trickWinnerId: result.trickWinnerId || null, 
-      trickWinnerTeam: result.trickWinnerTeam || null,
-      nextTurn: result.nextTurn,
+      userId, cardId, trickIndex: result.trickIndex, isTrickOver: result.isTrickOver,
+      trickWinnerId: result.trickWinnerId || null, nextTurn: result.nextTurn,
       currentTrick: room.gameRound.currentTrickIndex,
     });
 
-    if (result.roundOver && result.winnerTeam) {
+    if (result.roundOver && result.winnerId) {
       const finalTrucoPoints = room.trucoLevel > 1 ? room.trucoLevel : (result.points || 1);
-      if (result.winnerTeam === 'TEAM_1') room.scoreP1 += finalTrucoPoints;
+      if (result.winnerId.toLowerCase() === room.creatorId.toLowerCase()) room.scoreP1 += finalTrucoPoints;
       else room.scoreP2 += finalTrucoPoints;
 
       io.to(room.roomId).emit('round_ended', {
-        winnerId: result.winnerId,
-        winningTeam: result.winnerTeam,
-        pointsAwarded: finalTrucoPoints, 
-        scores: getScoreMap(room),
+        winnerId: result.winnerId, pointsAwarded: finalTrucoPoints, scores: getScoreMap(room),
       });
       handleRoundTransition(room);
     } else {
@@ -678,27 +609,24 @@ export function setupSocketEvents(io: Server) {
   function sendFullSync(socket: Socket, room: ActiveRoom, userId: string) {
     if (!room.gameRound) return;
 
-    const myHand = room.gameRound.getPlayerHand(userId);
-    const myTeam = room.gameRound.getTeam(userId);
+    const isP1 = userId.toLowerCase() === room.creatorId.toLowerCase();
+    const myHand = isP1 ? room.gameRound.p1 : room.gameRound.p2;
+    const rivalHand = isP1 ? room.gameRound.p2 : room.gameRound.p1;
+    const rivalUsername = isP1 ? (room.guestId || '') : room.creatorId;
 
-    const tricksData: { [trickIdx: number]: { userId: string; cardId: string; team: string }[] } = { 0: [], 1: [], 2: [] };
+    const tricksData: { [trickIdx: number]: { userId: string; cardId: string }[] } = { 0: [], 1: [], 2: [] };
     for (let i = 0; i < 3; i++) {
-      room.gameRound.players.forEach(p => {
-        const c = p.cardsPlayed[i];
-        if (c) tricksData[i].push({ userId: p.userId, cardId: c.id, team: p.team });
-      });
+      const p1Card = room.gameRound.p1.cardsPlayed[i];
+      const p2Card = room.gameRound.p2.cardsPlayed[i];
+      if (p1Card) tricksData[i].push({ userId: room.creatorId, cardId: p1Card.id });
+      if (p2Card && room.guestId) tricksData[i].push({ userId: room.guestId, cardId: p2Card.id });
     }
 
     socket.emit('sync_game_state', {
       roomId: room.roomId,
-      mode: room.mode,
-      players: room.players.map(p => ({
-        userId: p.userId,
-        avatar: p.avatar,
-        team: p.team,
-        cardsCount: room.gameRound?.getPlayerHand(p.userId)?.cards.length || 0
-      })),
-      myTeam,
+      creatorId: room.creatorId,
+      guestId: room.guestId,
+      rivalUsername,
       manoId: room.manoId,
       scores: getScoreMap(room),
       targetPoints: room.targetPoints,
@@ -706,13 +634,15 @@ export function setupSocketEvents(io: Server) {
       betAmount: room.betAmount,
       currentTurn: room.gameRound.currentTurn,
       currentTrick: room.gameRound.currentTrickIndex,
-      myCards: myHand?.cards || [],
+      myCards: myHand.cards,
+      oppCardsCount: rivalHand.cards.length,
       tricks: tricksData,
       envidoResolved: room.gameRound.envidoResolved,
       trucoLevel: room.trucoLevel,
-      trucoOwnerTeam: room.trucoOwnerTeam,
+      trucoOwner: room.trucoOwner,
       awaitingResponseFrom: room.gameRound.awaitingResponseFrom,
-      myAvatar: getUserAvatar(userId)
+      myAvatar: getUserAvatar(userId),
+      rivalAvatar: rivalUsername ? getUserAvatar(rivalUsername) : 'gaucho'
     });
   }
 
@@ -726,29 +656,28 @@ export function setupSocketEvents(io: Server) {
 
     socket.on('reconnect_game', ({ roomId, userId }) => {
       const room = rooms.get(roomId);
-      if (room) {
-        const player = room.players.find(p => p.userId.toLowerCase() === (userId || '').toLowerCase());
-        if (player) {
-          player.socketId = socket.id;
-          socket.join(roomId);
-
-          if (room.disconnectedUser && room.disconnectedUser.toLowerCase() === userId.toLowerCase()) {
-            clearDisconnectTimer(room);
-            io.to(roomId).emit('player_reconnected', { reconnectedUser: userId });
-            startTurnTimer(room, 25);
-          }
-
-          sendFullSync(socket, room, userId);
-          return;
+      if (room && (room.creatorId.toLowerCase() === userId.toLowerCase() || (room.guestId && room.guestId.toLowerCase() === userId.toLowerCase()))) {
+        socket.join(roomId);
+        if (room.creatorId.toLowerCase() === userId.toLowerCase()) {
+          room.creatorSocketId = socket.id;
+        } else if (room.guestId && room.guestId.toLowerCase() === userId.toLowerCase()) {
+          room.guestSocketId = socket.id;
         }
+
+        if (room.disconnectedUser && room.disconnectedUser.toLowerCase() === userId.toLowerCase()) {
+          clearDisconnectTimer(room);
+          io.to(roomId).emit('player_reconnected', { reconnectedUser: userId });
+          startTurnTimer(room, 25);
+        }
+
+        sendFullSync(socket, room, userId);
+      } else {
+        socket.emit('reconnect_failed');
       }
-      socket.emit('reconnect_failed');
     });
 
-    socket.on('create_room', ({ userId, betAmount, targetPoints, withFlor, mode }) => {
+    socket.on('create_room', ({ userId, betAmount, targetPoints, withFlor }) => {
       try {
-        const gameMode: '1v1' | '2v2' = mode === '2v2' ? '2v2' : '1v1';
-        const maxPlayers = gameMode === '2v2' ? 4 : 2;
         const bet = Number(betAmount) >= 0 ? Number(betAmount) : 0;
         const pts = Number(targetPoints) === 15 ? 15 : 30;
         const flor = (withFlor === true || withFlor === 'true' || withFlor === undefined);
@@ -759,25 +688,15 @@ export function setupSocketEvents(io: Server) {
         }
 
         const roomId = 'mesa_' + crypto.randomBytes(3).toString('hex');
-        const creatorSlot: PlayerSlot = {
-          userId,
-          socketId: socket.id,
-          team: 'TEAM_1',
-          avatar: getUserAvatar(userId)
-        };
-
         const room: ActiveRoom = {
           roomId, 
-          mode: gameMode,
-          maxPlayers,
           creatorId: userId, 
-          players: [creatorSlot],
+          creatorSocketId: socket.id,
           betAmount: bet, 
           targetPoints: pts, 
           withFlor: flor,
           scoreP1: 0, 
           scoreP2: 0, 
-          manoIndex: 0,
           manoId: userId, 
           envidoChain: [], 
           envidoPendingCaller: null,
@@ -785,9 +704,8 @@ export function setupSocketEvents(io: Server) {
           envidoDeclarer: null, 
           highestEnvidoScore: 0, 
           highestEnvidoUser: null,
-          highestEnvidoTeam: null,
           trucoLevel: 1, 
-          trucoOwnerTeam: null, 
+          trucoOwner: null, 
           pendingTrucoAfterEnvido: null
         };
         rooms.set(roomId, room);
@@ -795,12 +713,11 @@ export function setupSocketEvents(io: Server) {
         
         socket.emit('room_created', { 
           roomId, 
-          mode: gameMode,
           newBalance: getUserChips(userId), 
           targetPoints: pts, 
           withFlor: flor, 
           betAmount: bet,
-          avatar: creatorSlot.avatar
+          avatar: getUserAvatar(userId)
         });
         broadcastTables();
       } catch (err) { console.error('Error creando mesa:', err); }
@@ -808,10 +725,10 @@ export function setupSocketEvents(io: Server) {
 
     socket.on('cancel_waiting_table', ({ roomId }) => {
       const room = rooms.get(roomId);
-      if (room && room.players.length < room.maxPlayers && room.creatorId.toLowerCase() === getAuthenticatedPlayer(room, socket.id)?.userId.toLowerCase()) {
-        room.players.forEach(p => {
-          if (room.betAmount > 0) modifyUserChips(p.userId, room.betAmount);
-        });
+      if (room && !room.guestId && room.creatorSocketId === socket.id) {
+        if (room.betAmount > 0) {
+          modifyUserChips(room.creatorId, room.betAmount);
+        }
         rooms.delete(roomId);
         socket.emit('table_cancelled_ok', { newBalance: getUserChips(room.creatorId) });
         broadcastTables();
@@ -820,35 +737,32 @@ export function setupSocketEvents(io: Server) {
 
     socket.on('surrender_match', ({ roomId }) => {
       const room = rooms.get(roomId);
-      if (!room || room.players.length < room.maxPlayers) return;
+      if (!room || !room.guestId) return;
 
-      const authUser = getAuthenticatedPlayer(room, socket.id);
+      const authUser = getAuthenticatedUserId(room, socket.id);
       if (!authUser) return;
 
+      const isP1 = room.creatorId.toLowerCase() === authUser.toLowerCase();
       clearTurnTimer(room);
       clearDisconnectTimer(room);
 
-      const winningTeam: 'TEAM_1' | 'TEAM_2' = authUser.team === 'TEAM_1' ? 'TEAM_2' : 'TEAM_1';
-      const winners = room.players.filter(p => p.team === winningTeam);
-      const grossPot = room.betAmount > 0 ? room.betAmount * room.maxPlayers : 0;
+      const winnerId = isP1 ? room.guestId : room.creatorId;
+      const grossPot = room.betAmount > 0 ? room.betAmount * 2 : 0;
       const netPot = grossPot * 0.9;
       const rake = grossPot * 0.1;
 
-      if (netPot > 0 && winners.length > 0) {
-        const prizePerWinner = netPot / winners.length;
-        winners.forEach(w => modifyUserChips(w.userId, prizePerWinner));
-        recordTransaction('COMMISSION_RAKE', winners[0].userId, rake, `Comisión rendición mesa ${room.mode} ${room.roomId} ($${room.betAmount} c/u)`);
+      if (netPot > 0) {
+        modifyUserChips(winnerId, netPot);
+        recordTransaction('COMMISSION_RAKE', winnerId, rake, `Comisión rendición mesa ${room.roomId} ($${room.betAmount} c/u)`);
       }
 
       io.to(roomId).emit('player_surrendered', {
-        surrenderedUser: authUser.userId,
-        winningTeam,
-        winnerIds: winners.map(w => w.userId),
-        winnerId: winners[0]?.userId || '',
+        surrenderedUser: authUser,
+        winnerId,
         pot: netPot,
         scores: getScoreMap(room),
-        reason: 'SURRENDER',
-        is2v2: room.mode === '2v2'
+        winnerBalance: getUserChips(winnerId),
+        reason: 'SURRENDER'
       });
 
       rooms.delete(roomId);
@@ -859,106 +773,50 @@ export function setupSocketEvents(io: Server) {
       try {
         const room = rooms.get(roomId);
         if (!room) return socket.emit('error_action', { message: 'La mesa no existe.' });
-        if (room.players.length >= room.maxPlayers) return socket.emit('error_action', { message: 'La mesa ya está completa.' });
-        if (room.players.some(p => p.userId.toLowerCase() === userId.toLowerCase())) {
-          return socket.emit('error_action', { message: 'Ya estás en esta mesa.' });
-        }
+        if (room.guestId) return socket.emit('error_action', { message: 'La mesa ya está completa.' });
         
         if (room.betAmount > 0) {
           const successDeduct = modifyUserChips(userId, -room.betAmount);
           if (!successDeduct) return socket.emit('error_action', { message: 'Saldo insuficiente.' });
         }
 
-        const nextTeam: 'TEAM_1' | 'TEAM_2' = (room.players.length % 2 === 0) ? 'TEAM_1' : 'TEAM_2';
-        const newPlayer: PlayerSlot = {
-          userId,
-          socketId: socket.id,
-          team: nextTeam,
-          avatar: getUserAvatar(userId)
-        };
-
-        room.players.push(newPlayer);
+        room.guestId = userId;
+        room.guestSocketId = socket.id;
         socket.join(roomId);
 
+        io.to(roomId).emit('game_ready', {
+          roomId: room.roomId, 
+          creatorId: room.creatorId, 
+          creatorAvatar: getUserAvatar(room.creatorId),
+          guestId: room.guestId,
+          guestAvatar: getUserAvatar(userId),
+          pot: room.betAmount > 0 ? room.betAmount * 2 * 0.9 : 0,
+          targetPoints: room.targetPoints, 
+          withFlor: room.withFlor, 
+          betAmount: room.betAmount
+        });
+
         broadcastTables();
-
-        if (room.players.length === room.maxPlayers) {
-          const grossPot = room.betAmount > 0 ? room.betAmount * room.maxPlayers : 0;
-          const netPot = grossPot * 0.9;
-
-          io.to(roomId).emit('game_ready', {
-            roomId: room.roomId,
-            mode: room.mode,
-            players: room.players.map(p => ({ userId: p.userId, avatar: p.avatar, team: p.team })),
-            pot: netPot,
-            targetPoints: room.targetPoints, 
-            withFlor: room.withFlor, 
-            betAmount: room.betAmount
-          });
-
-          setTimeout(() => { dealAutoHand(room); }, 1200);
-        } else {
-          io.to(roomId).emit('player_joined_waiting', {
-            roomId: room.roomId,
-            playersCount: room.players.length,
-            maxPlayers: room.maxPlayers,
-            players: room.players.map(p => ({ userId: p.userId, avatar: p.avatar, team: p.team }))
-          });
-        }
+        setTimeout(() => { dealAutoHand(room); }, 1200);
       } catch (err) { console.error('Error uniéndose a mesa:', err); }
     });
 
     socket.on('disconnect', () => {
       for (const [roomId, room] of rooms.entries()) {
-        const playerIndex = room.players.findIndex(p => p.socketId === socket.id);
-        if (playerIndex === -1) continue;
-
-        const player = room.players[playerIndex];
-
-        if (room.players.length < room.maxPlayers) {
-          if (room.betAmount > 0) modifyUserChips(player.userId, room.betAmount);
-          room.players.splice(playerIndex, 1);
-
-          if (room.players.length === 0 || player.userId === room.creatorId) {
-            room.players.forEach(p => {
-              if (room.betAmount > 0) modifyUserChips(p.userId, room.betAmount);
-            });
-            rooms.delete(roomId);
-          }
+        if (!room.guestId && room.creatorSocketId === socket.id) {
+          if (room.betAmount > 0) modifyUserChips(room.creatorId, room.betAmount);
+          rooms.delete(roomId);
           broadcastTables();
           continue;
         }
 
-        startDisconnectGracePeriod(room, player.userId);
-      }
-    });
-
-    // CHAT PRIVADO EXCLUSIVO PARA COMPAÑEROS DE EQUIPO (2 vs 2)
-    socket.on('send_team_chat', ({ roomId, message }) => {
-      try {
-        const room = rooms.get(roomId);
-        if (!room || !message) return;
-
-        const authUser = getAuthenticatedPlayer(room, socket.id);
-        if (!authUser) return;
-
-        const cleanMsg = String(message).trim().slice(0, 100);
-        if (!cleanMsg) return;
-
-        // Enviar solo a los integrantes del mismo equipo
-        const teammates = room.players.filter(p => p.team === authUser.team);
-        teammates.forEach(tm => {
-          if (tm.socketId) {
-            io.to(tm.socketId).emit('team_chat_received', {
-              sender: authUser.userId,
-              message: cleanMsg,
-              avatar: authUser.avatar,
-              team: authUser.team
-            });
+        if (room.guestId) {
+          if (room.creatorSocketId === socket.id) {
+            startDisconnectGracePeriod(room, room.creatorId);
+          } else if (room.guestSocketId === socket.id) {
+            startDisconnectGracePeriod(room, room.guestId);
           }
-        });
-      } catch (err) {
-        console.error('Error en send_team_chat:', err);
+        }
       }
     });
 
@@ -966,27 +824,27 @@ export function setupSocketEvents(io: Server) {
       const room = rooms.get(roomId);
       if (!room || !room.gameRound || room.disconnectedUser) return;
 
-      const authUser = getAuthenticatedPlayer(room, socket.id);
+      const authUser = getAuthenticatedUserId(room, socket.id);
       if (!authUser) return socket.emit('error_action', { message: 'No perteneces a esta partida.' });
 
-      if (room.gameRound.currentTurn.toLowerCase() !== authUser.userId.toLowerCase()) {
+      if (room.gameRound.currentTurn.toLowerCase() !== authUser.toLowerCase()) {
         return socket.emit('error_action', { message: 'No es tu turno de jugar carta.' });
       }
-      executePlayCard(room, authUser.userId, cardId);
+      executePlayCard(room, authUser, cardId);
     });
 
     socket.on('declare_envido_points', ({ roomId, points }) => {
       const room = rooms.get(roomId);
       if (!room || room.disconnectedUser) return;
-      const authUser = getAuthenticatedPlayer(room, socket.id);
-      if (authUser) executeDeclareEnvido(room, authUser.userId, points);
+      const authUser = getAuthenticatedUserId(room, socket.id);
+      if (authUser) executeDeclareEnvido(room, authUser, points);
     });
 
     socket.on('say_son_buenas', ({ roomId }) => {
       const room = rooms.get(roomId);
       if (!room || room.disconnectedUser) return;
-      const authUser = getAuthenticatedPlayer(room, socket.id);
-      if (authUser) executeSonBuenas(room, authUser.userId);
+      const authUser = getAuthenticatedUserId(room, socket.id);
+      if (authUser) executeSonBuenas(room, authUser);
     });
 
     socket.on('send_call', ({ roomId, callType }) => {
@@ -994,24 +852,21 @@ export function setupSocketEvents(io: Server) {
         const room = rooms.get(roomId);
         if (!room || !room.gameRound || room.disconnectedUser) return;
 
-        const authUser = getAuthenticatedPlayer(room, socket.id);
+        const authUser = getAuthenticatedUserId(room, socket.id);
         if (!authUser) return socket.emit('error_action', { message: 'No perteneces a esta mesa.' });
 
-        const myTeam = authUser.team;
-        const rivals = room.gameRound.getRivals(authUser.userId);
-        const nextRivalInTurn = rivals[0] || '';
+        const rivalId = authUser.toLowerCase() === room.creatorId.toLowerCase() ? room.guestId! : room.creatorId;
         const currentTrick = room.gameRound.currentTrickIndex;
 
-        const callerHand = room.gameRound.getPlayerHand(authUser.userId);
-        const callerCardsPlayed = callerHand ? callerHand.cardsPlayed.filter(Boolean).length : 0;
+        const callerHand = authUser.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
+        const callerCardsPlayed = callerHand.cardsPlayed.filter(Boolean).length;
 
         if (room.gameRound.awaitingResponseFrom) {
-          const awaitingPlayer = room.gameRound.getPlayerHand(room.gameRound.awaitingResponseFrom);
-          if (awaitingPlayer?.team === myTeam) {
-            return socket.emit('error_action', { message: 'Tu equipo no tiene que responder a este canto.' });
+          if (room.gameRound.awaitingResponseFrom.toLowerCase() !== authUser.toLowerCase()) {
+            return socket.emit('error_action', { message: 'No es tu turno de responder.' });
           }
         } else {
-          if (room.gameRound.currentTurn.toLowerCase() !== authUser.userId.toLowerCase()) {
+          if (room.gameRound.currentTurn.toLowerCase() !== authUser.toLowerCase()) {
             return socket.emit('error_action', { message: 'No es tu turno para cantar o jugar.' });
           }
         }
@@ -1023,7 +878,7 @@ export function setupSocketEvents(io: Server) {
         if (callType === 'FLOR') {
           if (!room.withFlor) return socket.emit('error_action', { message: 'Partida SIN FLOR.' });
           if (currentTrick > 0 || room.gameRound.envidoResolved) return socket.emit('error_action', { message: 'El tiempo para cantar Flor ya cerró.' });
-          return resolveFlor(room, authUser.userId);
+          return resolveFlor(room, authUser);
         }
 
         if (['ENVIDO', 'ENVIDO_ENVIDO', 'REAL_ENVIDO', 'FALTA_ENVIDO'].includes(callType)) {
@@ -1038,32 +893,26 @@ export function setupSocketEvents(io: Server) {
           }
 
           room.envidoChain.push(callType);
-          room.envidoPendingCaller = authUser.userId;
-          room.gameRound.awaitingResponseFrom = nextRivalInTurn;
+          room.envidoPendingCaller = authUser;
+          room.gameRound.awaitingResponseFrom = rivalId;
 
-          io.to(roomId).emit('call_received', { 
-            userId: authUser.userId, 
-            team: myTeam,
-            callType, 
-            category: 'ENVIDO', 
-            awaitingResponseFrom: nextRivalInTurn, 
-            chain: room.envidoChain 
-          });
+          io.to(roomId).emit('call_received', { userId: authUser, callType, category: 'ENVIDO', awaitingResponseFrom: rivalId, chain: room.envidoChain });
           return startTurnTimer(room, 25);
         }
 
         if (callType === 'QUIERO_ENVIDO') return startEnvidoDeclarationPhase(room);
-        if (callType === 'NO_QUIERO_ENVIDO') return resolveEnvidoDeclined(room, authUser.userId);
+        if (callType === 'NO_QUIERO_ENVIDO') return resolveEnvidoDeclined(room, authUser);
 
         if (callType === 'TRUCO') {
-          const responderHand = room.gameRound.getPlayerHand(nextRivalInTurn);
-          const responderCardsPlayed = responderHand ? responderHand.cardsPlayed.filter(Boolean).length : 0;
+          const responderHand = rivalId.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
+          const responderCardsPlayed = responderHand.cardsPlayed.filter(Boolean).length;
+
           const canEnvido = (currentTrick === 0 && !room.gameRound.envidoResolved && responderCardsPlayed === 0);
 
           if (canEnvido) {
             room.pendingTrucoAfterEnvido = {
-              callerId: authUser.userId,
-              responderId: nextRivalInTurn,
+              callerId: authUser,
+              responderId: rivalId,
               trucoPointsAtStake: 2,
               callType: 'TRUCO'
             };
@@ -1073,13 +922,12 @@ export function setupSocketEvents(io: Server) {
           }
 
           room.gameRound.trucoPointsAtStake = 2;
-          room.gameRound.awaitingResponseFrom = nextRivalInTurn;
+          room.gameRound.awaitingResponseFrom = rivalId;
           io.to(roomId).emit('call_received', { 
-            userId: authUser.userId, 
-            team: myTeam,
+            userId: authUser, 
             callType: 'TRUCO', 
             category: 'TRUCO', 
-            awaitingResponseFrom: nextRivalInTurn, 
+            awaitingResponseFrom: rivalId, 
             canCallEnvido: canEnvido 
           });
           return startTurnTimer(room, 25);
@@ -1089,8 +937,8 @@ export function setupSocketEvents(io: Server) {
           room.gameRound.envidoResolved = true;
           room.pendingTrucoAfterEnvido = null;
           room.gameRound.trucoPointsAtStake = 3;
-          room.gameRound.awaitingResponseFrom = nextRivalInTurn;
-          io.to(roomId).emit('call_received', { userId: authUser.userId, team: myTeam, callType: 'RETRUCO', category: 'TRUCO', awaitingResponseFrom: nextRivalInTurn, canCallEnvido: false });
+          room.gameRound.awaitingResponseFrom = rivalId;
+          io.to(roomId).emit('call_received', { userId: authUser, callType: 'RETRUCO', category: 'TRUCO', awaitingResponseFrom: rivalId, canCallEnvido: false });
           return startTurnTimer(room, 25);
         }
 
@@ -1098,8 +946,8 @@ export function setupSocketEvents(io: Server) {
           room.gameRound.envidoResolved = true;
           room.pendingTrucoAfterEnvido = null;
           room.gameRound.trucoPointsAtStake = 4;
-          room.gameRound.awaitingResponseFrom = nextRivalInTurn;
-          io.to(roomId).emit('call_received', { userId: authUser.userId, team: myTeam, callType: 'VALE_4', category: 'TRUCO', awaitingResponseFrom: nextRivalInTurn, canCallEnvido: false });
+          room.gameRound.awaitingResponseFrom = rivalId;
+          io.to(roomId).emit('call_received', { userId: authUser, callType: 'VALE_4', category: 'TRUCO', awaitingResponseFrom: rivalId, canCallEnvido: false });
           return startTurnTimer(room, 25);
         }
 
@@ -1108,18 +956,18 @@ export function setupSocketEvents(io: Server) {
           room.pendingTrucoAfterEnvido = null;
           room.gameRound.awaitingResponseFrom = null;
           room.trucoLevel = room.gameRound.trucoPointsAtStake;
-          room.trucoOwnerTeam = myTeam;
+          room.trucoOwner = authUser;
           io.to(roomId).emit('truco_accepted', { 
-            acceptedBy: authUser.userId, 
-            acceptedTeam: myTeam,
-            trucoLevel: room.trucoLevel 
+            acceptedBy: authUser, 
+            trucoLevel: room.trucoLevel, 
+            trucoOwner: room.trucoOwner 
           });
           return startTurnTimer(room, 25);
         }
 
         if (callType === 'NO_QUIERO_TRUCO' || callType === 'ME_VOY_AL_MAZO') {
           room.pendingTrucoAfterEnvido = null;
-          return resolveTrucoFold(room, authUser.userId, callType);
+          return resolveTrucoFold(room, authUser, callType);
         }
 
       } catch (err) { console.error('Error en send_call:', err); }

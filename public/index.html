@@ -23,25 +23,18 @@
 
     /* Animaciones Generales */
     @keyframes dealIn {
-      0% { transform: translateY(40px) scale(0.6); opacity: 0; }
+      0% { transform: translateY(80px) scale(0.6); opacity: 0; }
       100% { transform: translateY(0) scale(1); opacity: 1; }
     }
 
-    @keyframes dropBottomCard {
-      0% { transform: translateY(45px) scale(1.15); opacity: 0.7; }
-      100% { transform: translateY(22px) scale(1); opacity: 1; }
+    @keyframes dropOppCard {
+      0% { transform: translateY(-48px) scale(1.2); opacity: 0.7; }
+      100% { transform: translateY(-28px) scale(1); opacity: 1; }
     }
-    @keyframes dropTopCard {
-      0% { transform: translateY(-45px) scale(1.15); opacity: 0.7; }
-      100% { transform: translateY(-22px) scale(1); opacity: 1; }
-    }
-    @keyframes dropRightCard {
-      0% { transform: translateX(45px) scale(1.15); opacity: 0.7; }
-      100% { transform: translateX(20px) scale(1); opacity: 1; }
-    }
-    @keyframes dropLeftCard {
-      0% { transform: translateX(-45px) scale(1.15); opacity: 0.7; }
-      100% { transform: translateX(-20px) scale(1); opacity: 1; }
+
+    @keyframes dropMyCard {
+      0% { transform: translateY(48px) scale(1.2); opacity: 0.7; }
+      100% { transform: translateY(28px) scale(1); opacity: 1; }
     }
 
     /* Modal de Autenticación */
@@ -75,7 +68,7 @@
 
     /* LOBBY */
     .lobby-container {
-      width: 100%; max-width: 820px; background: #16222f; padding: 25px; border-radius: 16px;
+      width: 100%; max-width: 760px; background: #16222f; padding: 25px; border-radius: 16px;
       border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: none; flex-direction: column; gap: 20px;
     }
     .lobby-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 15px; }
@@ -93,15 +86,14 @@
     .btn-retirar:hover { background: #d90429; }
 
     .create-table-card { background: #0b1320; padding: 18px; border-radius: 12px; border: 1px solid #1e293b; display: flex; flex-direction: column; gap: 12px; }
-    .table-options-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; align-items: flex-end; }
+    .table-options-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; align-items: flex-end; }
     
     .table-list { display: flex; flex-direction: column; gap: 10px; max-height: 320px; overflow-y: auto; }
     .table-item { display: flex; justify-content: space-between; background: #1e293b; padding: 14px 20px; border-radius: 10px; align-items: center; transition: 0.2s; }
     .table-item:hover { background: #334155; }
     .table-info { display: flex; flex-direction: column; gap: 4px; }
-    .table-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+    .table-tags { display: flex; gap: 6px; }
     .tag-badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; font-weight: bold; }
-    .tag-mode { background: #e76f51; color: white; font-weight: 800; }
     .tag-pts { background: #0077b6; color: white; }
     .tag-flor { background: #7209b7; color: white; }
     .tag-noflor { background: #64748b; color: white; }
@@ -120,82 +112,74 @@
     .modal-card { background: #16222f; width: 100%; max-width: 440px; padding: 25px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.15); }
     .cbu-box { background: #080c10; padding: 14px; border-radius: 8px; font-size: 0.92rem; color: #ffd166; margin-bottom: 15px; border: 1px dashed #334155; line-height: 1.6; }
 
-    .avatar-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0 16px 0; }
-    .avatar-card-btn { background: #0b1320; border: 2px solid #334155; border-radius: 12px; padding: 8px 4px; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; transition: 0.2s; }
+    /* Selector de Avatar Grid */
+    .avatar-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0 16px 0;
+    }
+    .avatar-card-btn {
+      background: #0b1320; border: 2px solid #334155; border-radius: 12px; padding: 8px 4px;
+      display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; transition: 0.2s;
+    }
     .avatar-card-btn:hover { border-color: #0077b6; background: #1e293b; transform: translateY(-3px); }
     .avatar-card-btn.active { border-color: #ffd166; background: rgba(255, 209, 102, 0.15); box-shadow: 0 0 10px rgba(255, 209, 102, 0.4); }
     .avatar-emoji { font-size: 1.8rem; line-height: 1; }
     .avatar-name { font-size: 0.7rem; color: #cbd5e1; font-weight: bold; }
 
-    /* MESA DE JUEGO CIRCULAR */
+    /* MESA DE JUEGO */
     #gameContainer { display: none; width: 100%; flex-direction: column; align-items: center; }
-    .header-bar { background: rgba(255, 255, 255, 0.07); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.15); width: 100%; max-width: 900px; padding: 8px 20px; border-radius: 12px; margin-bottom: 10px; display: flex; gap: 14px; align-items: center; justify-content: space-between; box-shadow: 0 8px 24px rgba(0,0,0,0.4); flex-wrap: wrap; }
-    .score-badge { background: #0077b6; padding: 5px 14px; border-radius: 20px; font-weight: bold; font-size: 0.92rem; display: flex; align-items: center; gap: 8px; }
-    .turn-badge { color: #ffd166; font-weight: bold; font-size: 0.95rem; }
-    .timer-badge { background: #d90429; padding: 4px 10px; border-radius: 15px; font-weight: bold; font-size: 0.92rem; }
+    .header-bar { background: rgba(255, 255, 255, 0.07); backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.15); width: 100%; max-width: 880px; padding: 8px 20px; border-radius: 12px; margin-bottom: 10px; display: flex; gap: 14px; align-items: center; justify-content: space-between; box-shadow: 0 8px 24px rgba(0,0,0,0.4); flex-wrap: wrap; }
+    .score-badge { background: #0077b6; padding: 5px 14px; border-radius: 20px; font-weight: bold; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
+    .turn-badge { color: #ffd166; font-weight: bold; }
+    .timer-badge { background: #d90429; padding: 4px 10px; border-radius: 15px; font-weight: bold; font-size: 0.95rem; }
 
-    .truco-table { 
-      width: 100%; max-width: 900px; height: 570px; 
-      background: radial-gradient(circle, #1e6b3b 0%, #0d381e 100%); 
-      border: 12px solid #3e2723; border-radius: 40px; 
-      position: relative; display: flex; flex-direction: column; 
-      justify-content: space-between; align-items: center; padding: 12px 18px; 
-      box-shadow: inset 0 0 35px rgba(0,0,0,0.85), 0 12px 30px rgba(0,0,0,0.6); 
-    }
-
-    .table-seat { display: flex; flex-direction: column; align-items: center; gap: 4px; z-index: 10; }
-    .seat-badge { 
-      background: rgba(11, 19, 32, 0.85); border: 1px solid rgba(255,255,255,0.2); 
-      padding: 2px 10px; border-radius: 12px; font-size: 0.78rem; font-weight: bold; 
-      display: flex; align-items: center; gap: 5px; box-shadow: 0 2px 6px rgba(0,0,0,0.5);
-    }
-    .seat-cards { display: flex; gap: 6px; align-items: center; justify-content: center; }
-
-    .table-middle-row { 
-      display: flex; width: 100%; justify-content: space-between; align-items: center; padding: 0 10px; 
-    }
-    .side-seat { width: 90px; }
+    .truco-table { width: 100%; max-width: 880px; height: 550px; background: radial-gradient(circle, #1e6b3b 0%, #0d381e 100%); border: 12px solid #3e2723; border-radius: 40px; position: relative; display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: 15px 30px; box-shadow: inset 0 0 35px rgba(0,0,0,0.85), 0 12px 30px rgba(0,0,0,0.6); }
+    .opponent-cards, .my-cards { display: flex; gap: 15px; min-height: 135px; align-items: center; }
+    
+    .table-tricks { display: flex; gap: 40px; width: 100%; justify-content: center; align-items: center; padding: 10px; }
+    .trick-slot { width: 110px; height: 185px; position: relative; display: flex; justify-content: center; align-items: center; }
+    .trick-label { position: absolute; font-size: 0.85rem; color: rgba(255, 255, 255, 0.35); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; pointer-events: none; z-index: 1; user-select: none; }
 
     .card-img { 
-      width: 68px; height: 108px; border-radius: 6px; box-shadow: 0 4px 10px rgba(0,0,0,0.45); 
+      width: 88px; height: 140px; border-radius: 8px; box-shadow: 0 6px 12px rgba(0,0,0,0.45); 
       cursor: pointer; user-select: none; object-fit: cover; 
-      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s, filter 0.2s; 
+      transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s, filter 0.2s; 
     }
-    .card-mini { width: 44px; height: 68px; border-radius: 4px; }
     
     .card-deal-anim {
-      animation: dealIn 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28) backwards;
+      animation: dealIn 0.38s cubic-bezier(0.18, 0.89, 0.32, 1.28) backwards;
     }
 
-    .my-cards .card-img:hover { transform: translateY(-14px) scale(1.08); box-shadow: 0 12px 22px rgba(0,0,0,0.75); }
+    .my-cards .card-img:hover { transform: translateY(-16px) scale(1.08); box-shadow: 0 14px 26px rgba(0,0,0,0.75); }
     .my-cards.disabled .card-img { cursor: not-allowed; filter: brightness(0.65); transform: none !important; box-shadow: 0 4px 6px rgba(0,0,0,0.3) !important; }
+    .opponent-cards .card-img { cursor: default; }
 
-    .table-tricks { display: flex; gap: 20px; justify-content: center; align-items: center; }
-    .trick-slot { width: 120px; height: 170px; position: relative; display: flex; justify-content: center; align-items: center; }
-    .trick-label { position: absolute; font-size: 0.78rem; color: rgba(255, 255, 255, 0.3); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; pointer-events: none; z-index: 1; user-select: none; }
+    /* CARTAS EN MESA: Desplazamiento y jerarquía z-index exacta */
+    .card-in-trick { 
+      position: absolute; 
+      transition: transform 0.2s ease, box-shadow 0.2s ease; 
+    }
+    .card-in-trick.opp-played-card { 
+      transform: translateY(-28px); 
+      z-index: 2; 
+      animation: dropOppCard 0.25s cubic-bezier(0.2, 0.8, 0.2, 1.1) forwards;
+    }
+    .card-in-trick.my-played-card { 
+      transform: translateY(28px); 
+      z-index: 2; 
+      animation: dropMyCard 0.25s cubic-bezier(0.2, 0.8, 0.2, 1.1) forwards;
+    }
+    .card-in-trick.matada { 
+      z-index: 2 !important; 
+      filter: brightness(0.85); 
+      box-shadow: 0 4px 10px rgba(0,0,0,0.6); 
+    }
+    .card-in-trick.matadora { 
+      z-index: 10 !important; 
+      box-shadow: 0 0 18px #ffd166, 0 10px 22px rgba(0,0,0,0.8) !important; 
+    }
 
-    .card-in-trick { position: absolute; transition: transform 0.2s ease, box-shadow 0.2s ease; }
-    .card-in-trick.played-bottom {
-      transform: translateY(22px); z-index: 5;
-      animation: dropBottomCard 0.22s cubic-bezier(0.2, 0.8, 0.2, 1.1) forwards;
-    }
-    .card-in-trick.played-top {
-      transform: translateY(-22px); z-index: 4;
-      animation: dropTopCard 0.22s cubic-bezier(0.2, 0.8, 0.2, 1.1) forwards;
-    }
-    .card-in-trick.played-right {
-      transform: translateX(20px); z-index: 3;
-      animation: dropRightCard 0.22s cubic-bezier(0.2, 0.8, 0.2, 1.1) forwards;
-    }
-    .card-in-trick.played-left {
-      transform: translateX(-20px); z-index: 2;
-      animation: dropLeftCard 0.22s cubic-bezier(0.2, 0.8, 0.2, 1.1) forwards;
-    }
-    .card-in-trick.matada { filter: brightness(0.85); box-shadow: 0 3px 8px rgba(0,0,0,0.6); }
-    .card-in-trick.matadora { z-index: 15 !important; box-shadow: 0 0 16px #ffd166, 0 8px 18px rgba(0,0,0,0.85) !important; }
-
-    .actions-bar { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; justify-content: center; max-width: 900px; width: 100%; min-height: 40px; }
-    button.action-btn { background: #0077b6; color: white; border: none; padding: 7px 13px; font-size: 0.85rem; font-weight: bold; border-radius: 8px; cursor: pointer; transition: 0.15s; user-select: none; }
+    .actions-bar { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; justify-content: center; max-width: 880px; width: 100%; min-height: 42px; }
+    button.action-btn { background: #0077b6; color: white; border: none; padding: 8px 14px; font-size: 0.88rem; font-weight: bold; border-radius: 8px; cursor: pointer; transition: 0.15s; user-select: none; }
     button.action-btn:hover { background: #0096c7; transform: translateY(-2px); }
     button.action-btn:active { transform: scale(0.96); }
     button.btn-truco { background: #d90429; }
@@ -204,27 +188,13 @@
     button.btn-buenas { background: #4a5568; }
     button.btn-mazo { background: #495057; }
 
-    /* Barra de Chat Privado de Equipo */
-    .team-chat-bar {
-      display: none; width: 100%; max-width: 900px; margin-top: 8px;
-      gap: 8px; align-items: center; background: rgba(11, 19, 32, 0.85);
-      border: 1px solid #1e293b; padding: 6px 12px; border-radius: 10px;
-    }
-    .team-chat-input {
-      flex: 1; padding: 7px 12px; background: #06090e; border: 1px solid #334155;
-      border-radius: 6px; color: white; font-size: 0.85rem; outline: none;
-    }
-    .team-chat-input:focus { border-color: #2ec4b6; }
-
-    .console-log { margin-top: 8px; width: 100%; max-width: 900px; height: 75px; background: #06090e; border-radius: 8px; padding: 8px 12px; overflow-y: auto; font-size: 0.8rem; color: #adb5bd; border: 1px solid #1e293b; }
-    .team-msg-log { color: #2ec4b6; font-weight: 600; background: rgba(46, 196, 182, 0.08); padding: 2px 6px; border-radius: 4px; margin: 2px 0; }
-
+    .console-log { margin-top: 10px; width: 100%; max-width: 880px; height: 75px; background: #06090e; border-radius: 8px; padding: 8px 12px; overflow-y: auto; font-size: 0.8rem; color: #adb5bd; border: 1px solid #1e293b; }
     .envido-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); backdrop-filter: blur(6px); border-radius: 28px; display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 50; }
-    .envido-title { font-size: 1.5rem; font-weight: 900; color: #ffd166; margin-bottom: 4px; }
-    .envido-cards-row { display: flex; gap: 15px; justify-content: center; }
+    .envido-title { font-size: 1.6rem; font-weight: 900; color: #ffd166; margin-bottom: 6px; }
+    .envido-cards-row { display: flex; gap: 20px; justify-content: center; }
 
     .winner-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.88); backdrop-filter: blur(10px); display: none; justify-content: center; align-items: center; z-index: 100; }
-    .winner-card { background: #1c2541; padding: 30px 40px; border-radius: 20px; text-align: center; border: 3px solid #ffd166; }
+    .winner-card { background: #1c2541; padding: 35px 45px; border-radius: 20px; text-align: center; border: 3px solid #ffd166; }
   </style>
 </head>
 <body>
@@ -325,13 +295,6 @@
 
       <div class="table-options-grid">
         <div class="form-group" style="margin:0;">
-          <label>Modalidad:</label>
-          <select id="selectMode" class="form-control">
-            <option value="1v1">1 vs 1 (Mano a Mano)</option>
-            <option value="2v2">2 vs 2 (En Parejas)</option>
-          </select>
-        </div>
-        <div class="form-group" style="margin:0;">
           <label id="lblBetAmount">Monto Apuesta (ARS):</label>
           <input type="number" id="inputBet" class="form-control" value="0" min="0" step="100" />
         </div>
@@ -343,17 +306,17 @@
           </select>
         </div>
         <div class="form-group" style="margin:0;">
-          <label>Regla de Flor:</label>
+          <label>Modalidad de Flor:</label>
           <select id="selectFlor" class="form-control">
             <option value="true">Con Flor</option>
             <option value="false">Sin Flor</option>
           </select>
         </div>
       </div>
-      <button class="btn-submit" id="btnCreateTable" style="margin-top:5px; padding:10px;" onclick="createNewTable()">Crear Mesa y Esperar Jugadores</button>
+      <button class="btn-submit" id="btnCreateTable" style="margin-top:5px; padding:10px;" onclick="createNewTable()">Crear Mesa y Esperar Rival</button>
     </div>
 
-    <h4 style="color:#94a3b8; border-bottom:1px solid #334155; padding-bottom:8px;">Mesas en Espera de Jugadores</h4>
+    <h4 style="color:#94a3b8; border-bottom:1px solid #334155; padding-bottom:8px;">Mesas en Espera de Rival</h4>
     <div class="table-list" id="tableList"></div>
   </div>
 
@@ -443,25 +406,25 @@
     </div>
   </div>
 
-  <!-- Modal Desconexión / Ventana de Gracia -->
+  <!-- Modal Desconexión Rival / Ventana de Gracia -->
   <div class="modal-overlay" id="disconnectModal" style="z-index: 250;">
     <div class="modal-card" style="text-align: center; border-color: #f77f00; box-shadow: 0 0 30px rgba(247, 127, 0, 0.4);">
       <div style="font-size: 2.2rem; margin-bottom: 8px;">📡</div>
-      <h3 style="color: #ffd166; margin-bottom: 8px;">Jugador Desconectado</h3>
-      <p style="font-size: 0.9rem; color: #cbd5e1; margin-bottom: 14px;" id="disconnectText">Esperando reconexión...</p>
+      <h3 style="color: #ffd166; margin-bottom: 8px;">Rival Desconectado</h3>
+      <p style="font-size: 0.9rem; color: #cbd5e1; margin-bottom: 14px;" id="disconnectText">Esperando reconexión del rival...</p>
       <div style="font-size: 2.2rem; font-weight: 900; color: #e63946; letter-spacing: 1px;" id="disconnectTimer">45s</div>
-      <p style="font-size: 0.78rem; color: #94a3b8; margin-top: 12px;">Si el tiempo expira, se resolverá la partida por abandono.</p>
+      <p style="font-size: 0.78rem; color: #94a3b8; margin-top: 12px;">Si el tiempo expira, ganarás automáticamente los puntos y el pozo de la partida.</p>
     </div>
   </div>
 
-  <!-- MESA DE JUEGO CIRCULAR -->
+  <!-- MESA DE JUEGO -->
   <div id="gameContainer">
     <div class="header-bar">
       <div><strong>Mesa:</strong> <span id="lblRoom">...</span></div>
       <div class="score-badge">
-        <span id="myTeamDisplay">Nosotros</span>: <span id="scoreNosotros">0</span> 
+        <span id="myAvatarDisplay">🤠</span> Nosotros: <span id="scoreNosotros">0</span> 
         | 
-        <span id="rivalTeamDisplay">Ellos</span>: <span id="scoreEllos">0</span>
+        <span id="rivalAvatarDisplay">🤠</span> Ellos: <span id="scoreEllos">0</span>
       </div>
       <div class="turn-badge">Turno: <span id="lblTurn">-</span></div>
       <div class="timer-badge">⏱️ <span id="lblTimer">25</span>s</div>
@@ -469,60 +432,20 @@
     </div>
 
     <div class="truco-table">
-      
-      <!-- PUESTO SUPERIOR (Compañero en 2v2 o Rival en 1v1) -->
-      <div class="table-seat seat-top" id="seatTop">
-        <div class="seat-badge" id="seatTopBadge">
-          <span id="seatTopAvatar">🤠</span>
-          <span id="seatTopName">Rival</span>
-        </div>
-        <div class="seat-cards" id="seatTopCards"></div>
+      <div class="opponent-cards" id="opponentCards"></div>
+
+      <div class="table-tricks">
+        <div class="trick-slot" id="trick-0"><span class="trick-label">1ra Mano</span></div>
+        <div class="trick-slot" id="trick-1"><span class="trick-label">2da Mano</span></div>
+        <div class="trick-slot" id="trick-2"><span class="trick-label">3ra Mano</span></div>
       </div>
 
-      <!-- FILA MEDIA (Rival Izquierda | 3 Manos del Centro | Rival Derecha) -->
-      <div class="table-middle-row">
-        
-        <!-- PUESTO IZQUIERDA (Rival 2 en 2v2) -->
-        <div class="table-seat side-seat seat-left" id="seatLeft" style="display:none;">
-          <div class="seat-badge" id="seatLeftBadge">
-            <span id="seatLeftAvatar">🤠</span>
-            <span id="seatLeftName">Rival 2</span>
-          </div>
-          <div class="seat-cards" id="seatLeftCards" style="flex-direction: column;"></div>
-        </div>
+      <div class="my-cards" id="myCards"></div>
 
-        <!-- 3 BAZAS DEL CENTRO -->
-        <div class="table-tricks">
-          <div class="trick-slot" id="trick-0"><span class="trick-label">1ra Mano</span></div>
-          <div class="trick-slot" id="trick-1"><span class="trick-label">2da Mano</span></div>
-          <div class="trick-slot" id="trick-2"><span class="trick-label">3ra Mano</span></div>
-        </div>
-
-        <!-- PUESTO DERECHA (Rival 1 en 2v2) -->
-        <div class="table-seat side-seat seat-right" id="seatRight" style="display:none;">
-          <div class="seat-badge" id="seatRightBadge">
-            <span id="seatRightAvatar">🤠</span>
-            <span id="seatRightName">Rival 1</span>
-          </div>
-          <div class="seat-cards" id="seatRightCards" style="flex-direction: column;"></div>
-        </div>
-
-      </div>
-
-      <!-- PUESTO INFERIOR (Vos) -->
-      <div class="table-seat seat-bottom" id="seatBottom">
-        <div class="my-cards" id="myCards"></div>
-        <div class="seat-badge" id="seatBottomBadge" style="margin-top:4px;">
-          <span id="seatBottomAvatar">🤠</span>
-          <span id="seatBottomName">Vos</span>
-        </div>
-      </div>
-
-      <!-- Overlay Envido -->
       <div class="envido-overlay" id="envidoOverlay">
         <div style="text-align:center;">
           <div class="envido-title" id="envidoTitle">🃏 TANTOS</div>
-          <div style="font-size:1rem; color:#e0e1dd; margin-bottom:14px;" id="envidoSubtitle">...</div>
+          <div style="font-size:1.05rem; color:#e0e1dd; margin-bottom:18px;" id="envidoSubtitle">...</div>
           <div class="envido-cards-row" id="envidoCardsRow"></div>
         </div>
       </div>
@@ -559,22 +482,16 @@
       <button id="btnMazo" class="action-btn btn-mazo" style="display:none;" onclick="sendCall('ME_VOY_AL_MAZO')">Al Mazo</button>
     </div>
 
-    <!-- Barra de Chat Privado Exclusivo para Compañeros de Equipo (2 vs 2) -->
-    <div class="team-chat-bar" id="teamChatBar">
-      <input type="text" id="teamChatInput" class="team-chat-input" placeholder="🔒 Mensaje privado a tu compañero..." maxlength="100" onkeypress="handleTeamChatKeyPress(event)" />
-      <button type="button" class="action-btn" style="background:#2ec4b6; font-size:0.8rem; padding:7px 12px;" onclick="sendTeamChatMessage()">💬 Enviar</button>
-    </div>
-
     <div class="console-log" id="gameLogs">
-      <div>🟢 Esperando jugadores para comenzar...</div>
+      <div>🟢 Esperando al rival para comenzar...</div>
     </div>
   </div>
 
   <div class="winner-overlay" id="winnerModal">
     <div class="winner-card">
-      <div style="font-size:2rem; font-weight:900; margin-bottom:8px; color:#ffd166;" id="winnerTitle">🏆 ¡PARTIDA FINALIZADA!</div>
-      <div style="font-size:1.05rem; color:#e0e1dd; margin-bottom:20px;" id="winnerDesc">...</div>
-      <button class="action-btn" onclick="returnToLobbyAfterMatch()" style="background:#2ec4b6; font-size:1.05rem; padding:10px 24px;">Volver al Lobby</button>
+      <div style="font-size:2.2rem; font-weight:900; margin-bottom:10px; color:#ffd166;" id="winnerTitle">🏆 ¡PARTIDA FINALIZADA!</div>
+      <div style="font-size:1.1rem; color:#e0e1dd; margin-bottom:25px;" id="winnerDesc">...</div>
+      <button class="action-btn" onclick="returnToLobbyAfterMatch()" style="background:#2ec4b6; font-size:1.1rem; padding:12px 28px;">Volver al Lobby</button>
     </div>
   </div>
 
@@ -699,9 +616,6 @@
     let currentUser = null;
     let activeRoomId = sessionStorage.getItem('truco_active_room') || null;
     let isGameStarted = false;
-    let currentMode = '1v1';
-    let myTeam = 'TEAM_1';
-    let currentPlayers = [];
     let pendingCategory = null;
     let currentMyCards = [];
     let roomTargetPoints = 30;
@@ -709,7 +623,9 @@
     let currentTrickIndex = 0;
     let envidoDone = false;
     let currentTrucoLevel = 1;
+    let currentTrucoOwner = null;
     let currentTurnPlayer = '';
+    let currentRivalAvatar = 'gaucho';
 
     function parseBoolean(val) {
       if (val === true || val === 'true') return true;
@@ -723,26 +639,6 @@
       const src = `/audio/${cleanName}.mp3`;
       const audio = new Audio(src);
       audio.play().catch(err => console.warn('Audio no disponible:', src, err));
-    }
-
-    function getRelativeSeat(userId) {
-      if (!currentUser || !currentPlayers || currentPlayers.length === 0) return 'bottom';
-      const myIdx = currentPlayers.findIndex(p => p.userId.toLowerCase() === currentUser.username.toLowerCase());
-      if (myIdx === -1) return 'bottom';
-      
-      if (currentMode === '1v1' || currentPlayers.length <= 2) {
-        return (userId.toLowerCase() === currentUser.username.toLowerCase()) ? 'bottom' : 'top';
-      }
-      
-      const targetIdx = currentPlayers.findIndex(p => p.userId.toLowerCase() === (userId || '').toLowerCase());
-      if (targetIdx === -1) return 'top';
-      
-      const diff = (targetIdx - myIdx + 4) % 4;
-      if (diff === 0) return 'bottom';
-      if (diff === 1) return 'right';
-      if (diff === 2) return 'top';
-      if (diff === 3) return 'left';
-      return 'top';
     }
 
     function switchTab(tab) {
@@ -860,8 +756,8 @@
       const emoji = getAvatarEmoji(currentAvatar);
       const lobbyBadge = document.getElementById('lobbyUserAvatar');
       if (lobbyBadge) lobbyBadge.innerText = emoji;
-      const bottomAvatar = document.getElementById('seatBottomAvatar');
-      if (bottomAvatar) bottomAvatar.innerText = emoji;
+      const myTableAvatar = document.getElementById('myAvatarDisplay');
+      if (myTableAvatar) myTableAvatar.innerText = emoji;
     }
 
     async function handleRegister(e) {
@@ -1044,14 +940,14 @@
         inputBet.value = 0;
         inputBet.style.opacity = '0.4';
         lblBet.innerText = 'Modo Gratis (Sin apuesta)';
-        btn.innerText = 'Crear Mesa Gratis y Esperar Jugadores';
+        btn.innerText = 'Crear Mesa Gratis y Esperar Rival';
         btn.style.background = '#2a9d8f';
       } else {
         inputBet.disabled = false;
         inputBet.value = 0;
         inputBet.style.opacity = '1';
         lblBet.innerText = 'Monto Apuesta (ARS):';
-        btn.innerText = 'Crear Mesa y Esperar Jugadores';
+        btn.innerText = 'Crear Mesa y Esperar Rival';
         btn.style.background = '#0077b6';
       }
     }
@@ -1059,7 +955,6 @@
     function createNewTable() {
       triggerHaptic(20);
       const isFree = document.getElementById('chkFreeTable').checked;
-      const mode = document.getElementById('selectMode').value || '1v1';
       const bet = isFree ? 0 : parseInt(document.getElementById('inputBet').value, 10);
       const points = parseInt(document.getElementById('selectPoints').value, 10) || 30;
       const withFlor = document.getElementById('selectFlor').value === 'true';
@@ -1075,8 +970,7 @@
         userId: currentUser.username, 
         betAmount: bet,
         targetPoints: points,
-        withFlor,
-        mode
+        withFlor
       });
     }
 
@@ -1096,7 +990,7 @@
       container.innerHTML = '';
 
       if (!tables || tables.length === 0) {
-        container.innerHTML = '<div style="color:#64748b; text-align:center; padding:20px;">No hay mesas esperando jugadores. ¡Creá una!</div>';
+        container.innerHTML = '<div style="color:#64748b; text-align:center; padding:20px;">No hay mesas esperando rival. ¡Creá una!</div>';
         return;
       }
 
@@ -1104,73 +998,25 @@
         const isFree = t.betAmount === 0;
         const hasFlorOption = parseBoolean(t.withFlor);
         const creatorEmoji = getAvatarEmoji(t.creatorAvatar || 'gaucho');
-        const modeLabel = t.mode === '2v2' ? '2 vs 2' : '1 vs 1';
-        const slotsLabel = `${t.playersCount}/${t.maxPlayers}`;
-
         const div = document.createElement('div');
         div.className = 'table-item';
         div.innerHTML = `
           <div class="table-info">
             <span style="color:white; font-weight:bold; display:flex; align-items:center; gap:6px;">
-              <span>${creatorEmoji}</span> Mesa de ${t.creatorId} <span style="color:#ffd166; font-size:0.85rem;">(${slotsLabel})</span>
+              <span>${creatorEmoji}</span> Mesa de ${t.creatorId}
             </span>
             <div class="table-tags">
-              <span class="tag-badge tag-mode">${modeLabel}</span>
               <span class="tag-badge ${isFree ? 'tag-free' : 'tag-pts'}">${isFree ? 'GRATIS' : '$' + new Intl.NumberFormat('es-AR').format(t.betAmount)}</span>
               <span class="tag-badge tag-pts">${t.targetPoints} Pts</span>
               <span class="tag-badge ${hasFlorOption ? 'tag-flor' : 'tag-noflor'}">${hasFlorOption ? 'Con Flor' : 'Sin Flor'}</span>
             </div>
           </div>
           <button class="btn-play-match ${isFree ? 'btn-free-match' : ''}" onclick="joinTable('${t.roomId}', ${t.betAmount})">
-            ${isFree ? `🎮 Entrar (${slotsLabel})` : `Jugar $${new Intl.NumberFormat('es-AR').format(t.betAmount)} (${slotsLabel})`}
+            ${isFree ? '🎮 Jugar Gratis' : 'Jugar por $' + new Intl.NumberFormat('es-AR').format(t.betAmount)}
           </button>
         `;
         container.appendChild(div);
       });
-    }
-
-    function renderSeatsCards() {
-      const is2v2 = currentMode === '2v2';
-      document.getElementById('seatLeft').style.display = is2v2 ? 'flex' : 'none';
-      document.getElementById('seatRight').style.display = is2v2 ? 'flex' : 'none';
-      document.getElementById('teamChatBar').style.display = (is2v2 && isGameStarted) ? 'flex' : 'none';
-
-      if (!currentPlayers || currentPlayers.length === 0) return;
-
-      currentPlayers.forEach(p => {
-        const seat = getRelativeSeat(p.userId);
-        const avatarEmoji = getAvatarEmoji(p.avatar || 'gaucho');
-
-        if (seat === 'bottom') {
-          document.getElementById('seatBottomAvatar').innerText = avatarEmoji;
-          document.getElementById('seatBottomName').innerText = `${p.userId} (Vos)`;
-        } else if (seat === 'top') {
-          document.getElementById('seatTopAvatar').innerText = avatarEmoji;
-          document.getElementById('seatTopName').innerText = is2v2 ? `${p.userId} (Compañero)` : `${p.userId}`;
-          renderFaceDownCards('seatTopCards', p.cardsCount !== undefined ? p.cardsCount : 3, false);
-        } else if (seat === 'left') {
-          document.getElementById('seatLeftAvatar').innerText = avatarEmoji;
-          document.getElementById('seatLeftName').innerText = `${p.userId}`;
-          renderFaceDownCards('seatLeftCards', p.cardsCount !== undefined ? p.cardsCount : 3, true);
-        } else if (seat === 'right') {
-          document.getElementById('seatRightAvatar').innerText = avatarEmoji;
-          document.getElementById('seatRightName').innerText = `${p.userId}`;
-          renderFaceDownCards('seatRightCards', p.cardsCount !== undefined ? p.cardsCount : 3, true);
-        }
-      });
-    }
-
-    function renderFaceDownCards(containerId, count, isVertical = false) {
-      const container = document.getElementById(containerId);
-      if (!container) return;
-      container.innerHTML = '';
-      for (let i = 0; i < count; i++) {
-        const img = document.createElement('img');
-        img.className = `card-img ${isVertical ? 'card-mini' : ''}`;
-        img.src = getCardSrc('BACK');
-        img.alt = 'Dorso';
-        container.appendChild(img);
-      }
     }
 
     function resetTableVisuals(isPlaying = false) {
@@ -1181,7 +1027,7 @@
       if (disc) disc.style.display = 'none';
 
       const turnElem = document.getElementById('lblTurn');
-      if (turnElem) turnElem.innerText = isPlaying ? 'Iniciando mano...' : 'Esperando jugadores...';
+      if (turnElem) turnElem.innerText = isPlaying ? 'Iniciando mano...' : 'Esperando rival...';
 
       const scNos = document.getElementById('scoreNosotros');
       const scEll = document.getElementById('scoreEllos');
@@ -1193,7 +1039,14 @@
         if (slot) slot.innerHTML = `<span class="trick-label">${getTrickLabel(i)}</span>`;
       }
 
-      renderSeatsCards();
+      const opp = document.getElementById('opponentCards');
+      if (opp) {
+        opp.innerHTML = `
+          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
+          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
+          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
+        `;
+      }
 
       const myCardsContainer = document.getElementById('myCards');
       if (myCardsContainer) {
@@ -1219,10 +1072,9 @@
       if (mazoB) mazoB.style.display = 'none';
     }
 
-    function enterGameInterface(roomId, points, flor, bet, isPlaying = false, mode = '1v1') {
+    function enterGameInterface(roomId, points, flor, bet, isPlaying = false) {
       activeRoomId = roomId;
       isGameStarted = isPlaying;
-      currentMode = mode || '1v1';
       sessionStorage.setItem('truco_active_room', roomId);
       roomTargetPoints = Number(points) || 30;
       roomWithFlor = parseBoolean(flor);
@@ -1233,16 +1085,15 @@
       
       updateAvatarDisplay();
 
-      const betLabel = bet > 0 ? `$${new Intl.NumberFormat('es-AR').format(bet)} ARS` : 'Gratis';
-      const modeLabel = currentMode === '2v2' ? '2 vs 2' : '1 vs 1';
-      document.getElementById('lblRoom').innerText = `${roomId} (${modeLabel} | ${betLabel} | ${roomTargetPoints} pts)`;
+      const betLabel = bet > 0 ? `$${new Intl.NumberFormat('es-AR').format(bet)} ARS` : 'Gratis (Amistoso)';
+      document.getElementById('lblRoom').innerText = `${roomId} (${betLabel} | ${roomTargetPoints} pts | ${roomWithFlor ? 'Con Flor' : 'Sin Flor'})`;
       
       const btnLeave = document.getElementById('btnAbandonar');
       if (isGameStarted) {
         btnLeave.innerText = 'Abandonar partida';
       } else {
         btnLeave.innerText = 'Abandonar mesa';
-        log(`🟢 Creaste la mesa ${roomId} (${modeLabel}). Esperando jugadores...`);
+        log(`🟢 Creaste la mesa ${roomId}. Esperando que se una un rival...`);
         resetTableVisuals(false);
       }
     }
@@ -1252,7 +1103,7 @@
       if (!isGameStarted) {
         socket.emit('cancel_waiting_table', { roomId: activeRoomId, userId: currentUser.username });
       } else {
-        const confirmar = confirm('⚠️ ¿Estás seguro de que deseás abandonar la partida?\n\nSi salís ahora, perderás las fichas de tu apuesta y se le acreditarán a tus rivales.');
+        const confirmar = confirm('⚠️ ¿Estás seguro de que deseás abandonar la partida?\n\nSi salís ahora, perderás las fichas de tu apuesta y se le acreditarán a tu rival.');
         if (confirmar) {
           sessionStorage.removeItem('truco_active_room');
           socket.emit('surrender_match', { roomId: activeRoomId, userId: currentUser.username });
@@ -1265,7 +1116,6 @@
       sessionStorage.removeItem('truco_active_room');
       activeRoomId = null;
       isGameStarted = false;
-      currentPlayers = [];
       resetTableVisuals(false);
       document.getElementById('disconnectModal').style.display = 'none';
       document.getElementById('winnerModal').style.display = 'none';
@@ -1287,32 +1137,6 @@
       const box = document.getElementById('gameLogs');
       box.innerHTML += `<div>${msg}</div>`;
       box.scrollTop = box.scrollHeight;
-    }
-
-    function logTeamChat(sender, message, avatar) {
-      const box = document.getElementById('gameLogs');
-      const isMe = (sender || '').toLowerCase() === currentUser.username.toLowerCase();
-      const emoji = getAvatarEmoji(avatar || 'gaucho');
-      box.innerHTML += `<div class="team-msg-log">🔒 [Equipo] ${emoji} <strong>${isMe ? 'Vos' : '@' + sender}</strong>: ${message}</div>`;
-      box.scrollTop = box.scrollHeight;
-    }
-
-    function sendTeamChatMessage() {
-      const input = document.getElementById('teamChatInput');
-      if (!input) return;
-      const msg = input.value.trim();
-      if (!msg) return;
-
-      triggerHaptic(15);
-      socket.emit('send_team_chat', { roomId: activeRoomId, message: msg });
-      input.value = '';
-    }
-
-    function handleTeamChatKeyPress(e) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        sendTeamChatMessage();
-      }
     }
 
     function getCardEnvidoVal(num) { return (num >= 10 && num <= 12) ? 0 : num; }
@@ -1357,17 +1181,15 @@
     }
 
     function setScores(scoresMap) {
-      if (!scoresMap) return;
-      const team1Score = scoresMap.TEAM_1 || 0;
-      const team2Score = scoresMap.TEAM_2 || 0;
+      if (!scoresMap || !currentUser) return;
+      const myUser = currentUser.username.toLowerCase();
+      const myKey = Object.keys(scoresMap).find(k => k.toLowerCase() === myUser);
+      const myScore = myKey ? scoresMap[myKey] : 0;
+      const rivalKey = Object.keys(scoresMap).find(k => k.toLowerCase() !== myUser);
+      const rivalScore = rivalKey ? scoresMap[rivalKey] : 0;
 
-      if (myTeam === 'TEAM_1') {
-        document.getElementById('scoreNosotros').innerText = team1Score;
-        document.getElementById('scoreEllos').innerText = team2Score;
-      } else {
-        document.getElementById('scoreNosotros').innerText = team2Score;
-        document.getElementById('scoreEllos').innerText = team1Score;
-      }
+      document.getElementById('scoreNosotros').innerText = myScore;
+      document.getElementById('scoreEllos').innerText = rivalScore;
     }
 
     function updateTurnControls(turn) {
@@ -1425,7 +1247,7 @@
         document.getElementById('btnTruco').style.display = 'inline-block';
         document.getElementById('btnRetruco').style.display = 'none';
         document.getElementById('btnVale4').style.display = 'none';
-      } else {
+      } else if (currentTrucoOwner && currentTrucoOwner.toLowerCase() === currentUser.username.toLowerCase()) {
         document.getElementById('trucoGroup').style.display = 'inline-block';
         document.getElementById('btnTruco').style.display = 'none';
         if (currentTrucoLevel === 2) {
@@ -1437,6 +1259,8 @@
         } else {
           document.getElementById('trucoGroup').style.display = 'none';
         }
+      } else {
+        document.getElementById('trucoGroup').style.display = 'none';
       }
     }
 
@@ -1449,20 +1273,21 @@
       });
 
       socket.on('sync_game_state', (data) => {
-        enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, true, data.mode);
+        enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, true);
         document.getElementById('disconnectModal').style.display = 'none';
         document.getElementById('envidoOverlay').style.display = 'none';
         document.getElementById('gameActions').style.display = 'flex';
-        
-        myTeam = data.myTeam || 'TEAM_1';
-        currentPlayers = data.players || [];
         setScores(data.scores);
-        renderSeatsCards();
-
         currentTrickIndex = data.currentTrick;
         envidoDone = data.envidoResolved;
         currentTrucoLevel = data.trucoLevel;
+        currentTrucoOwner = data.trucoOwner;
         roomWithFlor = parseBoolean(data.withFlor);
+
+        if (data.rivalAvatar) {
+          currentRivalAvatar = data.rivalAvatar;
+          document.getElementById('rivalAvatarDisplay').innerText = getAvatarEmoji(currentRivalAvatar);
+        }
 
         currentMyCards = data.myCards || [];
         const myCardsContainer = document.getElementById('myCards');
@@ -1478,14 +1303,24 @@
           myCardsContainer.appendChild(img);
         });
 
+        const opp = document.getElementById('opponentCards');
+        opp.innerHTML = '';
+        for (let i = 0; i < data.oppCardsCount; i++) {
+          const img = document.createElement('img');
+          img.className = 'card-img card-deal-anim';
+          img.style.animationDelay = `${i * 0.08}s`;
+          img.src = getCardSrc('BACK');
+          opp.appendChild(img);
+        }
+
         for (let i = 0; i < 3; i++) {
           const slot = document.getElementById(`trick-${i}`);
           slot.innerHTML = `<span class="trick-label">${getTrickLabel(i)}</span>`;
           if (data.tricks[i]) {
             data.tricks[i].forEach((cardObj) => {
-              const seatPos = getRelativeSeat(cardObj.userId);
+              const isMine = cardObj.userId.toLowerCase() === currentUser.username.toLowerCase();
               const img = document.createElement('img');
-              img.className = `card-img card-in-trick played-${seatPos}`;
+              img.className = `card-img card-in-trick ${isMine ? 'my-played-card' : 'opp-played-card'}`;
               img.dataset.owner = cardObj.userId;
               img.src = getCardSrc(cardObj.cardId);
               slot.appendChild(img);
@@ -1496,24 +1331,13 @@
         updateTurnControls(data.currentTurn);
       });
 
-      socket.on('player_joined_waiting', (data) => {
-        currentPlayers = data.players || [];
-        renderSeatsCards();
-        log(`👤 Jugador conectado (${data.playersCount}/${data.maxPlayers}). Esperando...`);
-      });
-
-      socket.on('team_chat_received', (data) => {
-        triggerHaptic(15);
-        logTeamChat(data.sender, data.message, data.avatar);
-      });
-
       socket.on('player_disconnected_grace', (data) => {
         const isMe = (data.disconnectedUser || '').toLowerCase() === currentUser.username.toLowerCase();
         if (!isMe) {
           document.getElementById('disconnectModal').style.display = 'flex';
           document.getElementById('disconnectText').innerText = `El jugador @${data.disconnectedUser} se desconectó. Esperando reconexión...`;
           document.getElementById('disconnectTimer').innerText = `${data.secondsLeft}s`;
-          log(`⚠️ <strong>@${data.disconnectedUser}</strong> perdió la conexión. Pausa: ${data.secondsLeft}s`);
+          log(`⚠️ <strong>@${data.disconnectedUser}</strong> perdió la conexión. Pausa de espera: ${data.secondsLeft}s`);
         }
       });
 
@@ -1542,22 +1366,20 @@
 
       socket.on('room_created', (data) => {
         updateChipsDisplay(data.newBalance);
-        enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, false, data.mode);
+        enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, false);
       });
 
       socket.on('game_ready', (data) => {
-        currentMode = data.mode || '1v1';
-        currentPlayers = data.players || [];
-        
-        const mySlot = currentPlayers.find(p => p.userId.toLowerCase() === currentUser.username.toLowerCase());
-        myTeam = mySlot?.team || 'TEAM_1';
-
-        enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, true, currentMode);
+        enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, true);
         resetTableVisuals(true);
         roomWithFlor = parseBoolean(data.withFlor);
 
-        const potMsg = data.pot > 0 ? `Pozo en juego: $${new Intl.NumberFormat('es-AR').format(data.pot)} ARS` : '¡Partida Gratis!';
-        log(`🏆 ¡Mesa completa (${currentMode === '2v2' ? '2 vs 2' : '1 vs 1'})! ${potMsg}`);
+        const isP1 = (data.creatorId || '').toLowerCase() === currentUser.username.toLowerCase();
+        currentRivalAvatar = isP1 ? data.guestAvatar : data.creatorAvatar;
+        document.getElementById('rivalAvatarDisplay').innerText = getAvatarEmoji(currentRivalAvatar);
+
+        const potMsg = data.pot > 0 ? `Pozo en juego: $${new Intl.NumberFormat('es-AR').format(data.pot)} ARS` : '¡Partida Amistosa (Gratis)!';
+        log(`🏆 ¡Rival encontrado! ${potMsg}`);
       });
 
       socket.on('timer_tick', (data) => {
@@ -1571,7 +1393,6 @@
         document.getElementById('lblTurn').innerText = currentTurnPlayer;
         log(`🃏 Mano iniciada. Sale jugando: <strong>${currentTurnPlayer}</strong>`);
         setScores(data.scores);
-        renderSeatsCards();
 
         if (data.withFlor !== undefined) {
           roomWithFlor = parseBoolean(data.withFlor);
@@ -1580,17 +1401,26 @@
         currentTrickIndex = 0;
         envidoDone = false;
         currentTrucoLevel = 1;
+        currentTrucoOwner = null;
 
         for (let i = 0; i < 3; i++) {
           document.getElementById(`trick-${i}`).innerHTML = `<span class="trick-label">${getTrickLabel(i)}</span>`;
         }
+        const opp = document.getElementById('opponentCards');
+        opp.innerHTML = `
+          <img class="card-img card-deal-anim" style="animation-delay:0s;" src="${getCardSrc('BACK')}" alt="Dorso" />
+          <img class="card-img card-deal-anim" style="animation-delay:0.08s;" src="${getCardSrc('BACK')}" alt="Dorso" />
+          <img class="card-img card-deal-anim" style="animation-delay:0.16s;" src="${getCardSrc('BACK')}" alt="Dorso" />
+        `;
 
         updateTurnControls(currentTurnPlayer);
       });
 
       socket.on('cards_dealt', (data) => {
         playDealSound();
-        currentMyCards = data.myCards || [];
+        const isP1 = (data.p1Id || '').toLowerCase() === currentUser.username.toLowerCase();
+        const myCards = isP1 ? data.p1Cards : data.p2Cards;
+        currentMyCards = myCards || [];
 
         if (data.withFlor !== undefined) {
           roomWithFlor = parseBoolean(data.withFlor);
@@ -1599,7 +1429,7 @@
         const container = document.getElementById('myCards');
         container.innerHTML = '';
 
-        currentMyCards.forEach((c, index) => {
+        myCards.forEach((c, index) => {
           const img = document.createElement('img');
           img.id = `card-${c.id}`;
           img.className = 'card-img card-deal-anim';
@@ -1626,18 +1456,14 @@
           const cardElem = document.getElementById(`card-${data.cardId}`);
           if (cardElem) cardElem.remove();
         } else {
-          const seatPos = getRelativeSeat(data.userId);
-          const seatCardsContainer = seatPos === 'top' ? document.getElementById('seatTopCards') : (seatPos === 'left' ? document.getElementById('seatLeftCards') : document.getElementById('seatRightCards'));
-          if (seatCardsContainer && seatCardsContainer.children.length > 0) {
-            seatCardsContainer.removeChild(seatCardsContainer.children[0]);
-          }
+          const opp = document.getElementById('opponentCards');
+          if (opp.children.length > 0) opp.removeChild(opp.children[0]);
         }
 
         const trickSlot = document.getElementById(`trick-${data.trickIndex}`);
-        const seatPos = getRelativeSeat(data.userId);
 
         const img = document.createElement('img');
-        img.className = `card-img card-in-trick played-${seatPos}`;
+        img.className = `card-img card-in-trick ${isMine ? 'my-played-card' : 'opp-played-card'}`;
         img.dataset.owner = data.userId;
         img.src = getCardSrc(data.cardId);
         img.alt = data.cardId;
@@ -1645,13 +1471,15 @@
 
         if (data.isTrickOver && data.trickWinnerId) {
           const slotCards = trickSlot.querySelectorAll('.card-in-trick');
-          slotCards.forEach(card => {
-            if (card.dataset.owner.toLowerCase() === data.trickWinnerId.toLowerCase()) {
-              card.classList.add('matadora');
-            } else if (data.trickWinnerId !== 'PARDA') {
-              card.classList.add('matada');
-            }
-          });
+          if (slotCards.length === 2) {
+            slotCards.forEach(card => {
+              if (card.dataset.owner.toLowerCase() === data.trickWinnerId.toLowerCase()) {
+                card.classList.add('matadora');
+              } else if (data.trickWinnerId !== 'PARDA') {
+                card.classList.add('matada');
+              }
+            });
+          }
         }
 
         updateTurnControls(data.nextTurn);
@@ -1767,6 +1595,7 @@
         playAudio('quiero');
         envidoDone = true;
         currentTrucoLevel = data.trucoLevel;
+        currentTrucoOwner = data.trucoOwner;
         updateTurnControls(currentTurnPlayer);
       });
 
@@ -1790,7 +1619,7 @@
           document.getElementById('btnSonBuenas').style.display = 'none';
         } else {
           document.getElementById('envidoDeclareGroup').style.display = 'none';
-          log(`⏳ Esperando que se canten los tantos de Envido...`);
+          log(`⏳ Esperando que el rival cante sus tantos de Envido...`);
         }
       });
 
@@ -1833,6 +1662,7 @@
       socket.on('envido_resolved', (data) => {
         envidoDone = true;
         currentTrucoLevel = data.trucoLevel;
+        currentTrucoOwner = data.trucoOwner;
 
         if (data.declined) {
           playAudio('no quiero');
@@ -1847,6 +1677,7 @@
       socket.on('flor_declared', (data) => {
         envidoDone = true;
         currentTrucoLevel = data.trucoLevel;
+        currentTrucoOwner = data.trucoOwner;
 
         playAudio('flor');
         log(`🌸 <strong>${data.winnerId}</strong> cantó FLOR (${data.score} pts) -> +${data.pointsAwarded} pts`);
@@ -1885,8 +1716,7 @@
           if (data.folderUserId) log(`✋ <strong>${data.folderUserId}</strong> dijo: <strong>No Quiero</strong>.`);
         }
 
-        const winTeamLabel = data.winningTeam === myTeam ? 'Tu Equipo' : 'El Equipo Rival';
-        log(`✨ Fin de la mano. Ganó <strong>${winTeamLabel}</strong> (+${data.pointsAwarded} pts).`);
+        log(`✨ Fin de la mano. Ganó <strong>${data.winnerId}</strong> (+${data.pointsAwarded} pts).`);
         setScores(data.scores);
         currentTurnPlayer = '';
         document.getElementById('lblTurn').innerText = 'Fin de mano';
@@ -1907,19 +1737,16 @@
         currentTurnPlayer = '';
         document.getElementById('lblTurn').innerText = 'Partida Concluida';
 
-        const isWinner = data.winningTeam === myTeam;
+        const isWinner = (data.winnerId || '').toLowerCase() === currentUser.username.toLowerCase();
         if (isWinner) {
-          fetch(`/api/wallet/balance/${currentUser.username}`)
-            .then(res => res.json())
-            .then(d => { if (d.chips !== undefined) updateChipsDisplay(d.chips); });
-          
+          if (data.winnerBalance !== undefined) updateChipsDisplay(data.winnerBalance);
           const modal = document.getElementById('winnerModal');
           const title = document.getElementById('winnerTitle');
           const desc = document.getElementById('winnerDesc');
-          title.innerText = data.reason === 'DISCONNECT_TIMEOUT' ? '⏱️ ¡TIEMPO AGOTADO POR DESCONEXIÓN!' : '🏆 ¡EL EQUIPO RIVAL ABANDONÓ!';
+          title.innerText = data.reason === 'DISCONNECT_TIMEOUT' ? '⏱️ ¡TIEMPO AGOTADO POR DESCONEXIÓN!' : '🏆 ¡TU RIVAL ABANDONÓ!';
           title.style.color = '#48cae4';
-          const potText = data.pot > 0 ? `Pozo ganado: $${new Intl.NumberFormat('es-AR').format(data.pot)} ARS` : 'Partida Gratis';
-          desc.innerText = `@${data.surrenderedUser} abandonó la mesa. ¡Ganaron los puntos y las fichas! (${potText})`;
+          const potText = data.pot > 0 ? `Pozo ganado: $${new Intl.NumberFormat('es-AR').format(data.pot)} ARS` : 'Partida Amistosa';
+          desc.innerText = `@${data.surrenderedUser} no se reconectó a tiempo. ¡Ganaste los puntos y las fichas! (${potText})`;
           modal.style.display = 'flex';
         }
       });
@@ -1932,7 +1759,7 @@
         currentTurnPlayer = '';
         document.getElementById('lblTurn').innerText = 'Partida Concluida';
         
-        const isWinner = data.winningTeam === myTeam;
+        const isWinner = data.winnerId.toLowerCase() === currentUser.username.toLowerCase();
         const modal = document.getElementById('winnerModal');
         const title = document.getElementById('winnerTitle');
         const desc = document.getElementById('winnerDesc');
@@ -1942,9 +1769,8 @@
 
         const potText = data.pot > 0 
           ? `Pozo neto ganado: $${new Intl.NumberFormat('es-AR').format(data.pot)} ARS` 
-          : 'Partida Gratis';
-        const teamLabel = isWinner ? 'Tu Equipo' : 'Equipo Rival';
-        desc.innerText = `Ganadores: ${teamLabel} | ${potText}`;
+          : 'Partida Amistosa (Gratis)';
+        desc.innerText = `Ganador: ${data.winnerId} | ${potText}`;
         modal.style.display = 'flex';
       });
 
