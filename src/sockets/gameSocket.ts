@@ -15,7 +15,9 @@ interface EnvidoWinnerRecord {
 interface ActiveRoom {
   roomId: string;
   creatorId: string;
+  creatorSocketId?: string;
   guestId?: string;
+  guestSocketId?: string;
   betAmount: number;
   targetPoints: number;
   withFlor: boolean;
@@ -183,11 +185,26 @@ export function setupSocketEvents(io: Server) {
       targetPoints: room.targetPoints
     });
 
-    io.to(room.roomId).emit('cards_dealt', {
-      p1Id: room.creatorId, p1Cards: round.p1.cards,
-      p2Id: room.guestId, p2Cards: round.p2.cards,
-      withFlor: room.withFlor
-    });
+    // Envío privado y seguro: cada jugador recibe exclusivamente sus propias cartas
+    if (room.creatorSocketId) {
+      io.to(room.creatorSocketId).emit('cards_dealt', {
+        p1Id: room.creatorId,
+        p1Cards: round.p1.cards,
+        p2Id: room.guestId,
+        p2Cards: [], // Se ocultan las cartas del rival
+        withFlor: room.withFlor
+      });
+    }
+
+    if (room.guestSocketId) {
+      io.to(room.guestSocketId).emit('cards_dealt', {
+        p1Id: room.creatorId,
+        p1Cards: [], // Se ocultan las cartas del rival
+        p2Id: room.guestId,
+        p2Cards: round.p2.cards,
+        withFlor: room.withFlor
+      });
+    }
 
     startTurnTimer(room, 25);
   }
@@ -438,12 +455,10 @@ export function setupSocketEvents(io: Server) {
 
     let pts = trucoPts;
 
-    // Verificar si alguien tiró alguna carta en la primera mano
     const p1PlayedInTrick0 = room.gameRound.p1.cardsPlayed[0] !== null;
     const p2PlayedInTrick0 = room.gameRound.p2.cardsPlayed[0] !== null;
     const totalCardsPlayedInTrick0 = (p1PlayedInTrick0 ? 1 : 0) + (p2PlayedInTrick0 ? 1 : 0);
 
-    // Solo se penaliza con el punto extra de Envido si el mano se va al mazo directamente al empezar (0 cartas en la mesa)
     if (reason === 'ME_VOY_AL_MAZO' && !room.gameRound.envidoResolved && room.gameRound.currentTrickIndex === 0 && totalCardsPlayedInTrick0 === 0) {
       pts = trucoPts + 1;
     }
@@ -568,6 +583,11 @@ export function setupSocketEvents(io: Server) {
       const room = rooms.get(roomId);
       if (room && (room.creatorId.toLowerCase() === userId.toLowerCase() || (room.guestId && room.guestId.toLowerCase() === userId.toLowerCase()))) {
         socket.join(roomId);
+        if (room.creatorId.toLowerCase() === userId.toLowerCase()) {
+          room.creatorSocketId = socket.id;
+        } else if (room.guestId && room.guestId.toLowerCase() === userId.toLowerCase()) {
+          room.guestSocketId = socket.id;
+        }
         sendFullSync(socket, room, userId);
       } else {
         socket.emit('reconnect_failed');
@@ -587,10 +607,24 @@ export function setupSocketEvents(io: Server) {
 
         const roomId = 'mesa_' + crypto.randomBytes(3).toString('hex');
         const room: ActiveRoom = {
-          roomId, creatorId: userId, betAmount: bet, targetPoints: pts, withFlor: flor,
-          scoreP1: 0, scoreP2: 0, manoId: userId, envidoChain: [], envidoPendingCaller: null,
-          isDeclaringEnvido: false, envidoDeclarer: null, highestEnvidoScore: 0, highestEnvidoUser: null,
-          trucoLevel: 1, trucoOwner: null, pendingTrucoAfterEnvido: null
+          roomId, 
+          creatorId: userId, 
+          creatorSocketId: socket.id,
+          betAmount: bet, 
+          targetPoints: pts, 
+          withFlor: flor,
+          scoreP1: 0, 
+          scoreP2: 0, 
+          manoId: userId, 
+          envidoChain: [], 
+          envidoPendingCaller: null,
+          isDeclaringEnvido: false, 
+          envidoDeclarer: null, 
+          highestEnvidoScore: 0, 
+          highestEnvidoUser: null,
+          trucoLevel: 1, 
+          trucoOwner: null, 
+          pendingTrucoAfterEnvido: null
         };
         rooms.set(roomId, room);
         socket.join(roomId);
@@ -654,6 +688,7 @@ export function setupSocketEvents(io: Server) {
         }
 
         room.guestId = userId;
+        room.guestSocketId = socket.id;
         socket.join(roomId);
 
         io.to(roomId).emit('game_ready', {

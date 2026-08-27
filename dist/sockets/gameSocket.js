@@ -74,12 +74,6 @@ function setupSocketEvents(io) {
     function handleTimeout(room) {
         if (!room.gameRound)
             return;
-        if (room.envidoPendingCaller) {
-            resolveEnvidoDeclined(room, responderId);
-        }
-        else {
-            resolveTrucoFold(room, responderId, 'NO_QUIERO_TRUCO');
-        }
         if (room.isDeclaringEnvido && room.envidoDeclarer) {
             const activeUser = room.envidoDeclarer;
             const hand = activeUser.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
@@ -104,7 +98,7 @@ function setupSocketEvents(io) {
                 resolveEnvidoDeclined(room, responderId);
             }
             else {
-                resolveTrucoFold(room, responderId);
+                resolveTrucoFold(room, responderId, 'NO_QUIERO_TRUCO');
             }
             return;
         }
@@ -157,7 +151,6 @@ function setupSocketEvents(io) {
             return 0;
         };
         const lastCall = chain[chain.length - 1];
-        // Puntos acumulados en caso de "No quiero"
         let declined = 1;
         if (chain.length > 1) {
             declined = 0;
@@ -167,7 +160,6 @@ function setupSocketEvents(io) {
             if (declined === 0)
                 declined = 1;
         }
-        // Puntos en caso de "Quiero"
         let accepted = 0;
         if (lastCall === 'FALTA_ENVIDO') {
             if (room) {
@@ -371,17 +363,26 @@ function setupSocketEvents(io) {
             return;
         clearTurnTimer(room);
         const winnerId = folderUserId.toLowerCase() === room.creatorId.toLowerCase() ? room.guestId : room.creatorId;
-        let pts = 1;
+        let trucoPts = 1;
         if (room.gameRound.awaitingResponseFrom) {
             if (room.gameRound.trucoPointsAtStake === 2)
-                pts = 1;
+                trucoPts = 1;
             else if (room.gameRound.trucoPointsAtStake === 3)
-                pts = 2;
+                trucoPts = 2;
             else if (room.gameRound.trucoPointsAtStake === 4)
-                pts = 3;
+                trucoPts = 3;
         }
         else {
-            pts = room.trucoLevel || 1;
+            trucoPts = room.trucoLevel || 1;
+        }
+        let pts = trucoPts;
+        // Verificar si alguien tiró alguna carta en la primera mano
+        const p1PlayedInTrick0 = room.gameRound.p1.cardsPlayed[0] !== null;
+        const p2PlayedInTrick0 = room.gameRound.p2.cardsPlayed[0] !== null;
+        const totalCardsPlayedInTrick0 = (p1PlayedInTrick0 ? 1 : 0) + (p2PlayedInTrick0 ? 1 : 0);
+        // Solo se penaliza con el punto extra de Envido si el mano se va al mazo directamente al empezar (0 cartas en la mesa)
+        if (reason === 'ME_VOY_AL_MAZO' && !room.gameRound.envidoResolved && room.gameRound.currentTrickIndex === 0 && totalCardsPlayedInTrick0 === 0) {
+            pts = trucoPts + 1;
         }
         if (winnerId.toLowerCase() === room.creatorId.toLowerCase())
             room.scoreP1 += pts;
@@ -729,13 +730,9 @@ function setupSocketEvents(io) {
                     return resolveTrucoFold(room, userId, callType);
                 }
             }
-            finally {
+            catch (err) {
+                console.error('Error en send_call:', err);
             }
         });
-        try { }
-        catch (err) {
-            console.error('Error en send_call:', err);
-        }
     });
 }
-;
