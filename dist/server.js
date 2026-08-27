@@ -8,10 +8,13 @@ const express_1 = __importDefault(require("express"));
 const http_1 = __importDefault(require("http"));
 const path_1 = __importDefault(require("path"));
 const socket_io_1 = require("socket.io");
+const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const gameSocket_1 = require("./sockets/gameSocket");
 const userService_1 = require("./auth/userService");
 const app = (0, express_1.default)();
 const server = http_1.default.createServer(app);
+// Habilitar trust proxy para reconocer la IP real del cliente detrás del proxy de Render
+app.set('trust proxy', 1);
 // Inicializar conexión
 (0, userService_1.initDatabase)();
 const ADMIN_PIN = process.env.ADMIN_PIN || '36049655Dk,';
@@ -23,6 +26,22 @@ const io = new socket_io_1.Server(server, {
 });
 app.use(express_1.default.json());
 app.use(express_1.default.static(path_1.default.join(__dirname, '../public')));
+// Limitador de tasa contra ataques de fuerza bruta en Login y Registro
+const authLimiter = (0, express_rate_limit_1.default)({
+    windowMs: 15 * 60 * 1000, // Ventana de 15 minutos
+    max: 15, // Máximo 15 intentos por IP
+    message: { success: false, message: 'Demasiadas solicitudes. Por favor reintentá en 15 minutos.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+// Limitador estricto para el acceso de Administrador
+const adminAuthLimiter = (0, express_rate_limit_1.default)({
+    windowMs: 15 * 60 * 1000,
+    max: 5, // Máximo 5 intentos para adivinar el PIN
+    message: { success: false, message: 'Demasiados intentos de acceso admin. Bloqueado temporalmente.' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
 const requireAdminAuth = (req, res, next) => {
     const pinReceived = req.headers['x-admin-pin'];
     if (!pinReceived || pinReceived !== ADMIN_PIN) {
@@ -30,20 +49,20 @@ const requireAdminAuth = (req, res, next) => {
     }
     next();
 };
-app.post('/api/admin/auth', (req, res) => {
+app.post('/api/admin/auth', adminAuthLimiter, (req, res) => {
     const { pin } = req.body;
     if (pin === ADMIN_PIN) {
         return res.json({ success: true, message: 'Acceso autorizado.' });
     }
     return res.status(401).json({ success: false, message: 'Contraseña de Administrador incorrecta.' });
 });
-// Rutas asíncronas con persistencia asegurada
-app.post('/api/auth/register', async (req, res) => {
+// Rutas de autenticación protegidas con Rate Limiting
+app.post('/api/auth/register', authLimiter, async (req, res) => {
     const { fullName, email, username, password } = req.body;
     const result = await (0, userService_1.registerUser)(fullName, email, username, password);
     return res.status(result.success ? 201 : 400).json(result);
 });
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', authLimiter, async (req, res) => {
     const { usernameOrEmail, password } = req.body;
     const result = await (0, userService_1.loginUser)(usernameOrEmail, password);
     return res.status(result.success ? 200 : 401).json(result);

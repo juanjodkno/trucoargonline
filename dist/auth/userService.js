@@ -32,7 +32,6 @@ async function initDatabase() {
     }
     try {
         const client = await exports.pool.connect();
-        // Asegurar que las tablas existan
         await client.query(`
       CREATE TABLE IF NOT EXISTS users (
         id VARCHAR(50) PRIMARY KEY,
@@ -55,7 +54,6 @@ async function initDatabase() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
-        // Cargar usuarios a memoria
         const uRes = await client.query('SELECT * FROM users');
         usersCache = uRes.rows.map(r => ({
             id: r.id,
@@ -67,7 +65,6 @@ async function initDatabase() {
             chips: Number(r.chips) || 0,
             createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
         }));
-        // Cargar depósitos a memoria
         const dRes = await client.query('SELECT * FROM deposits');
         depositsCache = dRes.rows.map(r => ({
             id: r.id,
@@ -89,8 +86,26 @@ function hashPbkdf2(password, salt) {
     return crypto_1.default.pbkdf2Sync(password, salt, 1000, 64, 'sha512').toString('hex');
 }
 async function registerUser(fullName, email, username, password) {
-    const cleanUser = username.trim().toLowerCase();
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanUser = (username || '').trim().toLowerCase();
+    const cleanEmail = (email || '').trim().toLowerCase();
+    const cleanFullName = (fullName || '').trim();
+    // Validación de seguridad contra XSS y nombres inválidos
+    const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
+    if (!usernameRegex.test(cleanUser)) {
+        return {
+            success: false,
+            message: 'El nombre de usuario debe tener entre 3 y 20 caracteres y solo contener letras, números o guion bajo (_).'
+        };
+    }
+    // Validación de formato de email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+        return { success: false, message: 'Ingresá un correo electrónico válido.' };
+    }
+    // Validación de contraseña
+    if (!password || password.length < 6) {
+        return { success: false, message: 'La contraseña debe tener al menos 6 caracteres.' };
+    }
     if (usersCache.some(u => (u.username || '').toLowerCase() === cleanUser)) {
         return { success: false, message: 'El nombre de usuario ya está registrado.' };
     }
@@ -101,7 +116,7 @@ async function registerUser(fullName, email, username, password) {
     const passwordHash = hashPbkdf2(password, salt);
     const newUser = {
         id: 'usr_' + crypto_1.default.randomBytes(4).toString('hex'),
-        fullName: fullName.trim(),
+        fullName: cleanFullName,
         email: cleanEmail,
         username: cleanUser,
         passwordHash,
@@ -109,7 +124,6 @@ async function registerUser(fullName, email, username, password) {
         chips: 0,
         createdAt: new Date().toISOString()
     };
-    // Guardar en base de datos PostgreSQL
     if (DATABASE_URL) {
         try {
             await exports.pool.query('INSERT INTO users (id, full_name, email, username, password_hash, salt, chips) VALUES ($1, $2, $3, $4, $5, $6, $7)', [newUser.id, newUser.fullName, newUser.email, newUser.username, newUser.passwordHash, newUser.salt, newUser.chips]);
@@ -127,7 +141,6 @@ async function loginUser(usernameOrEmail, password) {
     const target = (usernameOrEmail || '').trim().toLowerCase();
     let user = usersCache.find(u => (u.username && u.username.toLowerCase() === target) ||
         (u.email && u.email.toLowerCase() === target));
-    // Si no está en cache, buscarlo directamente en PostgreSQL
     if (!user && DATABASE_URL) {
         try {
             const res = await exports.pool.query('SELECT * FROM users WHERE LOWER(username) = $1 OR LOWER(email) = $1', [target]);
