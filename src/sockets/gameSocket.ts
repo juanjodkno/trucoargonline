@@ -79,6 +79,12 @@ export function setupSocketEvents(io: Server) {
     }
   }
 
+  function getAuthenticatedUserId(room: ActiveRoom, socketId: string): string | null {
+    if (room.creatorSocketId === socketId) return room.creatorId;
+    if (room.guestSocketId === socketId) return room.guestId || null;
+    return null;
+  }
+
   function checkMatchEnd(room: ActiveRoom): boolean {
     if (room.scoreP1 >= room.targetPoints || room.scoreP2 >= room.targetPoints) {
       clearTurnTimer(room);
@@ -185,13 +191,12 @@ export function setupSocketEvents(io: Server) {
       targetPoints: room.targetPoints
     });
 
-    // Envío privado y seguro: cada jugador recibe exclusivamente sus propias cartas
     if (room.creatorSocketId) {
       io.to(room.creatorSocketId).emit('cards_dealt', {
         p1Id: room.creatorId,
         p1Cards: round.p1.cards,
         p2Id: room.guestId,
-        p2Cards: [], // Se ocultan las cartas del rival
+        p2Cards: [],
         withFlor: room.withFlor
       });
     }
@@ -199,7 +204,7 @@ export function setupSocketEvents(io: Server) {
     if (room.guestSocketId) {
       io.to(room.guestSocketId).emit('cards_dealt', {
         p1Id: room.creatorId,
-        p1Cards: [], // Se ocultan las cartas del rival
+        p1Cards: [],
         p2Id: room.guestId,
         p2Cards: round.p2.cards,
         withFlor: room.withFlor
@@ -636,26 +641,26 @@ export function setupSocketEvents(io: Server) {
       } catch (err) { console.error('Error creando mesa:', err); }
     });
 
-    socket.on('cancel_waiting_table', ({ roomId, userId }) => {
+    socket.on('cancel_waiting_table', ({ roomId }) => {
       const room = rooms.get(roomId);
-      if (room && !room.guestId && room.creatorId.toLowerCase() === userId.toLowerCase()) {
+      if (room && !room.guestId && room.creatorSocketId === socket.id) {
         if (room.betAmount > 0) {
           modifyUserChips(room.creatorId, room.betAmount);
         }
         rooms.delete(roomId);
-        socket.emit('table_cancelled_ok', { newBalance: getUserChips(userId) });
+        socket.emit('table_cancelled_ok', { newBalance: getUserChips(room.creatorId) });
         broadcastTables();
       }
     });
 
-    socket.on('surrender_match', ({ roomId, userId }) => {
+    socket.on('surrender_match', ({ roomId }) => {
       const room = rooms.get(roomId);
       if (!room || !room.guestId) return;
 
-      const isP1 = room.creatorId.toLowerCase() === userId.toLowerCase();
-      const isP2 = room.guestId.toLowerCase() === userId.toLowerCase();
-      if (!isP1 && !isP2) return;
+      const authUser = getAuthenticatedUserId(room, socket.id);
+      if (!authUser) return;
 
+      const isP1 = room.creatorId.toLowerCase() === authUser.toLowerCase();
       clearTurnTimer(room);
       const winnerId = isP1 ? room.guestId : room.creatorId;
       const netPot = room.betAmount > 0 ? room.betAmount * 2 * 0.9 : 0;
@@ -665,7 +670,7 @@ export function setupSocketEvents(io: Server) {
       }
 
       io.to(roomId).emit('player_surrendered', {
-        surrenderedUser: userId,
+        surrenderedUser: authUser,
         winnerId,
         pot: netPot,
         scores: getScoreMap(room),
@@ -704,7 +709,7 @@ export function setupSocketEvents(io: Server) {
 
     socket.on('disconnect', () => {
       for (const [roomId, room] of rooms.entries()) {
-        if (!room.guestId) {
+        if (!room.guestId && room.creatorSocketId === socket.id) {
           if (room.betAmount > 0) modifyUserChips(room.creatorId, room.betAmount);
           rooms.delete(roomId);
           broadcastTables();
@@ -712,42 +717,53 @@ export function setupSocketEvents(io: Server) {
       }
     });
 
-    socket.on('play_card', ({ roomId, userId, cardId }) => {
+    socket.on('play_card', ({ roomId, cardId }) => {
       const room = rooms.get(roomId);
       if (!room || !room.gameRound) return;
-      if (room.gameRound.currentTurn.toLowerCase() !== userId.toLowerCase()) {
+
+      const authUser = getAuthenticatedUserId(room, socket.id);
+      if (!authUser) return socket.emit('error_action', { message: 'No perteneces a esta partida.' });
+
+      if (room.gameRound.currentTurn.toLowerCase() !== authUser.toLowerCase()) {
         return socket.emit('error_action', { message: 'No es tu turno de jugar carta.' });
       }
-      executePlayCard(room, userId, cardId);
+      executePlayCard(room, authUser, cardId);
     });
 
-    socket.on('declare_envido_points', ({ roomId, userId, points }) => {
+    socket.on('declare_envido_points', ({ roomId, points }) => {
       const room = rooms.get(roomId);
-      if (room) executeDeclareEnvido(room, userId, points);
+      if (!room) return;
+      const authUser = getAuthenticatedUserId(room, socket.id);
+      if (authUser) executeDeclareEnvido(room, authUser, points);
     });
 
-    socket.on('say_son_buenas', ({ roomId, userId }) => {
+    socket.on('say_son_buenas', ({ roomId }) => {
       const room = rooms.get(roomId);
-      if (room) executeSonBuenas(room, userId);
+      if (!room) return;
+      const authUser = getAuthenticatedUserId(room, socket.id);
+      if (authUser) executeSonBuenas(room, authUser);
     });
 
-    socket.on('send_call', ({ roomId, userId, callType }) => {
+    socket.on('send_call', ({ roomId, callType }) => {
       try {
         const room = rooms.get(roomId);
         if (!room || !room.gameRound) return;
 
-        const rivalId = userId.toLowerCase() === room.creatorId.toLowerCase() ? room.guestId! : room.creatorId;
+        const authUser = getAuthenticatedUserId(room, socket.id);
+        if (!authUser) return socket.emit('error_action', { message: 'No perteneces a esta mesa.' });
+
+        const rivalId = authUser.toLowerCase() === room.creatorId.toLowerCase() ? room.guestId! : room.creatorId;
         const currentTrick = room.gameRound.currentTrickIndex;
 
-        const callerHand = userId.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
+        const callerHand = authUser.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
         const callerCardsPlayed = callerHand.cardsPlayed.filter(Boolean).length;
 
         if (room.gameRound.awaitingResponseFrom) {
-          if (room.gameRound.awaitingResponseFrom.toLowerCase() !== userId.toLowerCase()) {
+          if (room.gameRound.awaitingResponseFrom.toLowerCase() !== authUser.toLowerCase()) {
             return socket.emit('error_action', { message: 'No es tu turno de responder.' });
           }
         } else {
-          if (room.gameRound.currentTurn.toLowerCase() !== userId.toLowerCase()) {
+          if (room.gameRound.currentTurn.toLowerCase() !== authUser.toLowerCase()) {
             return socket.emit('error_action', { message: 'No es tu turno para cantar o jugar.' });
           }
         }
@@ -759,7 +775,7 @@ export function setupSocketEvents(io: Server) {
         if (callType === 'FLOR') {
           if (!room.withFlor) return socket.emit('error_action', { message: 'Partida SIN FLOR.' });
           if (currentTrick > 0 || room.gameRound.envidoResolved) return socket.emit('error_action', { message: 'El tiempo para cantar Flor ya cerró.' });
-          return resolveFlor(room, userId);
+          return resolveFlor(room, authUser);
         }
 
         if (['ENVIDO', 'ENVIDO_ENVIDO', 'REAL_ENVIDO', 'FALTA_ENVIDO'].includes(callType)) {
@@ -774,15 +790,15 @@ export function setupSocketEvents(io: Server) {
           }
 
           room.envidoChain.push(callType);
-          room.envidoPendingCaller = userId;
+          room.envidoPendingCaller = authUser;
           room.gameRound.awaitingResponseFrom = rivalId;
 
-          io.to(roomId).emit('call_received', { userId, callType, category: 'ENVIDO', awaitingResponseFrom: rivalId, chain: room.envidoChain });
+          io.to(roomId).emit('call_received', { userId: authUser, callType, category: 'ENVIDO', awaitingResponseFrom: rivalId, chain: room.envidoChain });
           return startTurnTimer(room, 25);
         }
 
         if (callType === 'QUIERO_ENVIDO') return startEnvidoDeclarationPhase(room);
-        if (callType === 'NO_QUIERO_ENVIDO') return resolveEnvidoDeclined(room, userId);
+        if (callType === 'NO_QUIERO_ENVIDO') return resolveEnvidoDeclined(room, authUser);
 
         if (callType === 'TRUCO') {
           const responderHand = rivalId.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
@@ -792,7 +808,7 @@ export function setupSocketEvents(io: Server) {
 
           if (canEnvido) {
             room.pendingTrucoAfterEnvido = {
-              callerId: userId,
+              callerId: authUser,
               responderId: rivalId,
               trucoPointsAtStake: 2,
               callType: 'TRUCO'
@@ -805,7 +821,7 @@ export function setupSocketEvents(io: Server) {
           room.gameRound.trucoPointsAtStake = 2;
           room.gameRound.awaitingResponseFrom = rivalId;
           io.to(roomId).emit('call_received', { 
-            userId, 
+            userId: authUser, 
             callType: 'TRUCO', 
             category: 'TRUCO', 
             awaitingResponseFrom: rivalId, 
@@ -819,7 +835,7 @@ export function setupSocketEvents(io: Server) {
           room.pendingTrucoAfterEnvido = null;
           room.gameRound.trucoPointsAtStake = 3;
           room.gameRound.awaitingResponseFrom = rivalId;
-          io.to(roomId).emit('call_received', { userId, callType: 'RETRUCO', category: 'TRUCO', awaitingResponseFrom: rivalId, canCallEnvido: false });
+          io.to(roomId).emit('call_received', { userId: authUser, callType: 'RETRUCO', category: 'TRUCO', awaitingResponseFrom: rivalId, canCallEnvido: false });
           return startTurnTimer(room, 25);
         }
 
@@ -828,7 +844,7 @@ export function setupSocketEvents(io: Server) {
           room.pendingTrucoAfterEnvido = null;
           room.gameRound.trucoPointsAtStake = 4;
           room.gameRound.awaitingResponseFrom = rivalId;
-          io.to(roomId).emit('call_received', { userId, callType: 'VALE_4', category: 'TRUCO', awaitingResponseFrom: rivalId, canCallEnvido: false });
+          io.to(roomId).emit('call_received', { userId: authUser, callType: 'VALE_4', category: 'TRUCO', awaitingResponseFrom: rivalId, canCallEnvido: false });
           return startTurnTimer(room, 25);
         }
 
@@ -837,9 +853,9 @@ export function setupSocketEvents(io: Server) {
           room.pendingTrucoAfterEnvido = null;
           room.gameRound.awaitingResponseFrom = null;
           room.trucoLevel = room.gameRound.trucoPointsAtStake;
-          room.trucoOwner = userId;
+          room.trucoOwner = authUser;
           io.to(roomId).emit('truco_accepted', { 
-            acceptedBy: userId, 
+            acceptedBy: authUser, 
             trucoLevel: room.trucoLevel, 
             trucoOwner: room.trucoOwner 
           });
@@ -848,7 +864,7 @@ export function setupSocketEvents(io: Server) {
 
         if (callType === 'NO_QUIERO_TRUCO' || callType === 'ME_VOY_AL_MAZO') {
           room.pendingTrucoAfterEnvido = null;
-          return resolveTrucoFold(room, userId, callType);
+          return resolveTrucoFold(room, authUser, callType);
         }
 
       } catch (err) { console.error('Error en send_call:', err); }
