@@ -3,7 +3,12 @@ import { Server, Socket } from 'socket.io';
 import crypto from 'crypto';
 import { TrucoRound } from '../game/trucoGame';
 import { getEnvidoDetails, hasFlor, calculateFlor, Card } from '../game/trucoEngine';
-import { modifyUserChips, getUserChips, getUserAvatar } from '../auth/userService';
+import { 
+  modifyUserChips, 
+  getUserChips, 
+  getUserAvatar,
+  recordTransaction 
+} from '../auth/userService';
 
 interface EnvidoWinnerRecord {
   winnerId: string;
@@ -103,9 +108,14 @@ export function setupSocketEvents(io: Server) {
       clearTurnTimer(room);
       clearDisconnectTimer(room);
       const matchWinner = room.scoreP1 >= room.targetPoints ? room.creatorId : room.guestId!;
-      const netPot = room.betAmount > 0 ? room.betAmount * 2 * 0.9 : 0;
+      const grossPot = room.betAmount > 0 ? room.betAmount * 2 : 0;
+      const netPot = grossPot * 0.9;
+      const rake = grossPot * 0.1;
 
-      if (netPot > 0) modifyUserChips(matchWinner, netPot);
+      if (netPot > 0) {
+        modifyUserChips(matchWinner, netPot);
+        recordTransaction('COMMISSION_RAKE', matchWinner, rake, `Comisión mesa ${room.roomId} ($${room.betAmount} c/u)`);
+      }
 
       io.to(room.roomId).emit('match_finished', {
         winnerId: matchWinner,
@@ -122,7 +132,7 @@ export function setupSocketEvents(io: Server) {
 
   function startTurnTimer(room: ActiveRoom, seconds: number = 25) {
     clearTurnTimer(room);
-    if (room.disconnectedUser) return; // Pausado si hay desconexión
+    if (room.disconnectedUser) return;
 
     let timeLeft = seconds;
     io.to(room.roomId).emit('timer_tick', { secondsLeft: timeLeft });
@@ -197,12 +207,16 @@ export function setupSocketEvents(io: Server) {
       } else {
         clearDisconnectTimer(room);
         
-        // Se venció la ventana de gracia -> Forfeit
         const isP1 = room.creatorId.toLowerCase() === disconnectedUser.toLowerCase();
         const winnerId = isP1 ? room.guestId! : room.creatorId;
-        const netPot = room.betAmount > 0 ? room.betAmount * 2 * 0.9 : 0;
+        const grossPot = room.betAmount > 0 ? room.betAmount * 2 : 0;
+        const netPot = grossPot * 0.9;
+        const rake = grossPot * 0.1;
 
-        if (netPot > 0) modifyUserChips(winnerId, netPot);
+        if (netPot > 0) {
+          modifyUserChips(winnerId, netPot);
+          recordTransaction('COMMISSION_RAKE', winnerId, rake, `Comisión abandono mesa ${room.roomId} ($${room.betAmount} c/u)`);
+        }
 
         io.to(room.roomId).emit('player_surrendered', {
           surrenderedUser: disconnectedUser,
@@ -655,7 +669,6 @@ export function setupSocketEvents(io: Server) {
           room.guestSocketId = socket.id;
         }
 
-        // Si estaba pausado por desconexión, reanudar
         if (room.disconnectedUser && room.disconnectedUser.toLowerCase() === userId.toLowerCase()) {
           clearDisconnectTimer(room);
           io.to(roomId).emit('player_reconnected', { reconnectedUser: userId });
@@ -739,10 +752,13 @@ export function setupSocketEvents(io: Server) {
       clearDisconnectTimer(room);
 
       const winnerId = isP1 ? room.guestId : room.creatorId;
-      const netPot = room.betAmount > 0 ? room.betAmount * 2 * 0.9 : 0;
+      const grossPot = room.betAmount > 0 ? room.betAmount * 2 : 0;
+      const netPot = grossPot * 0.9;
+      const rake = grossPot * 0.1;
 
       if (netPot > 0) {
         modifyUserChips(winnerId, netPot);
+        recordTransaction('COMMISSION_RAKE', winnerId, rake, `Comisión rendición mesa ${room.roomId} ($${room.betAmount} c/u)`);
       }
 
       io.to(roomId).emit('player_surrendered', {
@@ -792,7 +808,6 @@ export function setupSocketEvents(io: Server) {
 
     socket.on('disconnect', () => {
       for (const [roomId, room] of rooms.entries()) {
-        // Si la mesa estaba esperando rival en el lobby
         if (!room.guestId && room.creatorSocketId === socket.id) {
           if (room.betAmount > 0) modifyUserChips(room.creatorId, room.betAmount);
           rooms.delete(roomId);
@@ -800,7 +815,6 @@ export function setupSocketEvents(io: Server) {
           continue;
         }
 
-        // Si la partida ya estaba en curso
         if (room.guestId) {
           if (room.creatorSocketId === socket.id) {
             startDisconnectGracePeriod(room, room.creatorId);

@@ -4,14 +4,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Panel Admin - Control Protegido</title>
+  <title>Panel Admin - Backoffice Oficial</title>
+  <link rel="icon" type="image/png" href="/logo.png" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
-    body { background: #0b1320; color: white; padding: 20px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+    body { background: #080c10; color: white; padding: 20px 10px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
     
-    /* Modal de Bloqueo */
+    /* Modal de Bloqueo PIN */
     .lock-overlay {
-      position: fixed; inset: 0; background: rgba(8, 12, 16, 0.98); backdrop-filter: blur(10px);
+      position: fixed; inset: 0; background: rgba(8, 12, 16, 0.98); backdrop-filter: blur(12px);
       display: flex; justify-content: center; align-items: center; z-index: 500;
     }
     .lock-card {
@@ -19,55 +20,82 @@
       border: 1px solid #334155; text-align: center; box-shadow: 0 16px 36px rgba(0,0,0,0.7);
     }
 
-    .admin-card { background: #16222f; width: 100%; max-width: 760px; border-radius: 16px; padding: 25px; border: 1px solid #334155; box-shadow: 0 8px 24px rgba(0,0,0,0.5); display: none; }
-    h2 { color: #ffd166; margin-bottom: 20px; text-align: center; }
-    .tabs { display: flex; gap: 10px; margin-bottom: 20px; }
-    .tab-btn { flex: 1; padding: 10px; background: #080c10; border: 1px solid #334155; color: #cbd5e1; border-radius: 8px; font-weight: bold; cursor: pointer; }
+    .admin-container { width: 100%; max-width: 980px; display: none; flex-direction: column; gap: 20px; }
+    
+    /* Header */
+    .admin-header {
+      background: #16222f; border: 1px solid #334155; border-radius: 16px; padding: 20px;
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
+    }
+    .admin-title { display: flex; align-items: center; gap: 10px; color: #ffd166; font-size: 1.5rem; font-weight: 800; }
+    .btn-logout { background: #475569; color: white; border: none; padding: 8px 16px; border-radius: 8px; font-size: 0.85rem; font-weight: bold; cursor: pointer; transition: 0.2s; }
+    .btn-logout:hover { background: #ef4444; }
+
+    /* Métricas / KPIs */
+    .metrics-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 15px;
+    }
+    .metric-card {
+      background: #16222f; border: 1px solid #334155; border-radius: 14px; padding: 18px;
+      display: flex; flex-direction: column; gap: 6px; box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+    }
+    .metric-title { font-size: 0.8rem; color: #94a3b8; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .metric-val { font-size: 1.6rem; font-weight: 900; color: #ffd166; }
+    .metric-sub { font-size: 0.75rem; color: #cbd5e1; }
+
+    /* Sección Principal */
+    .admin-card { background: #16222f; border-radius: 16px; padding: 22px; border: 1px solid #334155; box-shadow: 0 8px 24px rgba(0,0,0,0.4); }
+    .tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+    .tab-btn { flex: 1; min-width: 140px; padding: 10px 14px; background: #080c10; border: 1px solid #334155; color: #cbd5e1; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; }
     .tab-btn.active { background: #0077b6; color: white; border-color: #0077b6; }
+
     .form-group { margin-bottom: 14px; text-align: left; }
-    label { display: block; font-size: 0.85rem; color: #cbd5e1; margin-bottom: 6px; }
-    input { width: 100%; padding: 12px; background: #080c10; border: 1px solid #334155; border-radius: 8px; color: white; font-size: 1rem; outline: none; }
-    input:focus { border-color: #2a9d8f; }
-    .btn-submit { padding: 12px; border: none; border-radius: 8px; color: white; font-size: 1rem; font-weight: bold; cursor: pointer; transition: 0.2s; }
+    label { display: block; font-size: 0.85rem; color: #cbd5e1; margin-bottom: 6px; font-weight: 600; }
+    input { width: 100%; padding: 11px 14px; background: #080c10; border: 1px solid #334155; border-radius: 8px; color: white; font-size: 0.95rem; outline: none; transition: 0.2s; }
+    input:focus { border-color: #0077b6; }
+    
+    .btn-submit { padding: 11px 16px; border: none; border-radius: 8px; color: white; font-size: 0.95rem; font-weight: bold; cursor: pointer; transition: 0.2s; }
     .btn-add { background: #2a9d8f; flex: 1; }
     .btn-add:hover { background: #21867a; }
     .btn-deduct { background: #e63946; flex: 1; }
     .btn-deduct:hover { background: #d90429; }
     .btn-pass { width: 100%; background: #0077b6; }
     .btn-pass:hover { background: #0096c7; }
-    
-    .btn-delete-row {
-      background: #ef4444;
-      color: white;
-      border: none;
-      padding: 6px 12px;
-      border-radius: 6px;
-      font-size: 0.8rem;
-      font-weight: bold;
-      cursor: pointer;
-      transition: 0.2s;
-    }
-    .btn-delete-row:hover { background: #dc2626; transform: scale(1.05); }
 
-    .user-table { width: 100%; margin-top: 25px; border-collapse: collapse; font-size: 0.9rem; }
-    .user-table th, .user-table td { padding: 10px; border-bottom: 1px solid #1e293b; text-align: left; vertical-align: middle; }
-    .user-table th { color: #ffd166; font-size: 0.8rem; text-transform: uppercase; }
-    .chips-badge { background: #0077b6; padding: 4px 8px; border-radius: 12px; font-weight: bold; }
-    .msg { margin-top: 12px; padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; display: none; }
+    /* Tablas */
+    .table-responsive { width: 100%; overflow-x: auto; margin-top: 10px; }
+    .admin-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; text-align: left; }
+    .admin-table th, .admin-table td { padding: 12px 10px; border-bottom: 1px solid #1e293b; vertical-align: middle; }
+    .admin-table th { color: #ffd166; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px; }
+    
+    .badge { padding: 4px 8px; border-radius: 12px; font-weight: bold; font-size: 0.75rem; display: inline-block; }
+    .badge-chips { background: #0077b6; color: white; }
+    .badge-rake { background: #ffd166; color: #081c15; }
+    .badge-deposit { background: #2a9d8f; color: white; }
+    .badge-withdraw { background: #e63946; color: white; }
+    .badge-pending { background: #f77f00; color: white; }
+
+    .btn-action-sm { border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.78rem; font-weight: bold; cursor: pointer; transition: 0.2s; }
+    .btn-approve { background: #2a9d8f; color: white; }
+    .btn-approve:hover { background: #21867a; }
+    .btn-reject { background: #475569; color: white; }
+    .btn-reject:hover { background: #334155; }
+    .btn-delete-row { background: #ef4444; color: white; }
+    .btn-delete-row:hover { background: #dc2626; }
+
+    .msg { margin-top: 14px; padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; font-size: 0.9rem; display: none; }
     .msg.ok { background: #2ec4b6; color: #081c15; }
     .msg.err { background: #e63946; color: white; }
-    .btn-logout { background: #475569; color: white; border: none; padding: 6px 12px; border-radius: 8px; font-size: 0.8rem; font-weight: bold; cursor: pointer; float: right; }
-    .btn-logout:hover { background: #ef4444; }
   </style>
 </head>
 <body>
 
-  <!-- Pantalla de Login Administrador -->
+  <!-- Modal de Login Administrador -->
   <div class="lock-overlay" id="lockScreen">
     <div class="lock-card">
       <div style="font-size: 2.5rem; margin-bottom: 10px;">🔒</div>
       <h3 style="color:#ffd166; margin-bottom: 6px;">Panel de Administrador</h3>
-      <p style="color:#94a3b8; font-size:0.85rem; margin-bottom: 18px;">Ingresá la contraseña maestra para continuar</p>
+      <p style="color:#94a3b8; font-size:0.85rem; margin-bottom: 18px;">Ingresá la clave maestra de control</p>
       
       <form onsubmit="handleAdminLogin(event)">
         <div class="form-group">
@@ -80,67 +108,152 @@
   </div>
 
   <!-- Panel Principal -->
-  <div class="admin-card" id="adminPanel">
-    <div>
-      <button class="btn-logout" onclick="adminLogout()">Cerrar Sesión</button>
-      <h2>🪙 Panel de Administración</h2>
-    </div>
-
-    <div class="tabs">
-      <button class="tab-btn active" id="tabChips" onclick="switchAdminTab('chips')">Gestión de Fichas</button>
-      <button class="tab-btn" id="tabPass" onclick="switchAdminTab('pass')">Cambiar Contraseña</button>
-    </div>
-
-    <!-- Form Gestión Fichas -->
-    <div id="formChips">
-      <div class="form-group">
-        <label>Nombre de Usuario del Jugador:</label>
-        <input type="text" id="targetUser" placeholder="Ej: jja1" required />
+  <div class="admin-container" id="adminPanel">
+    
+    <div class="admin-header">
+      <div class="admin-title">
+        <img src="/logo.png" alt="Logo" style="width: 32px; height: 32px; object-fit: contain;" />
+        <span>Backoffice Truco Online</span>
       </div>
-
-      <div class="form-group">
-        <label>Cantidad de Fichas (1 ARS = 1 Ficha):</label>
-        <input type="number" id="targetAmount" placeholder="Ej: 5000" min="1" step="1" required />
-      </div>
-
-      <div style="display:flex; gap:10px;">
-        <button type="button" class="btn-submit btn-add" onclick="handleChipsAction('add')">+ Acreditar Fichas</button>
-        <button type="button" class="btn-submit btn-deduct" onclick="handleChipsAction('remove')">- Descontar Fichas</button>
+      <div style="display:flex; gap:10px; align-items:center;">
+        <button class="btn-submit" style="background:#0077b6; padding:8px 14px; font-size:0.85rem;" onclick="refreshAllData()">🔄 Actualizar</button>
+        <button class="btn-logout" onclick="adminLogout()">Cerrar Sesión</button>
       </div>
     </div>
 
-    <!-- Form Cambiar Contraseña -->
-    <form id="formPass" onsubmit="handleResetPass(event)" style="display:none;">
-      <div class="form-group">
-        <label>Nombre de Usuario del Jugador:</label>
-        <input type="text" id="passUser" placeholder="Ej: jja1" required />
+    <!-- Métricas / KPIs -->
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <span class="metric-title">🪙 Fichas en Circulación</span>
+        <span class="metric-val" id="metricChipsCirculation">$0</span>
+        <span class="metric-sub">Saldo total de todos los usuarios</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-title">💰 Comisión Rake Casa (10%)</span>
+        <span class="metric-val" id="metricRakeEarned" style="color:#2ec4b6;">$0</span>
+        <span class="metric-sub">Ganancia retenida de mesas finalizadas</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-title">⏳ Depósitos Pendientes</span>
+        <span class="metric-val" id="metricPendingCount" style="color:#f77f00;">0</span>
+        <span class="metric-sub" id="metricPendingAmount">$0 por validar</span>
+      </div>
+      <div class="metric-card">
+        <span class="metric-title">👥 Usuarios Registrados</span>
+        <span class="metric-val" id="metricTotalUsers">0</span>
+        <span class="metric-sub">Cuentas creadas en base de datos</span>
+      </div>
+    </div>
+
+    <!-- Gestión Operativa -->
+    <div class="admin-card">
+      <div class="tabs">
+        <button class="tab-btn active" id="tabBtnDeposits" onclick="switchAdminTab('deposits')">📥 Depósitos Pendientes (<span id="tabPendingBadge">0</span>)</button>
+        <button class="tab-btn" id="tabBtnChips" onclick="switchAdminTab('chips')">🪙 Ajuste de Fichas</button>
+        <button class="tab-btn" id="tabBtnHistory" onclick="switchAdminTab('history')">📊 Historial Contable</button>
+        <button class="tab-btn" id="tabBtnPass" onclick="switchAdminTab('pass')">🔑 Claves</button>
       </div>
 
-      <div class="form-group">
-        <label>Nueva Contraseña:</label>
-        <input type="text" id="newPassValue" placeholder="Escribí la nueva contraseña" required />
+      <!-- Tab 1: Depósitos Pendientes -->
+      <div id="tabDeposits">
+        <h4 style="color:#ffd166; margin-bottom:12px;">Solicitudes de Carga por Aprobar</h4>
+        <div class="table-responsive">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Usuario</th>
+                <th>Monto</th>
+                <th>Referencia</th>
+                <th style="text-align:center;">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="pendingDepositsRows"></tbody>
+          </table>
+        </div>
       </div>
 
-      <button type="submit" class="btn-submit btn-pass">Actualizar Contraseña</button>
-    </form>
+      <!-- Tab 2: Ajuste de Fichas -->
+      <div id="tabChips" style="display:none;">
+        <h4 style="color:#ffd166; margin-bottom:12px;">Cargar o Descontar Saldo Manualmente</h4>
+        <div class="form-group">
+          <label>Nombre de Usuario:</label>
+          <input type="text" id="targetUser" placeholder="Ej: juan" required />
+        </div>
+        <div class="form-group">
+          <label>Cantidad de Fichas (1 ARS = 1 Ficha):</label>
+          <input type="number" id="targetAmount" placeholder="Ej: 5000" min="1" step="1" required />
+        </div>
+        <div style="display:flex; gap:10px; margin-top:16px;">
+          <button type="button" class="btn-submit btn-add" onclick="handleChipsAction('add')">+ Acreditar Fichas</button>
+          <button type="button" class="btn-submit btn-deduct" onclick="handleChipsAction('remove')">- Descontar Fichas</button>
+        </div>
+      </div>
 
-    <div id="statusMsg" class="msg"></div>
+      <!-- Tab 3: Historial Contable -->
+      <div id="tabHistory" style="display:none;">
+        <h4 style="color:#ffd166; margin-bottom:12px;">Auditoría Contable de Transacciones</h4>
+        <div class="table-responsive">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Fecha</th>
+                <th>Tipo</th>
+                <th>Usuario</th>
+                <th>Monto</th>
+                <th>Detalle</th>
+              </tr>
+            </thead>
+            <tbody id="transactionRows"></tbody>
+          </table>
+        </div>
+      </div>
 
-    <h3 style="color:#cbd5e1; margin-top: 30px; border-bottom: 1px solid #334155; padding-bottom: 8px;">Jugadores Registrados</h3>
-    <table class="user-table">
-      <thead>
-        <tr>
-          <th>Usuario</th>
-          <th>Nombre</th>
-          <th>Saldo Fichas</th>
-          <th style="text-align:center;">Acción</th>
-        </tr>
-      </thead>
-      <tbody id="userRows"></tbody>
-    </table>
+      <!-- Tab 4: Resetear Password -->
+      <form id="tabPass" onsubmit="handleResetPass(event)" style="display:none;">
+        <h4 style="color:#ffd166; margin-bottom:12px;">Restablecer Clave de Jugador</h4>
+        <div class="form-group">
+          <label>Nombre de Usuario:</label>
+          <input type="text" id="passUser" placeholder="Ej: juan" required />
+        </div>
+        <div class="form-group">
+          <label>Nueva Contraseña:</label>
+          <input type="text" id="newPassValue" placeholder="Ingresá la nueva clave" required />
+        </div>
+        <button type="submit" class="btn-submit btn-pass" style="margin-top:14px;">Actualizar Contraseña</button>
+      </form>
+
+      <div id="statusMsg" class="msg"></div>
+    </div>
+
+    <!-- Lista de Usuarios Registrados -->
+    <div class="admin-card">
+      <h3 style="color:#cbd5e1; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 8px;">Jugadores Registrados</h3>
+      <div class="table-responsive">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Avatar</th>
+              <th>Usuario</th>
+              <th>Nombre</th>
+              <th>Email</th>
+              <th>Saldo Fichas</th>
+              <th style="text-align:center;">Acción</th>
+            </tr>
+          </thead>
+          <tbody id="userRows"></tbody>
+        </table>
+      </div>
+    </div>
+
   </div>
 
   <script>
+    const AVATAR_MAP = {
+      'gaucho': '🤠', 'mate': '🧉', 'asado': '🥩', 'sol_mayo': '☀️',
+      'gardel': '🎩', 'diego': '🔟', 'messi': '🐐', 'tango': '💃'
+    };
+
     let adminToken = localStorage.getItem('truco_admin_key') || '';
 
     function getHeaders() {
@@ -148,6 +261,26 @@
         'Content-Type': 'application/json',
         'x-admin-pin': adminToken
       };
+    }
+
+    function formatARS(val) {
+      return '$' + new Intl.NumberFormat('es-AR').format(val || 0);
+    }
+
+    function formatDate(isoStr) {
+      if (!isoStr) return '-';
+      const d = new Date(isoStr);
+      return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
     }
 
     async function handleAdminLogin(e) {
@@ -179,8 +312,8 @@
 
     function unlockInterface() {
       document.getElementById('lockScreen').style.display = 'none';
-      document.getElementById('adminPanel').style.display = 'block';
-      loadUsers();
+      document.getElementById('adminPanel').style.display = 'flex';
+      refreshAllData();
     }
 
     function adminLogout() {
@@ -190,43 +323,179 @@
 
     function switchAdminTab(tab) {
       document.getElementById('statusMsg').style.display = 'none';
-      if (tab === 'chips') {
-        document.getElementById('tabChips').classList.add('active');
-        document.getElementById('tabPass').classList.remove('active');
-        document.getElementById('formChips').style.display = 'block';
-        document.getElementById('formPass').style.display = 'none';
-      } else {
-        document.getElementById('tabPass').classList.add('active');
-        document.getElementById('tabChips').classList.remove('active');
-        document.getElementById('formPass').style.display = 'block';
-        document.getElementById('formChips').style.display = 'none';
+      
+      const tabMap = {
+        'deposits': { btn: 'tabBtnDeposits', content: 'tabDeposits' },
+        'chips': { btn: 'tabBtnChips', content: 'tabChips' },
+        'history': { btn: 'tabBtnHistory', content: 'tabHistory' },
+        'pass': { btn: 'tabBtnPass', content: 'tabPass' }
+      };
+
+      Object.keys(tabMap).forEach(key => {
+        const item = tabMap[key];
+        const isCurrent = key === tab;
+        document.getElementById(item.btn).classList.toggle('active', isCurrent);
+        document.getElementById(item.content).style.display = isCurrent ? 'block' : 'none';
+      });
+    }
+
+    async function refreshAllData() {
+      await Promise.all([
+        loadMetrics(),
+        loadPendingDeposits(),
+        loadTransactions(),
+        loadUsers()
+      ]);
+    }
+
+    async function loadMetrics() {
+      try {
+        const res = await fetch('/api/admin/metrics', { headers: getHeaders() });
+        if (res.status === 401) return adminLogout();
+        const data = await res.json();
+
+        document.getElementById('metricChipsCirculation').innerText = formatARS(data.totalChipsInCirculation);
+        document.getElementById('metricRakeEarned').innerText = formatARS(data.totalRakeEarned);
+        document.getElementById('metricPendingCount').innerText = data.pendingDepositsCount;
+        document.getElementById('tabPendingBadge').innerText = data.pendingDepositsCount;
+        document.getElementById('metricPendingAmount').innerText = `${formatARS(data.pendingDepositsAmount)} por validar`;
+        document.getElementById('metricTotalUsers').innerText = data.totalUsers;
+      } catch(err) {
+        console.error('Error cargando métricas:', err);
+      }
+    }
+
+    async function loadPendingDeposits() {
+      try {
+        const res = await fetch('/api/admin/pending-deposits', { headers: getHeaders() });
+        if (res.status === 401) return adminLogout();
+        const data = await res.json();
+        const tbody = document.getElementById('pendingDepositsRows');
+        tbody.innerHTML = '';
+
+        if (!data || data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#64748b; padding:18px;">No hay depósitos pendientes de acreditación.</td></tr>';
+          return;
+        }
+
+        data.forEach(d => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${formatDate(d.createdAt)}</td>
+            <td><strong>@${escapeHtml(d.username)}</strong></td>
+            <td><span class="badge badge-chips">${formatARS(d.amount)}</span></td>
+            <td>${escapeHtml(d.reference || 'WhatsApp')}</td>
+            <td style="text-align:center; display:flex; gap:6px; justify-content:center;">
+              <button class="btn-action-sm btn-approve" onclick="approveDeposit('${d.id}')">✓ Aprobar</button>
+              <button class="btn-action-sm btn-reject" onclick="rejectDeposit('${d.id}')">✕ Rechazar</button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch(err) {
+        console.error('Error cargando depósitos:', err);
+      }
+    }
+
+    async function approveDeposit(depositId) {
+      if (!confirm('¿Aprobar este depósito y acreditar las fichas al usuario?')) return;
+      try {
+        const res = await fetch('/api/admin/approve-deposit', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ depositId })
+        });
+        const data = await res.json();
+        alert(data.message);
+        refreshAllData();
+      } catch {
+        alert('Error al aprobar depósito.');
+      }
+    }
+
+    async function rejectDeposit(depositId) {
+      if (!confirm('¿Rechazar esta solicitud de depósito?')) return;
+      try {
+        const res = await fetch('/api/admin/reject-deposit', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ depositId })
+        });
+        const data = await res.json();
+        alert(data.message);
+        refreshAllData();
+      } catch {
+        alert('Error al rechazar depósito.');
+      }
+    }
+
+    async function loadTransactions() {
+      try {
+        const res = await fetch('/api/admin/transactions', { headers: getHeaders() });
+        if (res.status === 401) return adminLogout();
+        const data = await res.json();
+        const tbody = document.getElementById('transactionRows');
+        tbody.innerHTML = '';
+
+        if (!data || data.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#64748b; padding:18px;">No hay transacciones registradas aún.</td></tr>';
+          return;
+        }
+
+        data.forEach(t => {
+          let badgeClass = 'badge-deposit';
+          let typeLabel = 'DEPÓSITO';
+          if (t.type === 'WITHDRAW') { badgeClass = 'badge-withdraw'; typeLabel = 'RETIRO'; }
+          else if (t.type === 'COMMISSION_RAKE') { badgeClass = 'badge-rake'; typeLabel = 'RAKE 10%'; }
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${formatDate(t.createdAt)}</td>
+            <td><span class="badge ${badgeClass}">${typeLabel}</span></td>
+            <td><strong>@${escapeHtml(t.username)}</strong></td>
+            <td><strong>${formatARS(t.amount)}</strong></td>
+            <td style="color:#cbd5e1;">${escapeHtml(t.details || '-')}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch(err) {
+        console.error('Error cargando historial:', err);
       }
     }
 
     async function loadUsers() {
-      const res = await fetch('/api/admin/users-list', { headers: getHeaders() });
-      if (res.status === 401) { adminLogout(); return; }
+      try {
+        const res = await fetch('/api/admin/users-list', { headers: getHeaders() });
+        if (res.status === 401) return adminLogout();
 
-      const data = await res.json();
-      const tbody = document.getElementById('userRows');
-      tbody.innerHTML = '';
-      data.forEach(u => {
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
-          <td style="cursor:pointer;" onclick="selectUser('${u.username}')"><strong>@${u.username}</strong></td>
-          <td style="cursor:pointer;" onclick="selectUser('${u.username}')">${u.fullName}</td>
-          <td style="cursor:pointer;" onclick="selectUser('${u.username}')"><span class="chips-badge">$${new Intl.NumberFormat('es-AR').format(u.chips)}</span></td>
-          <td style="text-align:center;">
-            <button class="btn-delete-row" onclick="deleteUserPrompt('${u.username}')">🗑️ Eliminar</button>
-          </td>
-        `;
-        tbody.appendChild(tr);
-      });
+        const data = await res.json();
+        const tbody = document.getElementById('userRows');
+        tbody.innerHTML = '';
+
+        data.forEach(u => {
+          const emoji = AVATAR_MAP[u.avatar] || '🤠';
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td style="font-size:1.2rem; cursor:pointer;" onclick="selectUser('${escapeHtml(u.username)}')">${emoji}</td>
+            <td style="cursor:pointer;" onclick="selectUser('${escapeHtml(u.username)}')"><strong>@${escapeHtml(u.username)}</strong></td>
+            <td style="cursor:pointer;" onclick="selectUser('${escapeHtml(u.username)}')">${escapeHtml(u.fullName)}</td>
+            <td style="cursor:pointer; color:#94a3b8;" onclick="selectUser('${escapeHtml(u.username)}')">${escapeHtml(u.email)}</td>
+            <td style="cursor:pointer;" onclick="selectUser('${escapeHtml(u.username)}')"><span class="badge badge-chips">${formatARS(u.chips)}</span></td>
+            <td style="text-align:center;">
+              <button class="btn-action-sm btn-delete-row" onclick="deleteUserPrompt('${escapeHtml(u.username)}')">🗑️ Eliminar</button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch(err) {
+        console.error('Error cargando usuarios:', err);
+      }
     }
 
     function selectUser(username) {
       document.getElementById('targetUser').value = username; 
       document.getElementById('passUser').value = username; 
+      switchAdminTab('chips');
     }
 
     async function deleteUserPrompt(username) {
@@ -241,12 +510,8 @@
         });
 
         const data = await res.json();
-        if (res.ok) {
-          alert(data.message);
-          loadUsers();
-        } else {
-          alert(data.message);
-        }
+        alert(data.message);
+        refreshAllData();
       } catch {
         alert('Error de conexión al intentar eliminar el usuario.');
       }
@@ -279,7 +544,7 @@
           msg.className = 'msg ok';
           msg.innerText = data.message;
           document.getElementById('targetAmount').value = '';
-          loadUsers();
+          refreshAllData();
         } else {
           msg.className = 'msg err';
           msg.innerText = data.message;

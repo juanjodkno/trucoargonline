@@ -24,6 +24,15 @@ export interface DepositRequest {
   createdAt: string;
 }
 
+export interface Transaction {
+  id: string;
+  type: 'DEPOSIT' | 'WITHDRAW' | 'COMMISSION_RAKE';
+  username: string;
+  amount: number;
+  details?: string;
+  createdAt: string;
+}
+
 export const ALLOWED_AVATARS = [
   'gaucho',
   'mate',
@@ -44,6 +53,7 @@ export const pool = new Pool({
 
 let usersCache: User[] = [];
 let depositsCache: DepositRequest[] = [];
+let transactionsCache: Transaction[] = [];
 
 export async function initDatabase() {
   if (!DATABASE_URL) {
@@ -83,6 +93,17 @@ export async function initDatabase() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS transactions (
+        id VARCHAR(50) PRIMARY KEY,
+        type VARCHAR(30) NOT NULL,
+        username VARCHAR(100) NOT NULL,
+        amount BIGINT NOT NULL,
+        details VARCHAR(255),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
     
     const uRes = await client.query('SELECT * FROM users');
     usersCache = uRes.rows.map(r => ({
@@ -107,8 +128,18 @@ export async function initDatabase() {
       createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
     }));
 
+    const tRes = await client.query('SELECT * FROM transactions ORDER BY created_at DESC LIMIT 200');
+    transactionsCache = tRes.rows.map(r => ({
+      id: r.id,
+      type: r.type,
+      username: r.username,
+      amount: Number(r.amount) || 0,
+      details: r.details || '',
+      createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
+    }));
+
     client.release();
-    console.log(`✅ Base de datos conectada. ${usersCache.length} usuarios sincronizados.`);
+    console.log(`✅ Base de datos conectada. ${usersCache.length} usuarios y ${transactionsCache.length} transacciones sincronizadas.`);
   } catch (err) {
     console.error('❌ Error conectando a PostgreSQL:', err);
   }
@@ -332,6 +363,28 @@ export function getPendingDeposits(): DepositRequest[] {
   return depositsCache.filter(d => d.status === 'PENDING');
 }
 
+export function recordTransaction(type: 'DEPOSIT' | 'WITHDRAW' | 'COMMISSION_RAKE', username: string, amount: number, details: string = ''): Transaction {
+  const tx: Transaction = {
+    id: 'tx_' + crypto.randomBytes(4).toString('hex'),
+    type,
+    username: (username || '').trim().toLowerCase(),
+    amount: Number(amount) || 0,
+    details,
+    createdAt: new Date().toISOString()
+  };
+
+  transactionsCache.unshift(tx);
+
+  if (DATABASE_URL) {
+    pool.query(
+      'INSERT INTO transactions (id, type, username, amount, details, created_at) VALUES ($1, $2, $3, $4, $5, $6)',
+      [tx.id, tx.type, tx.username, tx.amount, tx.details, tx.createdAt]
+    ).catch(err => console.error('Error guardando transacción en BD:', err));
+  }
+
+  return tx;
+}
+
 export function approveDeposit(depositId: string): { success: boolean; message: string } {
   const dep = depositsCache.find(d => d.id === depositId);
   if (!dep || dep.status !== 'PENDING') {
@@ -340,6 +393,7 @@ export function approveDeposit(depositId: string): { success: boolean; message: 
 
   dep.status = 'APPROVED';
   modifyUserChips(dep.username, dep.amount);
+  recordTransaction('DEPOSIT', dep.username, dep.amount, `Depósito aprobado (${dep.reference})`);
 
   if (DATABASE_URL) {
     pool.query(
@@ -349,6 +403,59 @@ export function approveDeposit(depositId: string): { success: boolean; message: 
   }
 
   return { success: true, message: `Acreditados $${dep.amount} a ${dep.username}.` };
+}
+
+export function rejectDeposit(depositId: string): { success: boolean; message: string } {
+  const dep = depositsCache.find(d => d.id === depositId);
+  if (!dep || dep.status !== 'PENDING') {
+    return { success: false, message: 'Solicitud no válida o ya procesada.' };
+  }
+
+  dep.status = 'REJECTED';
+
+  if (DATABASE_URL) {
+    pool.query(
+      'UPDATE deposits SET status = $1 WHERE id = $2',
+      ['REJECTED', dep.id]
+    ).catch(err => console.error('Error rechazando depósito en BD:', err));
+  }
+
+  return { success: true, message: `Depósito de @${dep.username} rechazado.` };
+}
+
+export function getAllTransactions(limit: number = 60): Transaction[] {
+  return transactionsCache.slice(0, limit);
+}
+
+export function getAdminMetrics() {
+  const totalUsers = usersCache.length;
+  const totalChipsInCirculation = usersCache.reduce((sum, u) => sum + (u.chips || 0), 0);
+  
+  const pendingDeposits = depositsCache.filter(d => d.status === 'PENDING');
+  const pendingDepositsCount = pendingDeposits.length;
+  const pendingDepositsAmount = pendingDeposits.reduce((sum, d) => sum + (d.amount || 0), 0);
+
+  const totalRakeEarned = transactionsCache
+    .filter(t => t.type === 'COMMISSION_RAKE')
+    .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+  const totalDepositsApproved = transactionsCache
+    .filter(t => t.type === 'DEPOSIT')
+    .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+  const totalWithdrawals = transactionsCache
+    .filter(t => t.type === 'WITHDRAW')
+    .reduce((sum, t) => sum + (t.amount || 0), 0);
+
+  return {
+    totalUsers,
+    totalChipsInCirculation,
+    pendingDepositsCount,
+    pendingDepositsAmount,
+    totalRakeEarned,
+    totalDepositsApproved,
+    totalWithdrawals
+  };
 }
 
 export async function deleteUser(username: string): Promise<boolean> {
