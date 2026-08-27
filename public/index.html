@@ -670,6 +670,8 @@
         return;
       }
 
+      resetTableVisuals(false);
+
       socket.emit('create_room', { 
         userId: currentUser.username, 
         betAmount: bet,
@@ -683,6 +685,7 @@
         alert('No tenés suficientes fichas para entrar a esta mesa.');
         return;
       }
+      resetTableVisuals(true);
       socket.emit('join_room', { roomId, userId: currentUser.username });
     }
 
@@ -718,6 +721,56 @@
       });
     }
 
+    function resetTableVisuals(isPlaying = false) {
+      currentMyCards = [];
+      currentTurnPlayer = '';
+      
+      const turnElem = document.getElementById('lblTurn');
+      if (turnElem) turnElem.innerText = isPlaying ? 'Iniciando mano...' : 'Esperando rival...';
+
+      const scNos = document.getElementById('scoreNosotros');
+      const scEll = document.getElementById('scoreEllos');
+      if (scNos) scNos.innerText = '0';
+      if (scEll) scEll.innerText = '0';
+
+      for (let i = 0; i < 3; i++) {
+        const slot = document.getElementById(`trick-${i}`);
+        if (slot) slot.innerHTML = `<span class="trick-label">${i + 1}ra Mano</span>`;
+      }
+
+      const opp = document.getElementById('opponentCards');
+      if (opp) {
+        opp.innerHTML = `
+          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
+          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
+          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
+        `;
+      }
+
+      const myCardsContainer = document.getElementById('myCards');
+      if (myCardsContainer) {
+        myCardsContainer.classList.add('disabled');
+        myCardsContainer.innerHTML = `
+          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
+          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
+          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
+        `;
+      }
+
+      const florG = document.getElementById('florGroup');
+      if (florG) florG.style.display = 'none';
+      const envG = document.getElementById('envidoGroup');
+      if (envG) envG.style.display = 'none';
+      const envDG = document.getElementById('envidoDeclareGroup');
+      if (envDG) envDG.style.display = 'none';
+      const truG = document.getElementById('trucoGroup');
+      if (truG) truG.style.display = 'none';
+      const respG = document.getElementById('responseGroup');
+      if (respG) respG.style.display = 'none';
+      const mazoB = document.getElementById('btnMazo');
+      if (mazoB) mazoB.style.display = 'none';
+    }
+
     function enterGameInterface(roomId, points, flor, bet, isPlaying = false) {
       activeRoomId = roomId;
       isGameStarted = isPlaying;
@@ -727,6 +780,7 @@
 
       document.getElementById('lobbyContainer').style.display = 'none';
       document.getElementById('gameContainer').style.display = 'flex';
+      document.getElementById('gameActions').style.display = 'flex';
       
       const betLabel = bet > 0 ? `$${new Intl.NumberFormat('es-AR').format(bet)} ARS` : 'Gratis (Amistoso)';
       document.getElementById('lblRoom').innerText = `${roomId} (${betLabel} | ${roomTargetPoints} pts | ${roomWithFlor ? 'Con Flor' : 'Sin Flor'})`;
@@ -737,39 +791,7 @@
       } else {
         btnLeave.innerText = 'Abandonar mesa';
         log(`🟢 Creaste la mesa ${roomId}. Esperando que se una un rival...`);
-
-        // Mesa en espera: limpiar jugadas previas y poner las 6 cartas dadas vuelta
-        currentMyCards = [];
-        currentTurnPlayer = '';
-        document.getElementById('lblTurn').innerText = 'Esperando rival...';
-        document.getElementById('scoreNosotros').innerText = '0';
-        document.getElementById('scoreEllos').innerText = '0';
-
-        for (let i = 0; i < 3; i++) {
-          document.getElementById(`trick-${i}`).innerHTML = `<span class="trick-label">${i + 1}ra Mano</span>`;
-        }
-
-        const opp = document.getElementById('opponentCards');
-        opp.innerHTML = `
-          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
-          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
-          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
-        `;
-
-        const myCardsContainer = document.getElementById('myCards');
-        myCardsContainer.classList.add('disabled');
-        myCardsContainer.innerHTML = `
-          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
-          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
-          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
-        `;
-
-        document.getElementById('florGroup').style.display = 'none';
-        document.getElementById('envidoGroup').style.display = 'none';
-        document.getElementById('envidoDeclareGroup').style.display = 'none';
-        document.getElementById('trucoGroup').style.display = 'none';
-        document.getElementById('responseGroup').style.display = 'none';
-        document.getElementById('btnMazo').style.display = 'none';
+        resetTableVisuals(false);
       }
     }
 
@@ -790,6 +812,7 @@
       sessionStorage.removeItem('truco_active_room');
       activeRoomId = null;
       isGameStarted = false;
+      resetTableVisuals(false);
       document.getElementById('winnerModal').style.display = 'none';
       document.getElementById('gameContainer').style.display = 'none';
       document.getElementById('gameActions').style.display = 'flex';
@@ -1015,6 +1038,7 @@
 
       socket.on('game_ready', (data) => {
         enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, true);
+        resetTableVisuals(true);
         roomWithFlor = parseBoolean(data.withFlor);
         const potMsg = data.pot > 0 ? `Pozo en juego: $${new Intl.NumberFormat('es-AR').format(data.pot)} ARS` : '¡Partida Amistosa (Gratis)!';
         log(`🏆 ¡Rival encontrado! ${potMsg}`);
