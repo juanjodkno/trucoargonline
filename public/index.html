@@ -21,6 +21,18 @@
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
     body { background: radial-gradient(circle at center, #1b2838 0%, #080c10 100%); color: white; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 10px; }
 
+    /* Animaciones Generales */
+    @keyframes dealIn {
+      0% { transform: translateY(80px) scale(0.6); opacity: 0; }
+      100% { transform: translateY(0) scale(1); opacity: 1; }
+    }
+
+    @keyframes dropOnTable {
+      0% { transform: scale(1.35) rotate(-4deg); opacity: 0.8; }
+      70% { transform: scale(0.96) rotate(1deg); }
+      100% { transform: scale(1) rotate(0deg); opacity: 1; }
+    }
+
     /* Modal de Autenticación */
     .auth-overlay {
       position: fixed; inset: 0; background: rgba(8, 12, 16, 0.98); backdrop-filter: blur(12px);
@@ -126,14 +138,24 @@
     .trick-slot { width: 110px; height: 185px; position: relative; display: flex; justify-content: center; align-items: center; }
     .trick-label { position: absolute; font-size: 0.85rem; color: rgba(255, 255, 255, 0.35); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; pointer-events: none; z-index: 1; user-select: none; }
 
-    .card-img { width: 88px; height: 140px; border-radius: 8px; box-shadow: 0 6px 12px rgba(0,0,0,0.45); cursor: pointer; user-select: none; object-fit: cover; transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s, filter 0.2s; }
-    .my-cards .card-img:hover { transform: translateY(-15px) scale(1.06); box-shadow: 0 12px 24px rgba(0,0,0,0.7); }
+    .card-img { 
+      width: 88px; height: 140px; border-radius: 8px; box-shadow: 0 6px 12px rgba(0,0,0,0.45); 
+      cursor: pointer; user-select: none; object-fit: cover; 
+      transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s, filter 0.2s; 
+    }
+    
+    .card-deal-anim {
+      animation: dealIn 0.38s cubic-bezier(0.18, 0.89, 0.32, 1.28) backwards;
+    }
+
+    .my-cards .card-img:hover { transform: translateY(-16px) scale(1.08); box-shadow: 0 14px 26px rgba(0,0,0,0.75); }
     .my-cards.disabled .card-img { cursor: not-allowed; filter: brightness(0.65); transform: none !important; box-shadow: 0 4px 6px rgba(0,0,0,0.3) !important; }
     .opponent-cards .card-img { cursor: default; }
 
-    /* CARTAS EN MESA */
+    /* CARTAS EN MESA CON ANIMACIÓN DE CAÍDA */
     .card-in-trick { 
       position: absolute; 
+      animation: dropOnTable 0.28s cubic-bezier(0.2, 0.8, 0.2, 1.1) forwards;
       transition: transform 0.2s ease, box-shadow 0.2s ease; 
     }
     .card-in-trick.opp-played-card { 
@@ -155,8 +177,9 @@
     }
 
     .actions-bar { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; justify-content: center; max-width: 880px; width: 100%; min-height: 42px; }
-    button.action-btn { background: #0077b6; color: white; border: none; padding: 8px 14px; font-size: 0.88rem; font-weight: bold; border-radius: 8px; cursor: pointer; transition: 0.15s; }
+    button.action-btn { background: #0077b6; color: white; border: none; padding: 8px 14px; font-size: 0.88rem; font-weight: bold; border-radius: 8px; cursor: pointer; transition: 0.15s; user-select: none; }
     button.action-btn:hover { background: #0096c7; transform: translateY(-2px); }
+    button.action-btn:active { transform: scale(0.96); }
     button.btn-truco { background: #d90429; }
     button.btn-envido { background: #f77f00; }
     button.btn-flor { background: #7209b7; }
@@ -467,6 +490,107 @@
       return '3ra Mano';
     }
 
+    // Sistema de Respuesta Háptica (Vibración)
+    function triggerHaptic(duration = 20) {
+      if ('vibrate' in navigator) {
+        try { navigator.vibrate(duration); } catch(e) {}
+      }
+    }
+
+    // Sintetizador de Sonido de Carta por Web Audio API (Latencia 0)
+    let audioCtx = null;
+    function getAudioContext() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) audioCtx = new AudioContextClass();
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    function playCardPlaySound() {
+      try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+
+        // Golpe seco (snap sobre la mesa)
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(140, now);
+        osc.frequency.exponentialRampToValueAtTime(35, now + 0.08);
+
+        gain.gain.setValueAtTime(0.35, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now);
+        osc.stop(now + 0.09);
+
+        // Deslizamiento suave de naipe
+        const bufferSize = ctx.sampleRate * 0.04;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = Math.random() * 2 - 1;
+        }
+
+        const noise = ctx.createBufferSource();
+        noise.buffer = buffer;
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.setValueAtTime(900, now);
+
+        const noiseGain = ctx.createGain();
+        noiseGain.gain.setValueAtTime(0.18, now);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+
+        noise.connect(filter);
+        filter.connect(noiseGain);
+        noiseGain.connect(ctx.destination);
+
+        noise.start(now);
+      } catch (e) {
+        console.warn('Audio Web API error:', e);
+      }
+    }
+
+    function playDealSound() {
+      try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        const bufferSize = ctx.sampleRate * 0.06;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = Math.random() * 2 - 1;
+        }
+
+        const noise = ctx.createBufferSource();
+        noise.buffer = buffer;
+        const filter = ctx.createBiquadFilter();
+        filter.type = 'bandpass';
+        filter.frequency.setValueAtTime(1200, now);
+        filter.Q.setValueAtTime(1.5, now);
+
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.15, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+
+        noise.connect(filter);
+        filter.connect(gain);
+        gain.connect(ctx.destination);
+
+        noise.start(now);
+      } catch (e) {}
+    }
+
     let socket = null;
     let currentUser = null;
     let activeRoomId = sessionStorage.getItem('truco_active_room') || null;
@@ -497,6 +621,7 @@
     }
 
     function switchTab(tab) {
+      triggerHaptic(15);
       const err = document.getElementById('authError');
       if (err) err.style.display = 'none';
 
@@ -529,6 +654,7 @@
     }
 
     function logoutUser() {
+      triggerHaptic(20);
       sessionStorage.removeItem('truco_active_room');
       localStorage.removeItem('truco_saved_user');
       sessionStorage.removeItem('truco_saved_user');
@@ -536,6 +662,7 @@
     }
 
     function openAvatarModal() {
+      triggerHaptic(15);
       const grid = document.getElementById('avatarPickerGrid');
       grid.innerHTML = '';
       
@@ -557,10 +684,12 @@
     }
 
     function closeAvatarModal() {
+      triggerHaptic(15);
       document.getElementById('avatarModal').style.display = 'none';
     }
 
     async function selectAvatar(avatarId) {
+      triggerHaptic(25);
       try {
         const res = await fetch('/api/user/avatar', {
           method: 'POST',
@@ -583,7 +712,7 @@
     }
 
     function updateAvatarDisplay() {
-      const currentAvatar = currentUser.avatar || 'gaucho';
+      const currentAvatar = currentUser?.avatar || 'gaucho';
       const emoji = getAvatarEmoji(currentAvatar);
       const lobbyBadge = document.getElementById('lobbyUserAvatar');
       if (lobbyBadge) lobbyBadge.innerText = emoji;
@@ -593,6 +722,7 @@
 
     async function handleRegister(e) {
       e.preventDefault();
+      triggerHaptic(20);
       const fullName = document.getElementById('regFullName').value;
       const email = document.getElementById('regEmail').value;
       const username = document.getElementById('regUsername').value;
@@ -616,6 +746,7 @@
 
     async function handleLogin(e) {
       e.preventDefault();
+      triggerHaptic(20);
       const usernameOrEmail = document.getElementById('logUser').value;
       const password = document.getElementById('logPassword').value;
       const remember = document.getElementById('logRememberMe').checked;
@@ -668,6 +799,7 @@
     }
 
     function copyAlias() {
+      triggerHaptic(20);
       const alias = 'juanjodecano.ap';
       navigator.clipboard.writeText(alias).then(() => {
         const btn = document.getElementById('btnCopyAlias');
@@ -686,11 +818,12 @@
       });
     }
 
-    function openDepositModal() { document.getElementById('depositModal').style.display = 'flex'; }
-    function closeDepositModal() { document.getElementById('depositModal').style.display = 'none'; }
+    function openDepositModal() { triggerHaptic(15); document.getElementById('depositModal').style.display = 'flex'; }
+    function closeDepositModal() { triggerHaptic(15); document.getElementById('depositModal').style.display = 'none'; }
 
     async function handleDepositSubmit(e) {
       e.preventDefault();
+      triggerHaptic(20);
       const amount = document.getElementById('depAmount').value;
 
       try {
@@ -708,11 +841,12 @@
       closeDepositModal();
     }
 
-    function openWithdrawModal() { document.getElementById('withdrawModal').style.display = 'flex'; }
-    function closeWithdrawModal() { document.getElementById('withdrawModal').style.display = 'none'; }
+    function openWithdrawModal() { triggerHaptic(15); document.getElementById('withdrawModal').style.display = 'flex'; }
+    function closeWithdrawModal() { triggerHaptic(15); document.getElementById('withdrawModal').style.display = 'none'; }
 
     async function handleWithdrawSubmit(e) {
       e.preventDefault();
+      triggerHaptic(20);
       const aliasCbu = document.getElementById('withCbuAlias').value.trim();
       const amount = parseInt(document.getElementById('withAmount').value, 10);
 
@@ -756,6 +890,7 @@
     }
 
     function toggleFreeTable(isFree) {
+      triggerHaptic(15);
       const inputBet = document.getElementById('inputBet');
       const lblBet = document.getElementById('lblBetAmount');
       const btn = document.getElementById('btnCreateTable');
@@ -778,6 +913,7 @@
     }
 
     function createNewTable() {
+      triggerHaptic(20);
       const isFree = document.getElementById('chkFreeTable').checked;
       const bet = isFree ? 0 : parseInt(document.getElementById('inputBet').value, 10);
       const points = parseInt(document.getElementById('selectPoints').value, 10) || 30;
@@ -799,6 +935,7 @@
     }
 
     function joinTable(roomId, betAmount) {
+      triggerHaptic(20);
       if (betAmount > 0 && betAmount > (currentUser.chips || 0)) {
         alert('No tenés suficientes fichas para entrar a esta mesa.');
         return;
@@ -919,6 +1056,7 @@
     }
 
     function handleLeaveButton() {
+      triggerHaptic(25);
       if (!isGameStarted) {
         socket.emit('cancel_waiting_table', { roomId: activeRoomId, userId: currentUser.username });
       } else {
@@ -1109,10 +1247,11 @@
         currentMyCards = data.myCards || [];
         const myCardsContainer = document.getElementById('myCards');
         myCardsContainer.innerHTML = '';
-        currentMyCards.forEach(c => {
+        currentMyCards.forEach((c, idx) => {
           const img = document.createElement('img');
           img.id = `card-${c.id}`;
-          img.className = 'card-img';
+          img.className = 'card-img card-deal-anim';
+          img.style.animationDelay = `${idx * 0.08}s`;
           img.src = getCardSrc(c.id);
           img.alt = c.id;
           img.onclick = () => playCard(c.id);
@@ -1123,7 +1262,8 @@
         opp.innerHTML = '';
         for (let i = 0; i < data.oppCardsCount; i++) {
           const img = document.createElement('img');
-          img.className = 'card-img';
+          img.className = 'card-img card-deal-anim';
+          img.style.animationDelay = `${i * 0.08}s`;
           img.src = getCardSrc('BACK');
           opp.appendChild(img);
         }
@@ -1203,15 +1343,16 @@
         }
         const opp = document.getElementById('opponentCards');
         opp.innerHTML = `
-          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
-          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
-          <img class="card-img" src="${getCardSrc('BACK')}" alt="Dorso" />
+          <img class="card-img card-deal-anim" style="animation-delay:0s;" src="${getCardSrc('BACK')}" alt="Dorso" />
+          <img class="card-img card-deal-anim" style="animation-delay:0.08s;" src="${getCardSrc('BACK')}" alt="Dorso" />
+          <img class="card-img card-deal-anim" style="animation-delay:0.16s;" src="${getCardSrc('BACK')}" alt="Dorso" />
         `;
 
         updateTurnControls(currentTurnPlayer);
       });
 
       socket.on('cards_dealt', (data) => {
+        playDealSound();
         const isP1 = (data.p1Id || '').toLowerCase() === currentUser.username.toLowerCase();
         const myCards = isP1 ? data.p1Cards : data.p2Cards;
         currentMyCards = myCards || [];
@@ -1223,10 +1364,11 @@
         const container = document.getElementById('myCards');
         container.innerHTML = '';
 
-        myCards.forEach(c => {
+        myCards.forEach((c, index) => {
           const img = document.createElement('img');
           img.id = `card-${c.id}`;
-          img.className = 'card-img';
+          img.className = 'card-img card-deal-anim';
+          img.style.animationDelay = `${index * 0.08}s`;
           img.src = getCardSrc(c.id);
           img.alt = c.id;
           img.onclick = () => playCard(c.id);
@@ -1237,6 +1379,9 @@
       });
 
       socket.on('card_played', (data) => {
+        playCardPlaySound();
+        triggerHaptic(30);
+
         log(`🃏 <strong>${data.userId}</strong> tiró: ${data.cardId.replace('_', ' ')}`);
         currentTrickIndex = data.currentTrick;
 
@@ -1276,6 +1421,7 @@
       });
 
       socket.on('call_received', (data) => {
+        triggerHaptic(25);
         log(`🗣️ <strong>${data.userId}</strong> cantó: <strong>${data.callType}</strong>`);
         pendingCategory = data.category;
         document.getElementById('gameActions').style.display = 'flex';
@@ -1484,9 +1630,10 @@
         subtitle.innerHTML = `<strong>${data.winnerId}</strong> mostró <strong>${data.score}</strong> puntos`;
         cardsRow.innerHTML = '';
 
-        data.cards.forEach(c => {
+        data.cards.forEach((c, idx) => {
           const img = document.createElement('img');
-          img.className = 'card-img';
+          img.className = 'card-img card-deal-anim';
+          img.style.animationDelay = `${idx * 0.08}s`;
           img.src = getCardSrc(c.id);
           cardsRow.appendChild(img);
         });
@@ -1572,14 +1719,38 @@
         alert('No es tu turno de jugar carta.');
         return;
       }
+      triggerHaptic(25);
       socket.emit('play_card', { roomId: activeRoomId, userId: currentUser.username, cardId }); 
     }
 
-    function sendCall(callType) { socket.emit('send_call', { roomId: activeRoomId, userId: currentUser.username, callType }); }
-    function acceptCall() { pendingCategory === 'ENVIDO' ? sendCall('QUIERO_ENVIDO') : sendCall('QUIERO_TRUCO'); document.getElementById('responseGroup').style.display = 'none'; }
-    function declineCall() { pendingCategory === 'ENVIDO' ? sendCall('NO_QUIERO_ENVIDO') : sendCall('NO_QUIERO_TRUCO'); document.getElementById('responseGroup').style.display = 'none'; }
-    function cantarMisPuntos() { socket.emit('declare_envido_points', { roomId: activeRoomId, userId: currentUser.username, points: getMyEnvidoScore() }); document.getElementById('envidoDeclareGroup').style.display = 'none'; }
-    function decirSonBuenas() { socket.emit('say_son_buenas', { roomId: activeRoomId, userId: currentUser.username }); document.getElementById('envidoDeclareGroup').style.display = 'none'; }
+    function sendCall(callType) { 
+      triggerHaptic(20);
+      socket.emit('send_call', { roomId: activeRoomId, userId: currentUser.username, callType }); 
+    }
+    
+    function acceptCall() { 
+      triggerHaptic(20);
+      pendingCategory === 'ENVIDO' ? sendCall('QUIERO_ENVIDO') : sendCall('QUIERO_TRUCO'); 
+      document.getElementById('responseGroup').style.display = 'none'; 
+    }
+    
+    function declineCall() { 
+      triggerHaptic(20);
+      pendingCategory === 'ENVIDO' ? sendCall('NO_QUIERO_ENVIDO') : sendCall('NO_QUIERO_TRUCO'); 
+      document.getElementById('responseGroup').style.display = 'none'; 
+    }
+    
+    function cantarMisPuntos() { 
+      triggerHaptic(20);
+      socket.emit('declare_envido_points', { roomId: activeRoomId, userId: currentUser.username, points: getMyEnvidoScore() }); 
+      document.getElementById('envidoDeclareGroup').style.display = 'none'; 
+    }
+    
+    function decirSonBuenas() { 
+      triggerHaptic(20);
+      socket.emit('say_son_buenas', { roomId: activeRoomId, userId: currentUser.username }); 
+      document.getElementById('envidoDeclareGroup').style.display = 'none'; 
+    }
 
     window.addEventListener('DOMContentLoaded', () => {
       const saved = localStorage.getItem('truco_saved_user') || sessionStorage.getItem('truco_saved_user');
