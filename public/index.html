@@ -390,6 +390,17 @@
     </div>
   </div>
 
+  <!-- Modal Desconexión Rival / Ventana de Gracia -->
+  <div class="modal-overlay" id="disconnectModal" style="z-index: 250;">
+    <div class="modal-card" style="text-align: center; border-color: #f77f00; box-shadow: 0 0 30px rgba(247, 127, 0, 0.4);">
+      <div style="font-size: 2.2rem; margin-bottom: 8px;">📡</div>
+      <h3 style="color: #ffd166; margin-bottom: 8px;">Rival Desconectado</h3>
+      <p style="font-size: 0.9rem; color: #cbd5e1; margin-bottom: 14px;" id="disconnectText">Esperando reconexión del rival...</p>
+      <div style="font-size: 2.2rem; font-weight: 900; color: #e63946; letter-spacing: 1px;" id="disconnectTimer">45s</div>
+      <p style="font-size: 0.78rem; color: #94a3b8; margin-top: 12px;">Si el tiempo expira, ganarás automáticamente los puntos y el pozo de la partida.</p>
+    </div>
+  </div>
+
   <!-- MESA DE JUEGO -->
   <div id="gameContainer">
     <div class="header-bar">
@@ -497,7 +508,7 @@
       }
     }
 
-    // Sintetizador de Sonido de Carta por Web Audio API (Latencia 0)
+    // Sintetizador de Sonido de Carta por Web Audio API
     let audioCtx = null;
     function getAudioContext() {
       if (!audioCtx) {
@@ -516,7 +527,6 @@
         if (!ctx) return;
         const now = ctx.currentTime;
 
-        // Golpe seco (snap sobre la mesa)
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = 'triangle';
@@ -532,7 +542,6 @@
         osc.start(now);
         osc.stop(now + 0.09);
 
-        // Deslizamiento suave de naipe
         const bufferSize = ctx.sampleRate * 0.04;
         const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
         const data = buffer.getChannelData(0);
@@ -983,6 +992,9 @@
       currentMyCards = [];
       currentTurnPlayer = '';
       
+      const disc = document.getElementById('disconnectModal');
+      if (disc) disc.style.display = 'none';
+
       const turnElem = document.getElementById('lblTurn');
       if (turnElem) turnElem.innerText = isPlaying ? 'Iniciando mano...' : 'Esperando rival...';
 
@@ -1074,6 +1086,7 @@
       activeRoomId = null;
       isGameStarted = false;
       resetTableVisuals(false);
+      document.getElementById('disconnectModal').style.display = 'none';
       document.getElementById('winnerModal').style.display = 'none';
       document.getElementById('gameContainer').style.display = 'none';
       document.getElementById('gameActions').style.display = 'flex';
@@ -1230,6 +1243,7 @@
 
       socket.on('sync_game_state', (data) => {
         enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, true);
+        document.getElementById('disconnectModal').style.display = 'none';
         document.getElementById('envidoOverlay').style.display = 'none';
         document.getElementById('gameActions').style.display = 'flex';
         setScores(data.scores);
@@ -1284,6 +1298,26 @@
         }
 
         updateTurnControls(data.currentTurn);
+      });
+
+      socket.on('player_disconnected_grace', (data) => {
+        const isMe = (data.disconnectedUser || '').toLowerCase() === currentUser.username.toLowerCase();
+        if (!isMe) {
+          document.getElementById('disconnectModal').style.display = 'flex';
+          document.getElementById('disconnectText').innerText = `El jugador @${data.disconnectedUser} se desconectó. Esperando reconexión...`;
+          document.getElementById('disconnectTimer').innerText = `${data.secondsLeft}s`;
+          log(`⚠️ <strong>@${data.disconnectedUser}</strong> perdió la conexión. Pausa de espera: ${data.secondsLeft}s`);
+        }
+      });
+
+      socket.on('disconnect_timer_tick', (data) => {
+        const timer = document.getElementById('disconnectTimer');
+        if (timer) timer.innerText = `${data.secondsLeft}s`;
+      });
+
+      socket.on('player_reconnected', (data) => {
+        document.getElementById('disconnectModal').style.display = 'none';
+        log(`🟢 <strong>@${data.reconnectedUser}</strong> se reconectó a la mesa. ¡Partida reanudada!`);
       });
 
       socket.on('reconnect_failed', () => {
@@ -1667,6 +1701,7 @@
       socket.on('player_surrendered', (data) => {
         sessionStorage.removeItem('truco_active_room');
         setScores(data.scores);
+        document.getElementById('disconnectModal').style.display = 'none';
         document.getElementById('gameActions').style.display = 'none';
         currentTurnPlayer = '';
         document.getElementById('lblTurn').innerText = 'Partida Concluida';
@@ -1677,10 +1712,10 @@
           const modal = document.getElementById('winnerModal');
           const title = document.getElementById('winnerTitle');
           const desc = document.getElementById('winnerDesc');
-          title.innerText = '🏆 ¡TU RIVAL ABANDONÓ!';
+          title.innerText = data.reason === 'DISCONNECT_TIMEOUT' ? '⏱️ ¡TIEMPO AGOTADO POR DESCONEXIÓN!' : '🏆 ¡TU RIVAL ABANDONÓ!';
           title.style.color = '#48cae4';
           const potText = data.pot > 0 ? `Pozo ganado: $${new Intl.NumberFormat('es-AR').format(data.pot)} ARS` : 'Partida Amistosa';
-          desc.innerText = `@${data.surrenderedUser} abandonó la mesa. ¡Ganaste los puntos y las fichas! (${potText})`;
+          desc.innerText = `@${data.surrenderedUser} no se reconectó a tiempo. ¡Ganaste los puntos y las fichas! (${potText})`;
           modal.style.display = 'flex';
         }
       });
@@ -1688,6 +1723,7 @@
       socket.on('match_finished', (data) => {
         sessionStorage.removeItem('truco_active_room');
         setScores(data.scores);
+        document.getElementById('disconnectModal').style.display = 'none';
         document.getElementById('gameActions').style.display = 'none';
         currentTurnPlayer = '';
         document.getElementById('lblTurn').innerText = 'Partida Concluida';

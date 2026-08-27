@@ -30,6 +30,10 @@ interface ActiveRoom {
   envidoWinnerRecord?: EnvidoWinnerRecord | null;
   turnInterval?: NodeJS.Timeout;
 
+  // Manejo de Desconexión y Gracia
+  disconnectInterval?: NodeJS.Timeout;
+  disconnectedUser?: string | null;
+
   isDeclaringEnvido: boolean;
   envidoDeclarer: string | null;
   highestEnvidoScore: number;
@@ -80,6 +84,14 @@ export function setupSocketEvents(io: Server) {
     }
   }
 
+  function clearDisconnectTimer(room: ActiveRoom) {
+    if (room.disconnectInterval) {
+      clearInterval(room.disconnectInterval);
+      room.disconnectInterval = undefined;
+    }
+    room.disconnectedUser = null;
+  }
+
   function getAuthenticatedUserId(room: ActiveRoom, socketId: string): string | null {
     if (room.creatorSocketId === socketId) return room.creatorId;
     if (room.guestSocketId === socketId) return room.guestId || null;
@@ -89,6 +101,7 @@ export function setupSocketEvents(io: Server) {
   function checkMatchEnd(room: ActiveRoom): boolean {
     if (room.scoreP1 >= room.targetPoints || room.scoreP2 >= room.targetPoints) {
       clearTurnTimer(room);
+      clearDisconnectTimer(room);
       const matchWinner = room.scoreP1 >= room.targetPoints ? room.creatorId : room.guestId!;
       const netPot = room.betAmount > 0 ? room.betAmount * 2 * 0.9 : 0;
 
@@ -109,6 +122,7 @@ export function setupSocketEvents(io: Server) {
 
   function startTurnTimer(room: ActiveRoom, seconds: number = 25) {
     clearTurnTimer(room);
+    if (room.disconnectedUser) return; // Pausado si hay desconexión
 
     let timeLeft = seconds;
     io.to(room.roomId).emit('timer_tick', { secondsLeft: timeLeft });
@@ -126,7 +140,7 @@ export function setupSocketEvents(io: Server) {
   }
 
   function handleTimeout(room: ActiveRoom) {
-    if (!room.gameRound) return;
+    if (!room.gameRound || room.disconnectedUser) return;
 
     if (room.isDeclaringEnvido && room.envidoDeclarer) {
       const activeUser = room.envidoDeclarer;
@@ -164,8 +178,49 @@ export function setupSocketEvents(io: Server) {
     }
   }
 
+  function startDisconnectGracePeriod(room: ActiveRoom, disconnectedUser: string) {
+    clearTurnTimer(room);
+    clearDisconnectTimer(room);
+
+    room.disconnectedUser = disconnectedUser;
+    let graceLeft = 45;
+
+    io.to(room.roomId).emit('player_disconnected_grace', {
+      disconnectedUser,
+      secondsLeft: graceLeft
+    });
+
+    room.disconnectInterval = setInterval(() => {
+      graceLeft--;
+      if (graceLeft > 0) {
+        io.to(room.roomId).emit('disconnect_timer_tick', { secondsLeft: graceLeft });
+      } else {
+        clearDisconnectTimer(room);
+        
+        // Se venció la ventana de gracia -> Forfeit
+        const isP1 = room.creatorId.toLowerCase() === disconnectedUser.toLowerCase();
+        const winnerId = isP1 ? room.guestId! : room.creatorId;
+        const netPot = room.betAmount > 0 ? room.betAmount * 2 * 0.9 : 0;
+
+        if (netPot > 0) modifyUserChips(winnerId, netPot);
+
+        io.to(room.roomId).emit('player_surrendered', {
+          surrenderedUser: disconnectedUser,
+          winnerId,
+          pot: netPot,
+          scores: getScoreMap(room),
+          winnerBalance: getUserChips(winnerId),
+          reason: 'DISCONNECT_TIMEOUT'
+        });
+
+        rooms.delete(room.roomId);
+        broadcastTables();
+      }
+    }, 1000);
+  }
+
   function dealAutoHand(room: ActiveRoom) {
-    if (!room.guestId) return;
+    if (!room.guestId || room.disconnectedUser) return;
     clearTurnTimer(room);
 
     const round = new TrucoRound(
@@ -575,7 +630,10 @@ export function setupSocketEvents(io: Server) {
       trucoOwner: room.trucoOwner,
       awaitingResponseFrom: room.gameRound.awaitingResponseFrom,
       myAvatar: getUserAvatar(userId),
-      rivalAvatar: rivalUsername ? getUserAvatar(rivalUsername) : 'gaucho'
+      rivalAvatar: rivalUsername ? getUserAvatar(rivalUsername) : 'gaucho',
+      isDeclaringEnvido: room.isDeclaringEnvido,
+      envidoDeclarer: room.envidoDeclarer,
+      highestEnvidoScore: room.highestEnvidoScore
     });
   }
 
@@ -596,6 +654,14 @@ export function setupSocketEvents(io: Server) {
         } else if (room.guestId && room.guestId.toLowerCase() === userId.toLowerCase()) {
           room.guestSocketId = socket.id;
         }
+
+        // Si estaba pausado por desconexión, reanudar
+        if (room.disconnectedUser && room.disconnectedUser.toLowerCase() === userId.toLowerCase()) {
+          clearDisconnectTimer(room);
+          io.to(roomId).emit('player_reconnected', { reconnectedUser: userId });
+          startTurnTimer(room, 25);
+        }
+
         sendFullSync(socket, room, userId);
       } else {
         socket.emit('reconnect_failed');
@@ -670,6 +736,8 @@ export function setupSocketEvents(io: Server) {
 
       const isP1 = room.creatorId.toLowerCase() === authUser.toLowerCase();
       clearTurnTimer(room);
+      clearDisconnectTimer(room);
+
       const winnerId = isP1 ? room.guestId : room.creatorId;
       const netPot = room.betAmount > 0 ? room.betAmount * 2 * 0.9 : 0;
 
@@ -682,7 +750,8 @@ export function setupSocketEvents(io: Server) {
         winnerId,
         pot: netPot,
         scores: getScoreMap(room),
-        winnerBalance: getUserChips(winnerId)
+        winnerBalance: getUserChips(winnerId),
+        reason: 'SURRENDER'
       });
 
       rooms.delete(roomId);
@@ -723,17 +792,28 @@ export function setupSocketEvents(io: Server) {
 
     socket.on('disconnect', () => {
       for (const [roomId, room] of rooms.entries()) {
+        // Si la mesa estaba esperando rival en el lobby
         if (!room.guestId && room.creatorSocketId === socket.id) {
           if (room.betAmount > 0) modifyUserChips(room.creatorId, room.betAmount);
           rooms.delete(roomId);
           broadcastTables();
+          continue;
+        }
+
+        // Si la partida ya estaba en curso
+        if (room.guestId) {
+          if (room.creatorSocketId === socket.id) {
+            startDisconnectGracePeriod(room, room.creatorId);
+          } else if (room.guestSocketId === socket.id) {
+            startDisconnectGracePeriod(room, room.guestId);
+          }
         }
       }
     });
 
     socket.on('play_card', ({ roomId, cardId }) => {
       const room = rooms.get(roomId);
-      if (!room || !room.gameRound) return;
+      if (!room || !room.gameRound || room.disconnectedUser) return;
 
       const authUser = getAuthenticatedUserId(room, socket.id);
       if (!authUser) return socket.emit('error_action', { message: 'No perteneces a esta partida.' });
@@ -746,14 +826,14 @@ export function setupSocketEvents(io: Server) {
 
     socket.on('declare_envido_points', ({ roomId, points }) => {
       const room = rooms.get(roomId);
-      if (!room) return;
+      if (!room || room.disconnectedUser) return;
       const authUser = getAuthenticatedUserId(room, socket.id);
       if (authUser) executeDeclareEnvido(room, authUser, points);
     });
 
     socket.on('say_son_buenas', ({ roomId }) => {
       const room = rooms.get(roomId);
-      if (!room) return;
+      if (!room || room.disconnectedUser) return;
       const authUser = getAuthenticatedUserId(room, socket.id);
       if (authUser) executeSonBuenas(room, authUser);
     });
@@ -761,7 +841,7 @@ export function setupSocketEvents(io: Server) {
     socket.on('send_call', ({ roomId, callType }) => {
       try {
         const room = rooms.get(roomId);
-        if (!room || !room.gameRound) return;
+        if (!room || !room.gameRound || room.disconnectedUser) return;
 
         const authUser = getAuthenticatedUserId(room, socket.id);
         if (!authUser) return socket.emit('error_action', { message: 'No perteneces a esta mesa.' });
