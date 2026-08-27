@@ -72,21 +72,18 @@
       border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 10px 30px rgba(0,0,0,0.5); display: none; flex-direction: column; gap: 20px;
     }
     .lobby-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 15px; }
-    .user-profile-badge { display: flex; align-items: center; gap: 8px; cursor: pointer; background: #0b1320; padding: 4px 10px; border-radius: 20px; border: 1px solid #334155; transition: 0.2s; }
+    .user-profile-badge { display: flex; align-items: center; gap: 8px; cursor: pointer; background: #0b1320; padding: 6px 14px; border-radius: 20px; border: 1px solid #334155; transition: 0.2s; }
     .user-profile-badge:hover { border-color: #0077b6; background: #1e293b; }
     .avatar-icon-sm { font-size: 1.3rem; line-height: 1; }
     
     .wallet-box { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .chip-badge { background: #2a9d8f; padding: 6px 14px; border-radius: 20px; font-weight: bold; display: flex; align-items: center; gap: 6px; }
     
-    .btn-cargar { background: #f77f00; border: none; padding: 6px 12px; border-radius: 20px; color: white; font-weight: bold; cursor: pointer; font-size: 0.85rem; transition: 0.2s; }
+    .btn-cargar { background: #f77f00; border: none; padding: 6px 14px; border-radius: 20px; color: white; font-weight: bold; cursor: pointer; font-size: 0.85rem; transition: 0.2s; }
     .btn-cargar:hover { background: #fcbf49; color: black; }
 
-    .btn-retirar { background: #e63946; border: none; padding: 6px 12px; border-radius: 20px; color: white; font-weight: bold; cursor: pointer; font-size: 0.85rem; transition: 0.2s; }
+    .btn-retirar { background: #e63946; border: none; padding: 6px 14px; border-radius: 20px; color: white; font-weight: bold; cursor: pointer; font-size: 0.85rem; transition: 0.2s; }
     .btn-retirar:hover { background: #d90429; }
-
-    .btn-logout { background: #475569; border: none; padding: 6px 12px; border-radius: 20px; color: white; font-weight: bold; cursor: pointer; font-size: 0.85rem; transition: 0.2s; }
-    .btn-logout:hover { background: #ef4444; }
 
     .create-table-card { background: #0b1320; padding: 18px; border-radius: 12px; border: 1px solid #1e293b; display: flex; flex-direction: column; gap: 12px; }
     .table-options-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; align-items: flex-end; }
@@ -117,16 +114,16 @@
 
     /* Selector de Avatar Grid */
     .avatar-grid {
-      display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 16px 0;
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0 16px 0;
     }
     .avatar-card-btn {
-      background: #0b1320; border: 2px solid #334155; border-radius: 12px; padding: 10px 6px;
+      background: #0b1320; border: 2px solid #334155; border-radius: 12px; padding: 8px 4px;
       display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; transition: 0.2s;
     }
     .avatar-card-btn:hover { border-color: #0077b6; background: #1e293b; transform: translateY(-3px); }
     .avatar-card-btn.active { border-color: #ffd166; background: rgba(255, 209, 102, 0.15); box-shadow: 0 0 10px rgba(255, 209, 102, 0.4); }
-    .avatar-emoji { font-size: 2rem; line-height: 1; }
-    .avatar-name { font-size: 0.72rem; color: #cbd5e1; font-weight: bold; }
+    .avatar-emoji { font-size: 1.8rem; line-height: 1; }
+    .avatar-name { font-size: 0.7rem; color: #cbd5e1; font-weight: bold; }
 
     /* MESA DE JUEGO */
     #gameContainer { display: none; width: 100%; flex-direction: column; align-items: center; }
@@ -274,7 +271,7 @@
           <img src="/logo.png" alt="Logo" style="width: 28px; height: 28px; object-fit: contain;" />
           <span>Mesas de Truco Online</span>
         </h2>
-        <div class="user-profile-badge" onclick="openAvatarModal()" title="Hacé clic para cambiar tu avatar">
+        <div class="user-profile-badge" onclick="openAvatarModal()" title="Hacé clic para ver tu perfil y avatar">
           <span class="avatar-icon-sm" id="lobbyUserAvatar">🤠</span>
           <span style="color:#cbd5e1; font-size:0.9rem;">Jugador: <strong id="lobbyUsername"></strong></span>
           <span style="font-size:0.75rem; color:#ffd166; margin-left:4px;">✏️</span>
@@ -286,7 +283,6 @@
         </div>
         <button class="btn-cargar" onclick="openDepositModal()">+ Cargar</button>
         <button class="btn-retirar" onclick="openWithdrawModal()">Retirar saldo</button>
-        <button class="btn-logout" onclick="logoutUser()">Salir</button>
       </div>
     </div>
 
@@ -326,16 +322,35 @@
     <div class="table-list" id="tableList"></div>
   </div>
 
-  <!-- Modal Seleccionar Avatar -->
+  <!-- Modal Perfil y Selector de Avatar -->
   <div class="modal-overlay" id="avatarModal">
     <div class="modal-card">
-      <h3 style="color:#ffd166; margin-bottom:6px;">🎭 Elegí tu Avatar</h3>
-      <p style="font-size:0.85rem; color:#94a3b8; margin-bottom:12px;">Personalizá tu personaje con iconos criollos y futboleros:</p>
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+        <h3 style="color:#ffd166;">👤 Mi Perfil</h3>
+        <button type="button" onclick="closeAvatarModal()" style="background:transparent; border:none; color:#94a3b8; font-size:1.3rem; cursor:pointer;">✕</button>
+      </div>
+      <p style="font-size:0.85rem; color:#94a3b8; margin-bottom:10px;">Elegí tu avatar temático:</p>
       
       <div class="avatar-grid" id="avatarPickerGrid"></div>
 
-      <div style="display:flex; justify-content:flex-end; margin-top:12px;">
-        <button type="button" class="btn-submit" style="margin:0; background:#495057; width: auto; padding: 8px 18px;" onclick="closeAvatarModal()">Cerrar</button>
+      <!-- Datos no editables -->
+      <div class="form-group" style="margin-bottom:10px;">
+        <label>Nombre de Usuario</label>
+        <input type="text" id="profUsername" class="form-control" style="background:#080c10; color:#94a3b8; cursor:not-allowed;" readonly />
+      </div>
+      <div class="form-group" style="margin-bottom:18px;">
+        <label>Correo Electrónico</label>
+        <input type="text" id="profEmail" class="form-control" style="background:#080c10; color:#94a3b8; cursor:not-allowed;" readonly />
+      </div>
+
+      <!-- Botones Soporte y Cerrar Sesión en la misma línea -->
+      <div style="display:flex; gap:10px; margin-top:10px;">
+        <button type="button" class="btn-submit" style="margin:0; background:#25d366; flex:1; font-size:0.9rem;" onclick="openSupportWhatsApp()">
+          💬 Soporte
+        </button>
+        <button type="button" class="btn-submit" style="margin:0; background:#e63946; flex:1; font-size:0.9rem;" onclick="logoutUser()">
+          🚪 Cerrar sesión
+        </button>
       </div>
     </div>
   </div>
@@ -675,12 +690,20 @@
       window.location.reload();
     }
 
+    function openSupportWhatsApp() {
+      triggerHaptic(20);
+      const phone = '5493815811724';
+      const userText = currentUser?.username ? ` de mi cuenta @${currentUser.username}` : '';
+      const textMsg = encodeURIComponent(`¡Hola! Necesito soporte con el juego de Truco Online${userText}.`);
+      window.open(`https://wa.me/${phone}?text=${textMsg}`, '_blank');
+    }
+
     function openAvatarModal() {
       triggerHaptic(15);
       const grid = document.getElementById('avatarPickerGrid');
       grid.innerHTML = '';
       
-      const myCurrentAvatar = currentUser.avatar || 'gaucho';
+      const myCurrentAvatar = currentUser?.avatar || 'gaucho';
 
       Object.keys(AVATAR_MAP).forEach(id => {
         const item = AVATAR_MAP[id];
@@ -693,6 +716,12 @@
         btn.onclick = () => selectAvatar(id);
         grid.appendChild(btn);
       });
+
+      // Cargar datos no editables en el modal
+      const uField = document.getElementById('profUsername');
+      const eField = document.getElementById('profEmail');
+      if (uField) uField.value = currentUser?.username ? `@${currentUser.username}` : '';
+      if (eField) eField.value = currentUser?.email || 'Sin correo asociado';
 
       document.getElementById('avatarModal').style.display = 'flex';
     }
@@ -716,7 +745,14 @@
           const storage = localStorage.getItem('truco_saved_user') ? localStorage : sessionStorage;
           storage.setItem('truco_saved_user', JSON.stringify(currentUser));
           updateAvatarDisplay();
-          closeAvatarModal();
+          
+          // Refrescar selección activa en el grid sin cerrar
+          const cards = document.querySelectorAll('.avatar-card-btn');
+          const keys = Object.keys(AVATAR_MAP);
+          cards.forEach((c, idx) => {
+            if (keys[idx] === avatarId) c.classList.add('active');
+            else c.classList.remove('active');
+          });
         } else {
           alert(data.message || 'Error al cambiar avatar.');
         }
