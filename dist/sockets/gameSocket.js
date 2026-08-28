@@ -568,7 +568,7 @@ function setupSocketEvents(io) {
         });
         socket.on('reconnect_game', ({ roomId, userId }) => {
             const room = rooms.get(roomId);
-            if (room && (room.creatorId.toLowerCase() === userId.toLowerCase() || (room.guestId && room.guestId.toLowerCase() === userId.toLowerCase()))) {
+            if (room && (room.creatorId.toLowerCase() === (userId || '').toLowerCase() || (room.guestId && room.guestId.toLowerCase() === (userId || '').toLowerCase()))) {
                 socket.join(roomId);
                 if (room.creatorId.toLowerCase() === userId.toLowerCase()) {
                     room.creatorSocketId = socket.id;
@@ -671,7 +671,7 @@ function setupSocketEvents(io) {
                 winnerBalance: (0, userService_1.getUserChips)(winnerId),
                 reason: 'SURRENDER'
             });
-            rooms.delete(roomId);
+            rooms.delete(room.roomId);
             broadcastTables();
         });
         socket.on('join_room', ({ roomId, userId }) => {
