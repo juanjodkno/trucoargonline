@@ -37,6 +37,13 @@ function setupSocketEvents(io) {
             room.turnInterval = undefined;
         }
     }
+    function clearDisconnectTimer(room) {
+        if (room.disconnectInterval) {
+            clearInterval(room.disconnectInterval);
+            room.disconnectInterval = undefined;
+        }
+        room.disconnectedUser = null;
+    }
     function getAuthenticatedUserId(room, socketId) {
         if (room.creatorSocketId === socketId)
             return room.creatorId;
@@ -47,10 +54,15 @@ function setupSocketEvents(io) {
     function checkMatchEnd(room) {
         if (room.scoreP1 >= room.targetPoints || room.scoreP2 >= room.targetPoints) {
             clearTurnTimer(room);
+            clearDisconnectTimer(room);
             const matchWinner = room.scoreP1 >= room.targetPoints ? room.creatorId : room.guestId;
-            const netPot = room.betAmount > 0 ? room.betAmount * 2 * 0.9 : 0;
-            if (netPot > 0)
+            const grossPot = room.betAmount > 0 ? room.betAmount * 2 : 0;
+            const netPot = grossPot * 0.9;
+            const rake = grossPot * 0.1;
+            if (netPot > 0) {
                 (0, userService_1.modifyUserChips)(matchWinner, netPot);
+                (0, userService_1.recordTransaction)('COMMISSION_RAKE', matchWinner, rake, `Comisión mesa ${room.roomId} ($${room.betAmount} c/u)`);
+            }
             io.to(room.roomId).emit('match_finished', {
                 winnerId: matchWinner,
                 scores: getScoreMap(room),
@@ -65,6 +77,8 @@ function setupSocketEvents(io) {
     }
     function startTurnTimer(room, seconds = 25) {
         clearTurnTimer(room);
+        if (room.disconnectedUser)
+            return;
         let timeLeft = seconds;
         io.to(room.roomId).emit('timer_tick', { secondsLeft: timeLeft });
         room.turnInterval = setInterval(() => {
@@ -80,7 +94,7 @@ function setupSocketEvents(io) {
         }, 1000);
     }
     function handleTimeout(room) {
-        if (!room.gameRound)
+        if (!room.gameRound || room.disconnectedUser)
             return;
         if (room.isDeclaringEnvido && room.envidoDeclarer) {
             const activeUser = room.envidoDeclarer;
@@ -117,8 +131,46 @@ function setupSocketEvents(io) {
             executePlayCard(room, activePlayerId, autoCard.id);
         }
     }
+    function startDisconnectGracePeriod(room, disconnectedUser) {
+        clearTurnTimer(room);
+        clearDisconnectTimer(room);
+        room.disconnectedUser = disconnectedUser;
+        let graceLeft = 45;
+        io.to(room.roomId).emit('player_disconnected_grace', {
+            disconnectedUser,
+            secondsLeft: graceLeft
+        });
+        room.disconnectInterval = setInterval(() => {
+            graceLeft--;
+            if (graceLeft > 0) {
+                io.to(room.roomId).emit('disconnect_timer_tick', { secondsLeft: graceLeft });
+            }
+            else {
+                clearDisconnectTimer(room);
+                const isP1 = room.creatorId.toLowerCase() === disconnectedUser.toLowerCase();
+                const winnerId = isP1 ? room.guestId : room.creatorId;
+                const grossPot = room.betAmount > 0 ? room.betAmount * 2 : 0;
+                const netPot = grossPot * 0.9;
+                const rake = grossPot * 0.1;
+                if (netPot > 0) {
+                    (0, userService_1.modifyUserChips)(winnerId, netPot);
+                    (0, userService_1.recordTransaction)('COMMISSION_RAKE', winnerId, rake, `Comisión abandono mesa ${room.roomId} ($${room.betAmount} c/u)`);
+                }
+                io.to(room.roomId).emit('player_surrendered', {
+                    surrenderedUser: disconnectedUser,
+                    winnerId,
+                    pot: netPot,
+                    scores: getScoreMap(room),
+                    winnerBalance: (0, userService_1.getUserChips)(winnerId),
+                    reason: 'DISCONNECT_TIMEOUT'
+                });
+                rooms.delete(room.roomId);
+                broadcastTables();
+            }
+        }, 1000);
+    }
     function dealAutoHand(room) {
-        if (!room.guestId)
+        if (!room.guestId || room.disconnectedUser)
             return;
         clearTurnTimer(room);
         const round = new trucoGame_1.TrucoRound(room.creatorId, room.guestId, room.manoId, room.targetPoints, room.withFlor);
@@ -524,6 +576,11 @@ function setupSocketEvents(io) {
                 else if (room.guestId && room.guestId.toLowerCase() === userId.toLowerCase()) {
                     room.guestSocketId = socket.id;
                 }
+                if (room.disconnectedUser && room.disconnectedUser.toLowerCase() === userId.toLowerCase()) {
+                    clearDisconnectTimer(room);
+                    io.to(roomId).emit('player_reconnected', { reconnectedUser: userId });
+                    startTurnTimer(room, 25);
+                }
                 sendFullSync(socket, room, userId);
             }
             else {
@@ -597,17 +654,22 @@ function setupSocketEvents(io) {
                 return;
             const isP1 = room.creatorId.toLowerCase() === authUser.toLowerCase();
             clearTurnTimer(room);
+            clearDisconnectTimer(room);
             const winnerId = isP1 ? room.guestId : room.creatorId;
-            const netPot = room.betAmount > 0 ? room.betAmount * 2 * 0.9 : 0;
+            const grossPot = room.betAmount > 0 ? room.betAmount * 2 : 0;
+            const netPot = grossPot * 0.9;
+            const rake = grossPot * 0.1;
             if (netPot > 0) {
                 (0, userService_1.modifyUserChips)(winnerId, netPot);
+                (0, userService_1.recordTransaction)('COMMISSION_RAKE', winnerId, rake, `Comisión rendición mesa ${room.roomId} ($${room.betAmount} c/u)`);
             }
             io.to(roomId).emit('player_surrendered', {
                 surrenderedUser: authUser,
                 winnerId,
                 pot: netPot,
                 scores: getScoreMap(room),
-                winnerBalance: (0, userService_1.getUserChips)(winnerId)
+                winnerBalance: (0, userService_1.getUserChips)(winnerId),
+                reason: 'SURRENDER'
             });
             rooms.delete(roomId);
             broadcastTables();
@@ -652,12 +714,21 @@ function setupSocketEvents(io) {
                         (0, userService_1.modifyUserChips)(room.creatorId, room.betAmount);
                     rooms.delete(roomId);
                     broadcastTables();
+                    continue;
+                }
+                if (room.guestId) {
+                    if (room.creatorSocketId === socket.id) {
+                        startDisconnectGracePeriod(room, room.creatorId);
+                    }
+                    else if (room.guestSocketId === socket.id) {
+                        startDisconnectGracePeriod(room, room.guestId);
+                    }
                 }
             }
         });
         socket.on('play_card', ({ roomId, cardId }) => {
             const room = rooms.get(roomId);
-            if (!room || !room.gameRound)
+            if (!room || !room.gameRound || room.disconnectedUser)
                 return;
             const authUser = getAuthenticatedUserId(room, socket.id);
             if (!authUser)
@@ -669,7 +740,7 @@ function setupSocketEvents(io) {
         });
         socket.on('declare_envido_points', ({ roomId, points }) => {
             const room = rooms.get(roomId);
-            if (!room)
+            if (!room || room.disconnectedUser)
                 return;
             const authUser = getAuthenticatedUserId(room, socket.id);
             if (authUser)
@@ -677,7 +748,7 @@ function setupSocketEvents(io) {
         });
         socket.on('say_son_buenas', ({ roomId }) => {
             const room = rooms.get(roomId);
-            if (!room)
+            if (!room || room.disconnectedUser)
                 return;
             const authUser = getAuthenticatedUserId(room, socket.id);
             if (authUser)
@@ -686,7 +757,7 @@ function setupSocketEvents(io) {
         socket.on('send_call', ({ roomId, callType }) => {
             try {
                 const room = rooms.get(roomId);
-                if (!room || !room.gameRound)
+                if (!room || !room.gameRound || room.disconnectedUser)
                     return;
                 const authUser = getAuthenticatedUserId(room, socket.id);
                 if (!authUser)

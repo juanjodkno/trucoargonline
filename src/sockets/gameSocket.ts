@@ -656,7 +656,7 @@ export function setupSocketEvents(io: Server) {
 
     socket.on('reconnect_game', ({ roomId, userId }) => {
       const room = rooms.get(roomId);
-      if (room && (room.creatorId.toLowerCase() === userId.toLowerCase() || (room.guestId && room.guestId.toLowerCase() === userId.toLowerCase()))) {
+      if (room && (room.creatorId.toLowerCase() === (userId || '').toLowerCase() || (room.guestId && room.guestId.toLowerCase() === (userId || '').toLowerCase()))) {
         socket.join(roomId);
         if (room.creatorId.toLowerCase() === userId.toLowerCase()) {
           room.creatorSocketId = socket.id;
@@ -765,7 +765,7 @@ export function setupSocketEvents(io: Server) {
         reason: 'SURRENDER'
       });
 
-      rooms.delete(roomId);
+      rooms.delete(room.roomId);
       broadcastTables();
     });
 

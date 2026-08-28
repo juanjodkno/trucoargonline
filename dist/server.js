@@ -26,10 +26,14 @@ const io = new socket_io_1.Server(server, {
 });
 app.use(express_1.default.json());
 app.use(express_1.default.static(path_1.default.join(__dirname, '../public')));
+// Servir la vista de administración
+app.get('/admin', (req, res) => {
+    res.sendFile(path_1.default.join(__dirname, '../public/admin.html'));
+});
 // Limitador de tasa contra ataques de fuerza bruta en Login y Registro
 const authLimiter = (0, express_rate_limit_1.default)({
-    windowMs: 15 * 60 * 1000, // Ventana de 15 minutos
-    max: 15, // Máximo 15 intentos por IP
+    windowMs: 15 * 60 * 1000,
+    max: 15,
     message: { success: false, message: 'Demasiadas solicitudes. Por favor reintentá en 15 minutos.' },
     standardHeaders: true,
     legacyHeaders: false,
@@ -37,7 +41,7 @@ const authLimiter = (0, express_rate_limit_1.default)({
 // Limitador estricto para el acceso de Administrador
 const adminAuthLimiter = (0, express_rate_limit_1.default)({
     windowMs: 15 * 60 * 1000,
-    max: 5, // Máximo 5 intentos para adivinar el PIN
+    max: 5,
     message: { success: false, message: 'Demasiados intentos de acceso admin. Bloqueado temporalmente.' },
     standardHeaders: true,
     legacyHeaders: false,
@@ -56,7 +60,7 @@ app.post('/api/admin/auth', adminAuthLimiter, (req, res) => {
     }
     return res.status(401).json({ success: false, message: 'Contraseña de Administrador incorrecta.' });
 });
-// Rutas de autenticación protegidas con Rate Limiting
+// Rutas de autenticación
 app.post('/api/auth/register', authLimiter, async (req, res) => {
     const { fullName, email, username, password } = req.body;
     const result = await (0, userService_1.registerUser)(fullName, email, username, password);
@@ -97,7 +101,7 @@ app.post('/api/wallet/deposit-request', (req, res) => {
     return res.status(result.success ? 200 : 400).json(result);
 });
 app.post('/api/wallet/withdraw-request', (req, res) => {
-    const { username, amount } = req.body;
+    const { username, amount, cbuAlias } = req.body;
     const numAmount = Number(amount);
     if (!numAmount || numAmount <= 0) {
         return res.status(400).json({ success: false, message: 'Monto de retiro inválido.' });
@@ -106,6 +110,7 @@ app.post('/api/wallet/withdraw-request', (req, res) => {
     if (!success) {
         return res.status(400).json({ success: false, message: 'Saldo insuficiente para realizar el retiro.' });
     }
+    (0, userService_1.recordTransaction)('WITHDRAW', username, numAmount, `Retiro solicitado a ${cbuAlias || 'Alias/CBU'}`);
     const currentChips = (0, userService_1.getUserChips)(username);
     return res.json({
         success: true,
@@ -113,7 +118,13 @@ app.post('/api/wallet/withdraw-request', (req, res) => {
         chips: currentChips
     });
 });
-// Panel Administrativo
+// Panel Administrativo - Métricas y Contabilidad
+app.get('/api/admin/metrics', requireAdminAuth, (req, res) => {
+    return res.json((0, userService_1.getAdminMetrics)());
+});
+app.get('/api/admin/transactions', requireAdminAuth, (req, res) => {
+    return res.json((0, userService_1.getAllTransactions)(100));
+});
 app.get('/api/admin/users-list', requireAdminAuth, (req, res) => {
     const users = (0, userService_1.getAllUsersList)();
     return res.json(users);
@@ -128,6 +139,7 @@ app.post('/api/admin/add-chips', requireAdminAuth, (req, res) => {
     if (!success) {
         return res.status(400).json({ success: false, message: 'Usuario no encontrado.' });
     }
+    (0, userService_1.recordTransaction)('DEPOSIT', username, numAmount, 'Carga manual desde Panel Admin');
     const currentChips = (0, userService_1.getUserChips)(username);
     return res.json({
         success: true,
@@ -145,6 +157,7 @@ app.post('/api/admin/remove-chips', requireAdminAuth, (req, res) => {
     if (!success) {
         return res.status(400).json({ success: false, message: 'Usuario no encontrado o saldo insuficiente para descontar.' });
     }
+    (0, userService_1.recordTransaction)('WITHDRAW', username, numAmount, 'Débito manual desde Panel Admin');
     const currentChips = (0, userService_1.getUserChips)(username);
     return res.json({
         success: true,
@@ -174,6 +187,11 @@ app.get('/api/admin/pending-deposits', requireAdminAuth, (req, res) => {
 app.post('/api/admin/approve-deposit', requireAdminAuth, (req, res) => {
     const { depositId } = req.body;
     const result = (0, userService_1.approveDeposit)(depositId);
+    return res.status(result.success ? 200 : 400).json(result);
+});
+app.post('/api/admin/reject-deposit', requireAdminAuth, (req, res) => {
+    const { depositId } = req.body;
+    const result = (0, userService_1.rejectDeposit)(depositId);
     return res.status(result.success ? 200 : 400).json(result);
 });
 (0, gameSocket_1.setupSocketEvents)(io);

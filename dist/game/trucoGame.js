@@ -38,10 +38,10 @@ class TrucoRound {
         if (this.isFinished) {
             return { success: false, message: 'La mano ya ha finalizado.' };
         }
-        if (this.currentTurn !== userId) {
+        if (this.currentTurn.toLowerCase() !== (userId || '').toLowerCase()) {
             return { success: false, message: 'No es tu turno.' };
         }
-        const hand = userId === this.p1.userId ? this.p1 : this.p2;
+        const hand = userId.toLowerCase() === this.p1.userId.toLowerCase() ? this.p1 : this.p2;
         const cardIdx = hand.cards.findIndex(c => c.id === cardId);
         if (cardIdx === -1) {
             return { success: false, message: 'No posees esa carta.' };
@@ -50,7 +50,7 @@ class TrucoRound {
         hand.cardsPlayed[this.currentTrickIndex] = playedCard;
         const p1Played = this.p1.cardsPlayed[this.currentTrickIndex];
         const p2Played = this.p2.cardsPlayed[this.currentTrickIndex];
-        const rivalId = userId === this.p1.userId ? this.p2.userId : this.p1.userId;
+        const rivalId = userId.toLowerCase() === this.p1.userId.toLowerCase() ? this.p2.userId : this.p1.userId;
         if (!p1Played || !p2Played) {
             this.currentTurn = rivalId;
             return {
