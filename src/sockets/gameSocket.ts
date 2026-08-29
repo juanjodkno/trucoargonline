@@ -43,6 +43,7 @@ interface ActiveRoom {
   disconnectedUser?: string | null;
 
   isDeclaringEnvido: boolean;
+  isFlorDeclaration?: boolean;
   envidoDeclarer: string | null;
   highestEnvidoScore: number;
   highestEnvidoUser: string | null;
@@ -159,13 +160,19 @@ export function setupSocketEvents(io: Server) {
       const activeUser = room.envidoDeclarer;
       const hand = activeUser.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
       const allCards = hand.cards.concat(hand.cardsPlayed.filter(Boolean) as Card[]);
-      const details = getEnvidoDetails(allCards);
+      
+      let score = 0;
+      if (room.isFlorDeclaration) {
+        score = calculateFlor(allCards);
+      } else {
+        score = getEnvidoDetails(allCards).score;
+      }
 
       if (room.highestEnvidoScore === 0) {
-        executeDeclareEnvido(room, activeUser, details.score);
+        executeDeclareEnvido(room, activeUser, score);
       } else {
-        if (details.score > room.highestEnvidoScore) {
-          executeDeclareEnvido(room, activeUser, details.score);
+        if (score > room.highestEnvidoScore) {
+          executeDeclareEnvido(room, activeUser, score);
         } else {
           executeSonBuenas(room, activeUser);
         }
@@ -254,6 +261,7 @@ export function setupSocketEvents(io: Server) {
     room.florPendingCaller = null;
     room.envidoWinnerRecord = null;
     room.isDeclaringEnvido = false;
+    room.isFlorDeclaration = false;
     room.envidoDeclarer = null;
     room.highestEnvidoScore = 0;
     room.highestEnvidoUser = null;
@@ -329,16 +337,18 @@ export function setupSocketEvents(io: Server) {
     return { acceptedPts: accepted, declinedPts: declined };
   }
 
-  function startEnvidoDeclarationPhase(room: ActiveRoom) {
+  function startEnvidoDeclarationPhase(room: ActiveRoom, isFlor: boolean = false) {
     clearTurnTimer(room);
     room.isDeclaringEnvido = true;
+    room.isFlorDeclaration = isFlor;
     room.envidoDeclarer = room.manoId;
     room.highestEnvidoScore = 0;
     room.highestEnvidoUser = null;
 
     io.to(room.roomId).emit('start_envido_declaration', {
       firstDeclarer: room.manoId,
-      chain: room.envidoChain,
+      chain: isFlor ? room.florChain : room.envidoChain,
+      isFlor
     });
     startTurnTimer(room, 25);
   }
@@ -403,25 +413,50 @@ export function setupSocketEvents(io: Server) {
     room.envidoDeclarer = null;
     room.gameRound.envidoResolved = true;
     room.gameRound.awaitingResponseFrom = null;
-    room.envidoPendingCaller = null;
 
-    const { acceptedPts } = calculateEnvidoPoints(room.envidoChain, room);
-    const pts = acceptedPts;
+    const isFlor = room.isFlorDeclaration;
+    
+    let pts = 0;
+    let finalScore = 0;
+    let winnerCards: Card[] = [];
+
+    const winnerHand = winnerId.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
+    const allCards = winnerHand.cards.concat(winnerHand.cardsPlayed.filter(Boolean) as Card[]);
+
+    if (isFlor) {
+      room.gameRound.florResolved = true;
+      room.florPendingCaller = null;
+      pts = room.gameRound.calculateFlorPoints(room.florChain, true, room.scoreP1, room.scoreP2);
+      finalScore = calculateFlor(allCards);
+      winnerCards = allCards;
+    } else {
+      room.envidoPendingCaller = null;
+      const { acceptedPts } = calculateEnvidoPoints(room.envidoChain, room);
+      pts = acceptedPts;
+      const details = getEnvidoDetails(allCards);
+      finalScore = details.score;
+      winnerCards = details.envidoCards;
+    }
 
     if (winnerId.toLowerCase() === room.creatorId.toLowerCase()) room.scoreP1 += pts;
     else room.scoreP2 += pts;
 
-    const winnerHand = winnerId.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
-    const winnerAllCards = winnerHand.cards.concat(winnerHand.cardsPlayed.filter(Boolean) as Card[]);
-    const details = getEnvidoDetails(winnerAllCards);
+    room.envidoWinnerRecord = { winnerId, score: finalScore, cards: winnerCards, pointsAwarded: pts };
 
-    room.envidoWinnerRecord = { winnerId, score: details.score, cards: details.envidoCards, pointsAwarded: pts };
-
-    io.to(room.roomId).emit('envido_resolved', {
-      winnerId, pointsAwarded: pts, scores: getScoreMap(room),
-      declined: false, trucoLevel: room.trucoLevel, trucoOwner: room.trucoOwner,
-      currentTurn: room.gameRound.currentTurn
-    });
+    if (isFlor) {
+      io.to(room.roomId).emit('flor_declared', {
+        winnerId, pointsAwarded: pts, scores: getScoreMap(room),
+        score: finalScore, cards: winnerCards,
+        trucoLevel: room.trucoLevel, trucoOwner: room.trucoOwner,
+        currentTurn: room.gameRound.currentTurn
+      });
+    } else {
+      io.to(room.roomId).emit('envido_resolved', {
+        winnerId, pointsAwarded: pts, scores: getScoreMap(room),
+        declined: false, trucoLevel: room.trucoLevel, trucoOwner: room.trucoOwner,
+        currentTurn: room.gameRound.currentTurn
+      });
+    }
 
     if (room.scoreP1 >= room.targetPoints || room.scoreP2 >= room.targetPoints) {
       io.to(room.roomId).emit('show_envido_winner', {
@@ -433,7 +468,6 @@ export function setupSocketEvents(io: Server) {
     }
 
     if (checkAndResumePendingTruco(room)) return;
-
     startTurnTimer(room, 25);
   }
 
@@ -458,55 +492,11 @@ export function setupSocketEvents(io: Server) {
       currentTurn: room.gameRound.currentTurn
     });
 
-    if (checkMatchEnd(room)) return;
-    if (checkAndResumePendingTruco(room)) return;
-
-    startTurnTimer(room, 25);
-  }
-
-  function resolveFlorAccepted(room: ActiveRoom, answeringUserId: string) {
-    if (!room.gameRound) return;
-    clearTurnTimer(room);
-
-    room.gameRound.florResolved = true;
-    room.gameRound.envidoResolved = true; // La flor anula envido
-    room.gameRound.awaitingResponseFrom = null;
-    room.florPendingCaller = null;
-
-    const p1Cards = room.gameRound.p1.cards.concat(room.gameRound.p1.cardsPlayed.filter(Boolean) as Card[]);
-    const p2Cards = room.gameRound.p2.cards.concat(room.gameRound.p2.cardsPlayed.filter(Boolean) as Card[]);
-    
-    const p1FlorPts = calculateFlor(p1Cards);
-    const p2FlorPts = calculateFlor(p2Cards);
-
-    let winnerId = room.creatorId;
-    let winnerPts = p1FlorPts;
-    let winnerCards = p1Cards;
-
-    if (p2FlorPts > p1FlorPts) {
-      winnerId = room.guestId!;
-      winnerPts = p2FlorPts;
-      winnerCards = p2Cards;
-    } else if (p2FlorPts === p1FlorPts) {
-      winnerId = room.manoId;
-      winnerPts = room.manoId.toLowerCase() === room.creatorId.toLowerCase() ? p1FlorPts : p2FlorPts;
-      winnerCards = room.manoId.toLowerCase() === room.creatorId.toLowerCase() ? p1Cards : p2Cards;
+    if (room.scoreP1 >= room.targetPoints || room.scoreP2 >= room.targetPoints) {
+      setTimeout(() => { checkMatchEnd(room); }, 500);
+      return;
     }
 
-    const pointsAwarded = room.gameRound.calculateFlorPoints(room.florChain, true, room.scoreP1, room.scoreP2);
-
-    if (winnerId.toLowerCase() === room.creatorId.toLowerCase()) room.scoreP1 += pointsAwarded;
-    else room.scoreP2 += pointsAwarded;
-
-    room.envidoWinnerRecord = { winnerId, score: winnerPts, cards: winnerCards, pointsAwarded };
-
-    io.to(room.roomId).emit('flor_declared', {
-      winnerId, score: winnerPts, cards: winnerCards,
-      pointsAwarded, scores: getScoreMap(room), trucoLevel: room.trucoLevel, trucoOwner: room.trucoOwner,
-      currentTurn: room.gameRound.currentTurn
-    });
-
-    if (checkMatchEnd(room)) return;
     if (checkAndResumePendingTruco(room)) return;
     startTurnTimer(room, 25);
   }
@@ -540,7 +530,15 @@ export function setupSocketEvents(io: Server) {
       currentTurn: room.gameRound.currentTurn
     });
 
-    if (checkMatchEnd(room)) return;
+    if (room.scoreP1 >= room.targetPoints || room.scoreP2 >= room.targetPoints) {
+      io.to(room.roomId).emit('show_envido_winner', {
+        winnerId: room.envidoWinnerRecord.winnerId, score: room.envidoWinnerRecord.score,
+        cards: room.envidoWinnerRecord.cards, durationMs: 3500,
+      });
+      setTimeout(() => { checkMatchEnd(room); }, 3500);
+      return;
+    }
+
     if (checkAndResumePendingTruco(room)) return;
     startTurnTimer(room, 25);
   }
@@ -586,6 +584,7 @@ export function setupSocketEvents(io: Server) {
   function handleRoundTransition(room: ActiveRoom) {
     clearTurnTimer(room);
 
+    // Acá está la magia: si se ganaron tantos/flor antes, los muestra siempre al final de la mano.
     if (room.envidoWinnerRecord) {
       io.to(room.roomId).emit('show_envido_winner', {
         winnerId: room.envidoWinnerRecord.winnerId, score: room.envidoWinnerRecord.score,
@@ -738,6 +737,7 @@ export function setupSocketEvents(io: Server) {
           envidoPendingCaller: null,
           florPendingCaller: null,
           isDeclaringEnvido: false, 
+          isFlorDeclaration: false,
           envidoDeclarer: null, 
           highestEnvidoScore: 0, 
           highestEnvidoUser: null,
@@ -944,7 +944,15 @@ export function setupSocketEvents(io: Server) {
               currentTurn: room.gameRound.currentTurn
             });
 
-            if (checkMatchEnd(room)) return;
+            if (room.scoreP1 >= room.targetPoints || room.scoreP2 >= room.targetPoints) {
+              io.to(room.roomId).emit('show_envido_winner', {
+                winnerId: room.envidoWinnerRecord.winnerId, score: room.envidoWinnerRecord.score,
+                cards: room.envidoWinnerRecord.cards, durationMs: 3500,
+              });
+              setTimeout(() => { checkMatchEnd(room); }, 3500);
+              return;
+            }
+
             if (checkAndResumePendingTruco(room)) return;
             return startTurnTimer(room, 25);
           }
@@ -965,7 +973,7 @@ export function setupSocketEvents(io: Server) {
           return startTurnTimer(room, 25);
         }
 
-        if (callType === 'QUIERO_FLOR') return resolveFlorAccepted(room, authUser);
+        if (callType === 'QUIERO_FLOR') return startEnvidoDeclarationPhase(room, true);
         if (callType === 'NO_QUIERO_FLOR') return resolveFlorDeclined(room, authUser);
         // --------------------------------------------------
 
@@ -988,7 +996,7 @@ export function setupSocketEvents(io: Server) {
           return startTurnTimer(room, 25);
         }
 
-        if (callType === 'QUIERO_ENVIDO') return startEnvidoDeclarationPhase(room);
+        if (callType === 'QUIERO_ENVIDO') return startEnvidoDeclarationPhase(room, false);
         if (callType === 'NO_QUIERO_ENVIDO') return resolveEnvidoDeclined(room, authUser);
 
         if (callType === 'TRUCO') {

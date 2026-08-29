@@ -1145,6 +1145,9 @@
 
     function getMyEnvidoScore() {
       if (!currentMyCards || currentMyCards.length === 0) return 0;
+      
+      const isFlorConflict = pendingCategory === 'FLOR' || document.getElementById('envidoTitle')?.innerText.includes('FLOR');
+
       const suits = {};
       currentMyCards.forEach(c => {
         const s = (c.suit || '').toLowerCase();
@@ -1153,9 +1156,17 @@
       });
 
       let maxScore = -1;
+      
       for (const s in suits) {
         const list = suits[s];
-        if (list.length >= 2) {
+        
+        // Si hay duelo de Flor y el jugador tiene las 3 cartas del palo, sumamos las tres.
+        if (isFlorConflict && list.length === 3) {
+          const val = 20 + getCardEnvidoVal(list[0].number) + getCardEnvidoVal(list[1].number) + getCardEnvidoVal(list[2].number);
+          if (val > maxScore) maxScore = val;
+        } 
+        // Si es Envido normal, sumamos las 2 mejores.
+        else if (list.length >= 2) {
           for (let i = 0; i < list.length; i++) {
             for (let j = i + 1; j < list.length; j++) {
               const v = 20 + getCardEnvidoVal(list[i].number) + getCardEnvidoVal(list[j].number);
@@ -1648,6 +1659,13 @@
         document.getElementById('trucoGroup').style.display = 'none';
         document.getElementById('myCards').classList.add('disabled');
 
+        if (data.isFlor) {
+          document.getElementById('envidoTitle').innerText = '🌸 FLOR';
+          pendingCategory = 'FLOR';
+        } else {
+          document.getElementById('envidoTitle').innerText = '🃏 TANTOS';
+        }
+
         const myScore = getMyEnvidoScore();
         const isMyTurn = (data.firstDeclarer || '').toLowerCase() === currentUser.username.toLowerCase();
 
@@ -1659,12 +1677,12 @@
           document.getElementById('btnSonBuenas').style.display = 'none';
         } else {
           document.getElementById('envidoDeclareGroup').style.display = 'none';
-          log(`⏳ Esperando que el rival cante sus tantos de Envido...`);
+          log(`⏳ Esperando que el rival cante sus puntos...`);
         }
       });
 
       socket.on('envido_points_announced', (data) => {
-        log(`🗣️ <strong>${data.userId}</strong> cantó: <strong>${data.points}</strong> de Envido`);
+        log(`🗣️ <strong>${data.userId}</strong> cantó: <strong>${data.points}</strong> puntos`);
         playAudio(data.points);
 
         if (data.isFinal) {
@@ -1706,9 +1724,9 @@
 
         if (data.declined) {
           playAudio('no quiero');
-          log(`✋ No se quiso el Envido. Tantos para <strong>${data.winnerId}</strong> (+${data.pointsAwarded} pts)`);
+          log(`✋ No se quisieron los tantos. Puntos para <strong>${data.winnerId}</strong> (+${data.pointsAwarded} pts)`);
         } else {
-          log(`📊 Envido finalizado: Ganó <strong>${data.winnerId}</strong> (+${data.pointsAwarded} pts)`);
+          log(`📊 Disputa finalizada: Ganó <strong>${data.winnerId}</strong> (+${data.pointsAwarded} pts)`);
         }
         setScores(data.scores);
         updateTurnControls(data.currentTurn || currentTurnPlayer);
@@ -1720,18 +1738,16 @@
         currentTrucoOwner = data.trucoOwner;
 
         playAudio('flor');
-        log(`🌸 <strong>${data.winnerId}</strong> cantó FLOR (${data.score} pts) -> +${data.pointsAwarded} pts`);
+        log(`🌸 <strong>${data.winnerId}</strong> tiene FLOR y gana +${data.pointsAwarded} pts`);
         setScores(data.scores);
         updateTurnControls(data.currentTurn || currentTurnPlayer);
       });
 
       socket.on('show_envido_winner', (data) => {
         const overlay = document.getElementById('envidoOverlay');
-        const title = document.getElementById('envidoTitle');
         const subtitle = document.getElementById('envidoSubtitle');
         const cardsRow = document.getElementById('envidoCardsRow');
 
-        title.innerText = '🃏 TANTOS DE LA JUGADA';
         subtitle.innerHTML = `<strong>${data.winnerId}</strong> mostró <strong>${data.score}</strong> puntos`;
         cardsRow.innerHTML = '';
 
