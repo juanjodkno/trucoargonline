@@ -30,11 +30,15 @@ interface ActiveRoom {
   scoreP2: number;
   gameRound?: TrucoRound;
   manoId: string;
+  
   envidoChain: string[];
   envidoPendingCaller: string | null;
   envidoWinnerRecord?: EnvidoWinnerRecord | null;
-  turnInterval?: NodeJS.Timeout;
 
+  florChain: string[];
+  florPendingCaller: string | null;
+
+  turnInterval?: NodeJS.Timeout;
   disconnectInterval?: NodeJS.Timeout;
   disconnectedUser?: string | null;
 
@@ -173,6 +177,8 @@ export function setupSocketEvents(io: Server) {
       const responderId = room.gameRound.awaitingResponseFrom;
       if (room.envidoPendingCaller) {
         resolveEnvidoDeclined(room, responderId);
+      } else if (room.florPendingCaller) {
+        resolveFlorDeclined(room, responderId);
       } else {
         resolveTrucoFold(room, responderId, 'NO_QUIERO_TRUCO');
       }
@@ -241,8 +247,11 @@ export function setupSocketEvents(io: Server) {
     );
     room.gameRound = round;
     room.gameRound.envidoResolved = false;
+    room.gameRound.florResolved = false;
     room.envidoChain = [];
+    room.florChain = [];
     room.envidoPendingCaller = null;
+    room.florPendingCaller = null;
     room.envidoWinnerRecord = null;
     room.isDeclaringEnvido = false;
     room.envidoDeclarer = null;
@@ -455,59 +464,84 @@ export function setupSocketEvents(io: Server) {
     startTurnTimer(room, 25);
   }
 
-  function resolveFlor(room: ActiveRoom, callerId: string) {
+  function resolveFlorAccepted(room: ActiveRoom, answeringUserId: string) {
     if (!room.gameRound) return;
     clearTurnTimer(room);
 
-    room.gameRound.envidoResolved = true;
-    room.envidoPendingCaller = null;
+    room.gameRound.florResolved = true;
+    room.gameRound.envidoResolved = true; // La flor anula envido
     room.gameRound.awaitingResponseFrom = null;
+    room.florPendingCaller = null;
 
-    const callerHand = callerId.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
-    const callerAllCards = callerHand.cards.concat(callerHand.cardsPlayed.filter(Boolean) as Card[]);
-    const florPoints = calculateFlor(callerAllCards);
+    const p1Cards = room.gameRound.p1.cards.concat(room.gameRound.p1.cardsPlayed.filter(Boolean) as Card[]);
+    const p2Cards = room.gameRound.p2.cards.concat(room.gameRound.p2.cardsPlayed.filter(Boolean) as Card[]);
+    
+    const p1FlorPts = calculateFlor(p1Cards);
+    const p2FlorPts = calculateFlor(p2Cards);
 
-    const rivalId = callerId.toLowerCase() === room.creatorId.toLowerCase() ? room.guestId! : room.creatorId;
-    const rivalHand = rivalId.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
-    const rivalAllCards = rivalHand.cards.concat(rivalHand.cardsPlayed.filter(Boolean) as Card[]);
-    const rivalHasFlor = hasFlor(rivalAllCards);
+    let winnerId = room.creatorId;
+    let winnerPts = p1FlorPts;
+    let winnerCards = p1Cards;
 
-    if (!rivalHasFlor) {
-      if (callerId.toLowerCase() === room.creatorId.toLowerCase()) room.scoreP1 += 3;
-      else room.scoreP2 += 3;
-
-      room.envidoWinnerRecord = { winnerId: callerId, score: florPoints, cards: callerAllCards, pointsAwarded: 3 };
-      io.to(room.roomId).emit('flor_declared', {
-        winnerId: callerId, score: florPoints, cards: callerAllCards,
-        pointsAwarded: 3, scores: getScoreMap(room), trucoLevel: room.trucoLevel, trucoOwner: room.trucoOwner,
-        currentTurn: room.gameRound.currentTurn
-      });
-      if (checkMatchEnd(room)) return;
-    } else {
-      const rivalFlorPts = calculateFlor(rivalAllCards);
-      let winnerId = callerId; let winnerPts = florPoints; let winnerCards = callerAllCards;
-
-      if (rivalFlorPts > florPoints) {
-        winnerId = rivalId; winnerPts = rivalFlorPts; winnerCards = rivalAllCards;
-      } else if (rivalFlorPts === florPoints) {
-        winnerId = room.manoId; winnerPts = florPoints;
-        winnerCards = room.manoId.toLowerCase() === room.creatorId.toLowerCase() ? callerAllCards : rivalAllCards;
-      }
-
-      if (winnerId.toLowerCase() === room.creatorId.toLowerCase()) room.scoreP1 += 6;
-      else room.scoreP2 += 6;
-
-      room.envidoWinnerRecord = { winnerId, score: winnerPts, cards: winnerCards, pointsAwarded: 6 };
-      io.to(room.roomId).emit('flor_declared', {
-        winnerId, score: winnerPts, cards: winnerCards,
-        pointsAwarded: 6, scores: getScoreMap(room), trucoLevel: room.trucoLevel, trucoOwner: room.trucoOwner,
-        currentTurn: room.gameRound.currentTurn
-      });
-      if (checkMatchEnd(room)) return;
+    if (p2FlorPts > p1FlorPts) {
+      winnerId = room.guestId!;
+      winnerPts = p2FlorPts;
+      winnerCards = p2Cards;
+    } else if (p2FlorPts === p1FlorPts) {
+      winnerId = room.manoId;
+      winnerPts = room.manoId.toLowerCase() === room.creatorId.toLowerCase() ? p1FlorPts : p2FlorPts;
+      winnerCards = room.manoId.toLowerCase() === room.creatorId.toLowerCase() ? p1Cards : p2Cards;
     }
 
-    if (checkAndResumePendingTruco(room)) return;
+    const pointsAwarded = room.gameRound.calculateFlorPoints(room.florChain, true, room.scoreP1, room.scoreP2);
 
+    if (winnerId.toLowerCase() === room.creatorId.toLowerCase()) room.scoreP1 += pointsAwarded;
+    else room.scoreP2 += pointsAwarded;
+
+    room.envidoWinnerRecord = { winnerId, score: winnerPts, cards: winnerCards, pointsAwarded };
+
+    io.to(room.roomId).emit('flor_declared', {
+      winnerId, score: winnerPts, cards: winnerCards,
+      pointsAwarded, scores: getScoreMap(room), trucoLevel: room.trucoLevel, trucoOwner: room.trucoOwner,
+      currentTurn: room.gameRound.currentTurn
+    });
+
+    if (checkMatchEnd(room)) return;
+    if (checkAndResumePendingTruco(room)) return;
+    startTurnTimer(room, 25);
+  }
+
+  function resolveFlorDeclined(room: ActiveRoom, answeringUserId: string) {
+    if (!room.gameRound) return;
+    clearTurnTimer(room);
+
+    room.gameRound.florResolved = true;
+    room.gameRound.envidoResolved = true; // La flor anula envido
+    room.gameRound.awaitingResponseFrom = null;
+    
+    const rivalId = answeringUserId.toLowerCase() === room.creatorId.toLowerCase() ? room.guestId! : room.creatorId;
+    const callerId = room.florPendingCaller || rivalId;
+    room.florPendingCaller = null;
+
+    const pointsAwarded = room.gameRound.calculateFlorPoints(room.florChain, false, room.scoreP1, room.scoreP2);
+
+    if (callerId.toLowerCase() === room.creatorId.toLowerCase()) room.scoreP1 += pointsAwarded;
+    else room.scoreP2 += pointsAwarded;
+
+    const callerHand = callerId.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
+    const callerCards = callerHand.cards.concat(callerHand.cardsPlayed.filter(Boolean) as Card[]);
+    const score = calculateFlor(callerCards);
+
+    room.envidoWinnerRecord = { winnerId: callerId, score, cards: callerCards, pointsAwarded };
+
+    io.to(room.roomId).emit('flor_declared', {
+      winnerId: callerId, score, cards: callerCards,
+      pointsAwarded, scores: getScoreMap(room), trucoLevel: room.trucoLevel, trucoOwner: room.trucoOwner,
+      currentTurn: room.gameRound.currentTurn
+    });
+
+    if (checkMatchEnd(room)) return;
+    if (checkAndResumePendingTruco(room)) return;
     startTurnTimer(room, 25);
   }
 
@@ -584,6 +618,7 @@ export function setupSocketEvents(io: Server) {
 
     if (result.trickIndex === 0 && result.isTrickOver) {
       room.gameRound.envidoResolved = true;
+      room.gameRound.florResolved = true;
     }
 
     io.to(room.roomId).emit('card_played', {
@@ -699,7 +734,9 @@ export function setupSocketEvents(io: Server) {
           scoreP2: 0, 
           manoId: userId, 
           envidoChain: [], 
+          florChain: [],
           envidoPendingCaller: null,
+          florPendingCaller: null,
           isDeclaringEnvido: false, 
           envidoDeclarer: null, 
           highestEnvidoScore: 0, 
@@ -871,19 +908,70 @@ export function setupSocketEvents(io: Server) {
           }
         }
 
-        if (room.envidoPendingCaller && ['TRUCO', 'RETRUCO', 'VALE_4'].includes(callType)) {
-          return socket.emit('error_action', { message: '¡El Envido está primero!' });
+        // Si hay Envido o Flor pendientes de responder, se bloquean los cantos de Truco.
+        if ((room.envidoPendingCaller || room.florPendingCaller) && ['TRUCO', 'RETRUCO', 'VALE_4'].includes(callType)) {
+          return socket.emit('error_action', { message: 'Debes responder primero a los tantos/flor.' });
         }
 
-        if (callType === 'FLOR') {
+        // --- LÓGICA DE FLOR (Casos A, B y C integrados) ---
+        if (['FLOR', 'CONTRAFLOR', 'CONTRAFLOR_AL_JUEGO'].includes(callType)) {
           if (!room.withFlor) return socket.emit('error_action', { message: 'Partida SIN FLOR.' });
-          if (currentTrick > 0 || room.gameRound.envidoResolved) return socket.emit('error_action', { message: 'El tiempo para cantar Flor ya cerró.' });
-          return resolveFlor(room, authUser);
+          if (currentTrick > 0 || room.gameRound.florResolved) return socket.emit('error_action', { message: 'El tiempo para cantar Flor ya cerró.' });
+
+          const rivalHand = rivalId.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
+          const rivalCards = rivalHand.cards.concat(rivalHand.cardsPlayed.filter(Boolean) as Card[]);
+          const rivalHasFlor = hasFlor(rivalCards);
+
+          // Si canta FLOR inicial y el rival NO tiene flor, ganamos automáticamente los 3 puntos
+          if (callType === 'FLOR' && !rivalHasFlor) {
+            room.gameRound.envidoResolved = true; // La flor anula el envido
+            room.gameRound.florResolved = true;
+            room.gameRound.awaitingResponseFrom = null;
+            room.florPendingCaller = null;
+
+            if (authUser.toLowerCase() === room.creatorId.toLowerCase()) room.scoreP1 += 3;
+            else room.scoreP2 += 3;
+
+            const callerHand = authUser.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
+            const callerCards = callerHand.cards.concat(callerHand.cardsPlayed.filter(Boolean) as Card[]);
+            const florPoints = calculateFlor(callerCards);
+
+            room.envidoWinnerRecord = { winnerId: authUser, score: florPoints, cards: callerCards, pointsAwarded: 3 };
+            
+            io.to(roomId).emit('flor_declared', {
+              winnerId: authUser, score: florPoints, cards: callerCards,
+              pointsAwarded: 3, scores: getScoreMap(room), trucoLevel: room.trucoLevel, trucoOwner: room.trucoOwner,
+              currentTurn: room.gameRound.currentTurn
+            });
+
+            if (checkMatchEnd(room)) return;
+            if (checkAndResumePendingTruco(room)) return;
+            return startTurnTimer(room, 25);
+          }
+
+          // Si el rival TIENE flor, o es una Contraflor / Contraflor al Juego
+          room.gameRound.envidoResolved = true; // Anula el Envido
+          room.florChain.push(callType);
+          room.florPendingCaller = authUser;
+          room.gameRound.awaitingResponseFrom = rivalId;
+
+          io.to(roomId).emit('call_received', { 
+            userId: authUser, 
+            callType, 
+            category: 'FLOR', 
+            awaitingResponseFrom: rivalId, 
+            chain: room.florChain 
+          });
+          return startTurnTimer(room, 25);
         }
+
+        if (callType === 'QUIERO_FLOR') return resolveFlorAccepted(room, authUser);
+        if (callType === 'NO_QUIERO_FLOR') return resolveFlorDeclined(room, authUser);
+        // --------------------------------------------------
 
         if (['ENVIDO', 'ENVIDO_ENVIDO', 'REAL_ENVIDO', 'FALTA_ENVIDO'].includes(callType)) {
-          if (currentTrick > 0 || room.gameRound.envidoResolved) {
-            return socket.emit('error_action', { message: 'El Envido ya cerró.' });
+          if (currentTrick > 0 || room.gameRound.envidoResolved || room.gameRound.florResolved) {
+            return socket.emit('error_action', { message: 'El tiempo de los tantos ya cerró.' });
           }
 
           if (room.envidoChain.length === 0) {
@@ -918,6 +1006,7 @@ export function setupSocketEvents(io: Server) {
             };
           } else {
             room.gameRound.envidoResolved = true;
+            room.gameRound.florResolved = true; // Por las dudas
             room.pendingTrucoAfterEnvido = null;
           }
 
@@ -935,6 +1024,7 @@ export function setupSocketEvents(io: Server) {
 
         if (callType === 'RETRUCO') {
           room.gameRound.envidoResolved = true;
+          room.gameRound.florResolved = true;
           room.pendingTrucoAfterEnvido = null;
           room.gameRound.trucoPointsAtStake = 3;
           room.gameRound.awaitingResponseFrom = rivalId;
@@ -944,6 +1034,7 @@ export function setupSocketEvents(io: Server) {
 
         if (callType === 'VALE_4') {
           room.gameRound.envidoResolved = true;
+          room.gameRound.florResolved = true;
           room.pendingTrucoAfterEnvido = null;
           room.gameRound.trucoPointsAtStake = 4;
           room.gameRound.awaitingResponseFrom = rivalId;
@@ -953,6 +1044,7 @@ export function setupSocketEvents(io: Server) {
 
         if (callType === 'QUIERO_TRUCO') {
           room.gameRound.envidoResolved = true;
+          room.gameRound.florResolved = true;
           room.pendingTrucoAfterEnvido = null;
           room.gameRound.awaitingResponseFrom = null;
           room.trucoLevel = room.gameRound.trucoPointsAtStake;

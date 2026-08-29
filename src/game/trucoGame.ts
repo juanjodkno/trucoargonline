@@ -32,6 +32,7 @@ export class TrucoRound {
   public withFlor: boolean;
 
   public envidoResolved: boolean = false;
+  public florResolved: boolean = false; // <-- AGREGADO PARA LA FLOR
   public trucoPointsAtStake: number = 1;
   public awaitingResponseFrom: string | null = null;
 
@@ -54,6 +55,27 @@ export class TrucoRound {
       cards: [deck[1], deck[3], deck[5]],
       cardsPlayed: [null, null, null]
     };
+  }
+
+  // --- LÓGICA DE PUNTOS PARA LA FLOR (Casos A, B y C) ---
+  public calculateFlorPoints(callChain: string[], accepted: boolean, p1TotalScore: number, p2TotalScore: number): number {
+    const lastCall = callChain[callChain.length - 1];
+
+    if (!accepted) {
+      // Si el rival dice "No quiero" a una Contraflor
+      if (lastCall === 'CONTRAFLOR') return 4; // Caso A: 4 puntos para el que cantó
+      if (lastCall === 'CONTRAFLOR_AL_JUEGO') return 7; // Caso B: 7 puntos para el que cantó
+      return 3; // Por defecto, si no quiere una flor y se achica.
+    } else {
+      // Si el rival dice "Quiero"
+      if (lastCall === 'CONTRAFLOR_AL_JUEGO') {
+        // Caso C: Contraflor al juego aceptada -> puntos que le faltan al puntero para ganar
+        const leaderScore = Math.max(p1TotalScore, p2TotalScore);
+        return this.targetPoints - leaderScore;
+      }
+      if (lastCall === 'CONTRAFLOR') return 6; // Flor -> Contraflor -> Quiero = 6 puntos
+      return 3; // Flor vs Flor normal = 3 puntos
+    }
   }
 
   public playCard(userId: string, cardId: string): PlayCardResult {

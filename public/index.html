@@ -453,7 +453,9 @@
 
     <div class="actions-bar" id="gameActions">
       <div id="florGroup" style="display:none;">
-        <button class="action-btn btn-flor" onclick="sendCall('FLOR')">🌸 ¡Flor!</button>
+        <button id="btnFlor" class="action-btn btn-flor" onclick="sendCall('FLOR')">🌸 ¡Flor!</button>
+        <button id="btnContraflor" class="action-btn btn-flor" onclick="sendCall('CONTRAFLOR')" style="display:none;">🌸 Contraflor</button>
+        <button id="btnContraflorJuego" class="action-btn btn-flor" onclick="sendCall('CONTRAFLOR_AL_JUEGO')" style="display:none;">🌸 Contraflor al Juego</button>
       </div>
 
       <div id="envidoGroup" style="display:none;">
@@ -1228,6 +1230,9 @@
       if (currentTrickIndex === 0 && !envidoDone && !hasPlayedAnyCard && currentTrucoLevel === 1) {
         if (userHasFlor) {
           document.getElementById('florGroup').style.display = 'inline-block';
+          document.getElementById('btnFlor').style.display = 'inline-block';
+          document.getElementById('btnContraflor').style.display = 'none';
+          document.getElementById('btnContraflorJuego').style.display = 'none';
           document.getElementById('envidoGroup').style.display = 'none';
         } else {
           document.getElementById('florGroup').style.display = 'none';
@@ -1499,6 +1504,9 @@
         else if (data.callType === 'REAL_ENVIDO') playAudio('real envido');
         else if (data.callType === 'FALTA_ENVIDO') playAudio('falta envido');
         else if (data.callType === 'ME_VOY_AL_MAZO') playAudio('me voy al mazo');
+        else if (data.callType === 'FLOR') playAudio('flor');
+        else if (data.callType === 'CONTRAFLOR') playAudio('contraflor');
+        else if (data.callType === 'CONTRAFLOR_AL_JUEGO') playAudio('contraflor al juego');
 
         const userHasFlor = checkIfIHaveFlor();
         const hasPlayedAnyCard = currentMyCards.length < 3;
@@ -1542,6 +1550,38 @@
           } else {
             document.getElementById('envidoGroup').style.display = 'none';
             document.getElementById('florGroup').style.display = 'none';
+            document.getElementById('responseGroup').style.display = 'none';
+          }
+        } else if (data.category === 'FLOR') {
+          document.getElementById('trucoGroup').style.display = 'none';
+          document.getElementById('envidoGroup').style.display = 'none';
+
+          if (isForMe) {
+            document.getElementById('responseGroup').style.display = 'inline-block';
+
+            if (userHasFlor) {
+              document.getElementById('florGroup').style.display = 'inline-block';
+              document.getElementById('btnFlor').style.display = 'none';
+              
+              const chain = data.chain || [data.callType];
+              const lastCall = chain[chain.length - 1];
+
+              if (lastCall === 'FLOR') {
+                document.getElementById('btnContraflor').style.display = 'inline-block';
+                document.getElementById('btnContraflorJuego').style.display = 'inline-block';
+              } else if (lastCall === 'CONTRAFLOR') {
+                document.getElementById('btnContraflor').style.display = 'none';
+                document.getElementById('btnContraflorJuego').style.display = 'inline-block';
+              } else if (lastCall === 'CONTRAFLOR_AL_JUEGO') {
+                document.getElementById('florGroup').style.display = 'none';
+              }
+            } else {
+              document.getElementById('florGroup').style.display = 'none';
+            }
+          } else {
+            document.getElementById('envidoGroup').style.display = 'none';
+            document.getElementById('florGroup').style.display = 'none';
+            document.getElementById('trucoGroup').style.display = 'none';
             document.getElementById('responseGroup').style.display = 'none';
           }
         } else if (data.category === 'TRUCO') {
@@ -1797,13 +1837,17 @@
     
     function acceptCall() { 
       triggerHaptic(20);
-      pendingCategory === 'ENVIDO' ? sendCall('QUIERO_ENVIDO') : sendCall('QUIERO_TRUCO'); 
+      if (pendingCategory === 'ENVIDO') sendCall('QUIERO_ENVIDO');
+      else if (pendingCategory === 'FLOR') sendCall('QUIERO_FLOR');
+      else sendCall('QUIERO_TRUCO'); 
       document.getElementById('responseGroup').style.display = 'none'; 
     }
     
     function declineCall() { 
       triggerHaptic(20);
-      pendingCategory === 'ENVIDO' ? sendCall('NO_QUIERO_ENVIDO') : sendCall('NO_QUIERO_TRUCO'); 
+      if (pendingCategory === 'ENVIDO') sendCall('NO_QUIERO_ENVIDO');
+      else if (pendingCategory === 'FLOR') sendCall('NO_QUIERO_FLOR');
+      else sendCall('NO_QUIERO_TRUCO'); 
       document.getElementById('responseGroup').style.display = 'none'; 
     }
     
