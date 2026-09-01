@@ -960,6 +960,11 @@ export function setupSocketEvents(io: Server) {
           if (!room.withFlor) return socket.emit('error_action', { message: 'Partida SIN FLOR.' });
           if (currentTrick > 0 || room.gameRound.florResolved) return socket.emit('error_action', { message: 'El tiempo para cantar Flor ya cerró.' });
 
+          // Validación estricta: No se puede cantar Contraflor ni Contraflor al juego ante un Envido
+          if (['CONTRAFLOR', 'CONTRAFLOR_AL_JUEGO'].includes(callType) && room.envidoPendingCaller) {
+            return socket.emit('error_action', { message: 'No se puede cantar Contraflor a un Envido.' });
+          }
+
           const rivalHand = rivalId.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
           const rivalCards = rivalHand.cards.concat(rivalHand.cardsPlayed.filter(Boolean) as Card[]);
           const rivalHasFlor = hasFlor(rivalCards);
