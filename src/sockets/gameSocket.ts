@@ -572,12 +572,22 @@ export function setupSocketEvents(io: Server) {
       pts = trucoPts + 1;
     }
 
-    if (winnerId.toLowerCase() === room.creatorId.toLowerCase()) room.scoreP1 += pts;
-    else room.scoreP2 += pts;
+    // --- CORRECCIÓN: Si el envido ya había sido aceptado pero se fueron al mazo antes de cantar los tantos ---
+    let envidoPtsToAdd = 0;
+    if (room.envidoChain.length > 0 && !room.gameRound.envidoResolved) {
+      const envidoCalc = calculateEnvidoPoints(room.envidoChain, room);
+      envidoPtsToAdd = envidoCalc.acceptedPts;
+      room.gameRound.envidoResolved = true; // Lo marcamos como resuelto para evitar duplicaciones
+    }
+
+    const totalPts = pts + envidoPtsToAdd;
+
+    if (winnerId.toLowerCase() === room.creatorId.toLowerCase()) room.scoreP1 += totalPts;
+    else room.scoreP2 += totalPts;
 
     io.to(room.roomId).emit('round_ended', {
       winnerId, 
-      pointsAwarded: pts, 
+      pointsAwarded: totalPts, 
       scores: getScoreMap(room),
       reason,
       folderUserId
