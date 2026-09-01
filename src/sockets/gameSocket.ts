@@ -712,6 +712,14 @@ export function setupSocketEvents(io: Server) {
 
     socket.on('create_room', ({ userId, betAmount, targetPoints, withFlor }) => {
       try {
+        // --- NUEVO: Evitar que el usuario cree más de una mesa a la vez ---
+        for (const existingRoom of rooms.values()) {
+          if (existingRoom.creatorId === userId && !existingRoom.guestId) {
+            return socket.emit('error_action', { message: 'Ya tenés una mesa creada esperando rival.' });
+          }
+        }
+        // ------------------------------------------------------------------
+
         const bet = Number(betAmount) >= 0 ? Number(betAmount) : 0;
         const pts = Number(targetPoints) === 15 ? 15 : 30;
         const flor = (withFlor === true || withFlor === 'true' || withFlor === undefined);
