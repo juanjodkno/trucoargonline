@@ -976,8 +976,15 @@
       });
     }
 
-    function joinTable(roomId, betAmount) {
+    function joinTable(roomId, betAmount, creatorId) {
       triggerHaptic(20);
+      
+      // Nueva validación: Bloqueo de auto-partida
+      if (creatorId === currentUser.username) {
+        alert("no puedes jugar contra ti mismo");
+        return;
+      }
+
       if (betAmount > 0 && betAmount > (currentUser.chips || 0)) {
         alert('No tenés suficientes fichas para entrar a esta mesa.');
         return;
@@ -986,6 +993,20 @@
       socket.emit('join_room', { roomId, userId: currentUser.username });
     }
 
+    function cancelTableFromLobby(roomId) {
+      triggerHaptic(20);
+      const confirmar = confirm('¿Estás seguro de que querés cancelar tu mesa? Si apostaste fichas, se te devolverán al instante.');
+      if (confirmar) {
+        socket.emit('cancel_waiting_table', { roomId: roomId });
+      }
+    }
+    function cancelTableFromLobby(roomId) {
+      triggerHaptic(20);
+      const confirmar = confirm('¿Estás seguro de que querés cancelar tu mesa? Si apostaste fichas, se te devolverán al instante.');
+      if (confirmar) {
+        socket.emit('cancel_waiting_table', { roomId: roomId });
+      }
+    }
     function renderTables(tables) {
       const container = document.getElementById('tableList');
       if (!container) return;
@@ -1002,6 +1023,26 @@
         const creatorEmoji = getAvatarEmoji(t.creatorAvatar || 'gaucho');
         const div = document.createElement('div');
         div.className = 'table-item';
+        
+        // Detectamos si la mesa es del usuario actual
+        const isMyTable = t.creatorId === currentUser.username;
+        
+        // Armamos los botones. Siempre mostramos el de jugar.
+        let actionButtons = `
+          <button class="btn-play-match ${isFree ? 'btn-free-match' : ''}" onclick="joinTable('${t.roomId}', ${t.betAmount}, '${t.creatorId}')">
+            ${isFree ? '🎮 Jugar Gratis' : 'Jugar por $' + new Intl.NumberFormat('es-AR').format(t.betAmount)}
+          </button>
+        `;
+        
+        // Si la mesa es tuya, le pegamos el botón de abandonar al lado
+        if (isMyTable) {
+          actionButtons += `
+            <button style="background:#e63946; color:white; border:none; padding:10px 18px; border-radius:8px; font-weight:bold; cursor:pointer; box-shadow: 0 4px 10px rgba(230,57,70,0.4); margin-left: 8px;" onclick="cancelTableFromLobby('${t.roomId}')">
+              Abandonar mesa
+            </button>
+          `;
+        }
+
         div.innerHTML = `
           <div class="table-info">
             <span style="color:white; font-weight:bold; display:flex; align-items:center; gap:6px;">
@@ -1013,9 +1054,9 @@
               <span class="tag-badge ${hasFlorOption ? 'tag-flor' : 'tag-noflor'}">${hasFlorOption ? 'Con Flor' : 'Sin Flor'}</span>
             </div>
           </div>
-          <button class="btn-play-match ${isFree ? 'btn-free-match' : ''}" onclick="joinTable('${t.roomId}', ${t.betAmount})">
-            ${isFree ? '🎮 Jugar Gratis' : 'Jugar por $' + new Intl.NumberFormat('es-AR').format(t.betAmount)}
-          </button>
+          <div style="display: flex; align-items: center;">
+            ${actionButtons}
+          </div>
         `;
         container.appendChild(div);
       });
@@ -1382,7 +1423,12 @@
 
       socket.on('room_created', (data) => {
         updateChipsDisplay(data.newBalance);
-        enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, false);
+        // Guardamos el ID pero NO llamamos a enterGameInterface
+        activeRoomId = data.roomId;
+        sessionStorage.setItem('truco_active_room', data.roomId);
+        
+        // Un mensajito sutil para avisar que ya está en la lista
+        alert("Mesa creada. ¡Esperando rival en el lobby!");
       });
 
       socket.on('game_ready', (data) => {
@@ -1900,4 +1946,4 @@
     });
   </script>
 </body>
-</html>
+</html> 
