@@ -75,7 +75,7 @@ function setupSocketEvents(io) {
         }
         return false;
     }
-    function startTurnTimer(room, seconds = 25) {
+    function startTurnTimer(room, seconds = 30) {
         clearTurnTimer(room);
         if (room.disconnectedUser)
             return;
@@ -224,7 +224,7 @@ function setupSocketEvents(io) {
                 withFlor: room.withFlor
             });
         }
-        startTurnTimer(room, 25);
+        startTurnTimer(room, 30);
     }
     function calculateEnvidoPoints(chain, room) {
         if (!chain || chain.length === 0)
@@ -275,7 +275,7 @@ function setupSocketEvents(io) {
             chain: isFlor ? room.florChain : room.envidoChain,
             isFlor
         });
-        startTurnTimer(room, 25);
+        startTurnTimer(room, 30);
     }
     function executeDeclareEnvido(room, userId, declaredPoints) {
         if (!room.gameRound || !room.isDeclaringEnvido || room.envidoDeclarer !== userId)
@@ -289,7 +289,7 @@ function setupSocketEvents(io) {
                 userId, points: declaredPoints, nextDeclarer: rivalId,
                 highestScore: declaredPoints, highestUser: userId, isFinal: false,
             });
-            startTurnTimer(room, 25);
+            startTurnTimer(room, 30);
         }
         else {
             io.to(room.roomId).emit('envido_points_announced', {
@@ -320,7 +320,7 @@ function setupSocketEvents(io) {
                 canCallEnvido: false,
                 isResumedTruco: true
             });
-            startTurnTimer(room, 25);
+            startTurnTimer(room, 30);
             return true;
         }
         return false;
@@ -384,7 +384,7 @@ function setupSocketEvents(io) {
         }
         if (checkAndResumePendingTruco(room))
             return;
-        startTurnTimer(room, 25);
+        startTurnTimer(room, 30);
     }
     function resolveEnvidoDeclined(room, answeringUserId) {
         if (!room.gameRound)
@@ -411,7 +411,7 @@ function setupSocketEvents(io) {
         }
         if (checkAndResumePendingTruco(room))
             return;
-        startTurnTimer(room, 25);
+        startTurnTimer(room, 30);
     }
     function resolveFlorDeclined(room, answeringUserId) {
         if (!room.gameRound)
@@ -447,7 +447,7 @@ function setupSocketEvents(io) {
         }
         if (checkAndResumePendingTruco(room))
             return;
-        startTurnTimer(room, 25);
+        startTurnTimer(room, 30);
     }
     function resolveTrucoFold(room, folderUserId, reason = 'NO_QUIERO_TRUCO') {
         if (!room.gameRound)
@@ -515,7 +515,7 @@ function setupSocketEvents(io) {
         const result = room.gameRound.playCard(userId, cardId);
         if (!result.success) {
             io.to(room.roomId).emit('error_action_player', { targetUser: userId, message: result.message });
-            startTurnTimer(room, 25);
+            startTurnTimer(room, 30);
             return;
         }
         if (result.trickIndex === 0 && result.isTrickOver) {
@@ -539,7 +539,7 @@ function setupSocketEvents(io) {
             handleRoundTransition(room);
         }
         else {
-            startTurnTimer(room, 25);
+            startTurnTimer(room, 30);
         }
     }
     function sendFullSync(socket, room, userId) {
@@ -599,7 +599,7 @@ function setupSocketEvents(io) {
                 if (room.disconnectedUser && room.disconnectedUser.toLowerCase() === userId.toLowerCase()) {
                     clearDisconnectTimer(room);
                     io.to(roomId).emit('player_reconnected', { reconnectedUser: userId });
-                    startTurnTimer(room, 25);
+                    startTurnTimer(room, 30);
                 }
                 sendFullSync(socket, room, userId);
             }
@@ -609,6 +609,13 @@ function setupSocketEvents(io) {
         });
         socket.on('create_room', ({ userId, betAmount, targetPoints, withFlor }) => {
             try {
+                // --- NUEVO: Evitar que el usuario cree más de una mesa a la vez ---
+                for (const existingRoom of rooms.values()) {
+                    if (existingRoom.creatorId === userId && !existingRoom.guestId) {
+                        return socket.emit('error_action', { message: 'Ya tenés una mesa creada esperando rival.' });
+                    }
+                }
+                // ------------------------------------------------------------------
                 const bet = Number(betAmount) >= 0 ? Number(betAmount) : 0;
                 const pts = Number(targetPoints) === 15 ? 15 : 30;
                 const flor = (withFlor === true || withFlor === 'true' || withFlor === undefined);
@@ -704,6 +711,17 @@ function setupSocketEvents(io) {
                     return socket.emit('error_action', { message: 'La mesa no existe.' });
                 if (room.guestId)
                     return socket.emit('error_action', { message: 'La mesa ya está completa.' });
+                // --- NUEVO: Eliminar mesa previa del jugador si dejó una esperando ---
+                for (const [pendingRoomId, pendingRoom] of rooms.entries()) {
+                    if (pendingRoom.creatorId === userId && !pendingRoom.guestId) {
+                        // Si la mesa que abandonó tenía apuesta, le devolvemos las fichas primero
+                        if (pendingRoom.betAmount > 0) {
+                            (0, userService_1.modifyUserChips)(userId, pendingRoom.betAmount);
+                        }
+                        rooms.delete(pendingRoomId);
+                    }
+                }
+                // -------------------------------------------------------------------
                 if (room.betAmount > 0) {
                     const successDeduct = (0, userService_1.modifyUserChips)(userId, -room.betAmount);
                     if (!successDeduct)
@@ -841,7 +859,7 @@ function setupSocketEvents(io) {
                         }
                         if (checkAndResumePendingTruco(room))
                             return;
-                        return startTurnTimer(room, 25);
+                        return startTurnTimer(room, 30);
                     }
                     // Si el rival TIENE flor, o es una Contraflor / Contraflor al Juego
                     room.gameRound.envidoResolved = true; // Anula el Envido
@@ -855,7 +873,7 @@ function setupSocketEvents(io) {
                         awaitingResponseFrom: rivalId,
                         chain: room.florChain
                     });
-                    return startTurnTimer(room, 25);
+                    return startTurnTimer(room, 30);
                 }
                 if (callType === 'QUIERO_FLOR')
                     return startEnvidoDeclarationPhase(room, true);
@@ -875,7 +893,7 @@ function setupSocketEvents(io) {
                     room.envidoPendingCaller = authUser;
                     room.gameRound.awaitingResponseFrom = rivalId;
                     io.to(roomId).emit('call_received', { userId: authUser, callType, category: 'ENVIDO', awaitingResponseFrom: rivalId, chain: room.envidoChain });
-                    return startTurnTimer(room, 25);
+                    return startTurnTimer(room, 30);
                 }
                 if (callType === 'QUIERO_ENVIDO')
                     return startEnvidoDeclarationPhase(room, false);
@@ -907,7 +925,7 @@ function setupSocketEvents(io) {
                         awaitingResponseFrom: rivalId,
                         canCallEnvido: canEnvido
                     });
-                    return startTurnTimer(room, 25);
+                    return startTurnTimer(room, 30);
                 }
                 if (callType === 'RETRUCO') {
                     room.gameRound.envidoResolved = true;
@@ -916,7 +934,7 @@ function setupSocketEvents(io) {
                     room.gameRound.trucoPointsAtStake = 3;
                     room.gameRound.awaitingResponseFrom = rivalId;
                     io.to(roomId).emit('call_received', { userId: authUser, callType: 'RETRUCO', category: 'TRUCO', awaitingResponseFrom: rivalId, canCallEnvido: false });
-                    return startTurnTimer(room, 25);
+                    return startTurnTimer(room, 30);
                 }
                 if (callType === 'VALE_4') {
                     room.gameRound.envidoResolved = true;
@@ -925,7 +943,7 @@ function setupSocketEvents(io) {
                     room.gameRound.trucoPointsAtStake = 4;
                     room.gameRound.awaitingResponseFrom = rivalId;
                     io.to(roomId).emit('call_received', { userId: authUser, callType: 'VALE_4', category: 'TRUCO', awaitingResponseFrom: rivalId, canCallEnvido: false });
-                    return startTurnTimer(room, 25);
+                    return startTurnTimer(room, 30);
                 }
                 if (callType === 'QUIERO_TRUCO') {
                     room.gameRound.envidoResolved = true;
@@ -939,7 +957,7 @@ function setupSocketEvents(io) {
                         trucoLevel: room.trucoLevel,
                         trucoOwner: room.trucoOwner
                     });
-                    return startTurnTimer(room, 25);
+                    return startTurnTimer(room, 30);
                 }
                 if (callType === 'NO_QUIERO_TRUCO' || callType === 'ME_VOY_AL_MAZO') {
                     room.pendingTrucoAfterEnvido = null;

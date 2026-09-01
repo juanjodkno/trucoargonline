@@ -18,6 +18,7 @@ app.set('trust proxy', 1);
 // Inicializar conexión
 (0, userService_1.initDatabase)();
 const ADMIN_PIN = process.env.ADMIN_PIN || '36049655Dk,';
+const ADMIN_PIN_2 = process.env.ADMIN_PIN_2 || 'Emilia051';
 const io = new socket_io_1.Server(server, {
     cors: { origin: '*' },
     pingTimeout: 30000,
@@ -48,14 +49,14 @@ const adminAuthLimiter = (0, express_rate_limit_1.default)({
 });
 const requireAdminAuth = (req, res, next) => {
     const pinReceived = req.headers['x-admin-pin'];
-    if (!pinReceived || pinReceived !== ADMIN_PIN) {
+    if (!pinReceived || (pinReceived !== ADMIN_PIN && pinReceived !== ADMIN_PIN_2)) {
         return res.status(401).json({ success: false, message: 'Acceso no autorizado. Contraseña de Administrador requerida.' });
     }
     next();
 };
 app.post('/api/admin/auth', adminAuthLimiter, (req, res) => {
     const { pin } = req.body;
-    if (pin === ADMIN_PIN) {
+    if (pin === ADMIN_PIN || pin === ADMIN_PIN_2) {
         return res.json({ success: true, message: 'Acceso autorizado.' });
     }
     return res.status(401).json({ success: false, message: 'Contraseña de Administrador incorrecta.' });

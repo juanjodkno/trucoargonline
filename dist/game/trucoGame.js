@@ -141,21 +141,24 @@ class TrucoRound {
             return { roundOver: true, winnerId: p1 };
         if (p2Wins >= 2)
             return { roundOver: true, winnerId: p2 };
+        // Si la 1era es parda (t0 === 'PARDA')
         if (t0 === 'PARDA') {
+            // Si la 2da la gana alguien (t1), ese gana la mano de inmediato
             if (t1 && t1 !== 'PARDA')
                 return { roundOver: true, winnerId: t1 };
+            // Si la 2da también es parda y se jugó la 3ra, decide la 3ra
             if (t1 === 'PARDA' && t2 && t2 !== 'PARDA')
                 return { roundOver: true, winnerId: t2 };
+            // Si las tres son pardas, gana la mano (manoId)
             if (t1 === 'PARDA' && t2 === 'PARDA')
                 return { roundOver: true, winnerId: this.manoId };
         }
-        if (t1 === 'PARDA' && t0 && t0 !== 'PARDA') {
-            return { roundOver: true, winnerId: t0 };
-        }
-        if (t2 === 'PARDA' && t0 && t0 !== 'PARDA') {
-            return { roundOver: true, winnerId: t0 };
-        }
+        // Si la 1era la ganó alguien (t0) y la 2da es parda (t1 === 'PARDA'), 
+        // SE DEBE JUGAR LA TERCERA CARTA (por eso quitamos el cierre prematuro de acá).
+        // Si ya se jugaron las 3 bazas y nadie ganó 2, se define por quién ganó la primera (o mano)
         if (this.currentTrickIndex === 2 && t0 && t1 && t2) {
+            if (t0 !== 'PARDA')
+                return { roundOver: true, winnerId: t0 };
             return { roundOver: true, winnerId: this.manoId };
         }
         return { roundOver: false };
