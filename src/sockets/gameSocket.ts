@@ -1,21 +1,4 @@
 // src/sockets/gameSocket.ts
-interface ActiveRoom {
-  roomId: string;
-  creatorId: string;
-  creatorSocketId?: string;
-  guestId?: string;
-  guestSocketId?: string;
-  betAmount: number;
-  targetPoints: number;
-  withFlor: boolean;
-  scoreP1: number;
-  scoreP2: number;
-  gameRound?: TrucoRound;
-  manoId: string;
-  
-  waitingTimeout?: NodeJS.Timeout; // <-- NUEVO: Para el tiempo de espera de la mesa vacía
-  // ... resto de propiedades ...
-}
 import { Server, Socket } from 'socket.io';
 import crypto from 'crypto';
 import { TrucoRound } from '../game/trucoGame';
@@ -47,6 +30,8 @@ interface ActiveRoom {
   scoreP2: number;
   gameRound?: TrucoRound;
   manoId: string;
+  
+  waitingTimeout?: NodeJS.Timeout;
   
   envidoChain: string[];
   envidoPendingCaller: string | null;
@@ -371,7 +356,9 @@ export function setupSocketEvents(io: Server) {
   }
 
   function executeDeclareEnvido(room: ActiveRoom, userId: string, declaredPoints: number) {
-    if (!room.gameRound || !room.isDeclaringEnvido || room.envidoDeclarer !== userId) return;
+    // FLUJO ESTRICTO: Si no pasó por el "Quiero" (isDeclaringEnvido es falso), bloqueamos y exigimos la aceptación previa.
+    if (!room.gameRound || !room.isDeclaringEnvido) return;
+    if (room.envidoDeclarer && room.envidoDeclarer.toLowerCase() !== userId.toLowerCase()) return;
 
     if (room.highestEnvidoScore === 0) {
       room.highestEnvidoScore = declaredPoints;
@@ -394,7 +381,7 @@ export function setupSocketEvents(io: Server) {
   }
 
   function executeSonBuenas(room: ActiveRoom, userId: string) {
-    if (!room.gameRound || !room.isDeclaringEnvido || room.envidoDeclarer !== userId) return;
+    if (!room.gameRound || !room.isDeclaringEnvido || (room.envidoDeclarer && room.envidoDeclarer.toLowerCase() !== userId.toLowerCase())) return;
     const winnerId = room.highestEnvidoUser!;
     io.to(room.roomId).emit('son_buenas_said', { userId, winnerId });
     finalizeEnvido(room, winnerId);
@@ -523,7 +510,7 @@ export function setupSocketEvents(io: Server) {
     clearTurnTimer(room);
 
     room.gameRound.florResolved = true;
-    room.gameRound.envidoResolved = true; // La flor anula envido
+    room.gameRound.envidoResolved = true;
     room.gameRound.awaitingResponseFrom = null;
     
     const rivalId = answeringUserId.toLowerCase() === room.creatorId.toLowerCase() ? room.guestId! : room.creatorId;
@@ -601,7 +588,6 @@ export function setupSocketEvents(io: Server) {
   function handleRoundTransition(room: ActiveRoom) {
     clearTurnTimer(room);
 
-    // Acá está la magia: si se ganaron tantos/flor antes, los muestra siempre al final de la mano.
     if (room.envidoWinnerRecord) {
       io.to(room.roomId).emit('show_envido_winner', {
         winnerId: room.envidoWinnerRecord.winnerId, score: room.envidoWinnerRecord.score,
@@ -731,7 +717,6 @@ export function setupSocketEvents(io: Server) {
       try {
         for (const [existingRoomId, existingRoom] of rooms.entries()) {
           if (existingRoom.creatorId.toLowerCase() === userId.toLowerCase() && !existingRoom.guestId) {
-            // Si ya tenía una mesa creada y vuelve a interactuar, reasociamos su socket y limpiamos el timeout de abandono
             existingRoom.creatorSocketId = socket.id;
             if (existingRoom.waitingTimeout) {
               clearTimeout(existingRoom.waitingTimeout);
@@ -741,8 +726,6 @@ export function setupSocketEvents(io: Server) {
             return socket.emit('error_action', { message: 'Ya tenés una mesa creada esperando rival.' });
           }
         }
-        // ... resto de la creación de sala ...
-        // ------------------------------------------------------------------
 
         const bet = Number(betAmount) >= 0 ? Number(betAmount) : 0;
         const pts = Number(targetPoints) === 15 ? 15 : 30;
@@ -794,7 +777,6 @@ export function setupSocketEvents(io: Server) {
 
     socket.on('cancel_waiting_table', ({ roomId, userId }) => {
       const room = rooms.get(roomId);
-      // Permitimos cancelar si coincide el socket o si se valida el userId del creador tras una reconexión
       if (room && !room.guestId && (room.creatorSocketId === socket.id || (userId && room.creatorId.toLowerCase() === userId.toLowerCase()))) {
         if (room.waitingTimeout) {
           clearTimeout(room.waitingTimeout);
@@ -848,17 +830,14 @@ export function setupSocketEvents(io: Server) {
         if (!room) return socket.emit('error_action', { message: 'La mesa no existe.' });
         if (room.guestId) return socket.emit('error_action', { message: 'La mesa ya está completa.' });
         
-        // --- NUEVO: Eliminar mesa previa del jugador si dejó una esperando ---
         for (const [pendingRoomId, pendingRoom] of rooms.entries()) {
           if (pendingRoom.creatorId === userId && !pendingRoom.guestId) {
-            // Si la mesa que abandonó tenía apuesta, le devolvemos las fichas primero
             if (pendingRoom.betAmount > 0) {
               modifyUserChips(userId, pendingRoom.betAmount);
             }
             rooms.delete(pendingRoomId);
           }
         }
-        // -------------------------------------------------------------------
 
         if (room.betAmount > 0) {
           const successDeduct = modifyUserChips(userId, -room.betAmount);
@@ -875,7 +854,7 @@ export function setupSocketEvents(io: Server) {
           creatorAvatar: getUserAvatar(room.creatorId),
           guestId: room.guestId,
           guestAvatar: getUserAvatar(userId),
-          pot: room.betAmount > 0 ? room.betAmount * 2 * 0.9 : 0,
+          pot: room.betAmount > 0 ? room.betAmount * 2 * 0.95 : 0,
           targetPoints: room.targetPoints, 
           withFlor: room.withFlor, 
           betAmount: room.betAmount
@@ -889,8 +868,6 @@ export function setupSocketEvents(io: Server) {
     socket.on('disconnect', () => {
       for (const [roomId, room] of rooms.entries()) {
         if (!room.guestId && room.creatorSocketId === socket.id) {
-          // Si la mesa está esperando rival y se desconecta el creador, 
-          // NO la borramos al instante. La dejamos visible por 30 minutos.
           if (room.waitingTimeout) {
             clearTimeout(room.waitingTimeout);
           }
@@ -906,7 +883,7 @@ export function setupSocketEvents(io: Server) {
               rooms.delete(roomId);
               broadcastTables();
             }
-          }, 30 * 60 * 1000); // 30 minutos exactos
+          }, 30 * 60 * 1000);
 
           broadcastTables();
           continue;
@@ -973,12 +950,10 @@ export function setupSocketEvents(io: Server) {
           }
         }
 
-        // Si hay Envido o Flor pendientes de responder, se bloquean los cantos de Truco.
         if ((room.envidoPendingCaller || room.florPendingCaller) && ['TRUCO', 'RETRUCO', 'VALE_4'].includes(callType)) {
           return socket.emit('error_action', { message: 'Debes responder primero a los tantos/flor.' });
         }
 
-        // --- LÓGICA DE FLOR (Casos A, B y C integrados) ---
         if (['FLOR', 'CONTRAFLOR', 'CONTRAFLOR_AL_JUEGO'].includes(callType)) {
           if (!room.withFlor) return socket.emit('error_action', { message: 'Partida SIN FLOR.' });
           if (currentTrick > 0 || room.gameRound.florResolved) return socket.emit('error_action', { message: 'El tiempo para cantar Flor ya cerró.' });
@@ -987,9 +962,8 @@ export function setupSocketEvents(io: Server) {
           const rivalCards = rivalHand.cards.concat(rivalHand.cardsPlayed.filter(Boolean) as Card[]);
           const rivalHasFlor = hasFlor(rivalCards);
 
-          // Si canta FLOR inicial y el rival NO tiene flor, ganamos automáticamente los 3 puntos
           if (callType === 'FLOR' && !rivalHasFlor) {
-            room.gameRound.envidoResolved = true; // La flor anula el envido
+            room.gameRound.envidoResolved = true;
             room.gameRound.florResolved = true;
             room.gameRound.awaitingResponseFrom = null;
             room.florPendingCaller = null;
@@ -1022,8 +996,7 @@ export function setupSocketEvents(io: Server) {
             return startTurnTimer(room, 30);
           }
 
-          // Si el rival TIENE flor, o es una Contraflor / Contraflor al Juego
-          room.gameRound.envidoResolved = true; // Anula el Envido
+          room.gameRound.envidoResolved = true;
           room.florChain.push(callType);
           room.florPendingCaller = authUser;
           room.gameRound.awaitingResponseFrom = rivalId;
@@ -1040,7 +1013,6 @@ export function setupSocketEvents(io: Server) {
 
         if (callType === 'QUIERO_FLOR') return startEnvidoDeclarationPhase(room, true);
         if (callType === 'NO_QUIERO_FLOR') return resolveFlorDeclined(room, authUser);
-        // --------------------------------------------------
 
         if (['ENVIDO', 'ENVIDO_ENVIDO', 'REAL_ENVIDO', 'FALTA_ENVIDO'].includes(callType)) {
           if (currentTrick > 0 || room.gameRound.envidoResolved || room.gameRound.florResolved) {
@@ -1061,7 +1033,13 @@ export function setupSocketEvents(io: Server) {
           return startTurnTimer(room, 30);
         }
 
-        if (callType === 'QUIERO_ENVIDO') return startEnvidoDeclarationPhase(room, false);
+        // FLUJO ESTRICTO: QUIERO_ENVIDO activa obligatoriamente la fase de declaración de puntos
+        if (callType === 'QUIERO_ENVIDO') {
+          room.gameRound.awaitingResponseFrom = null;
+          room.envidoPendingCaller = null;
+          return startEnvidoDeclarationPhase(room, false);
+        }
+
         if (callType === 'NO_QUIERO_ENVIDO') return resolveEnvidoDeclined(room, authUser);
 
         if (callType === 'TRUCO') {
@@ -1079,7 +1057,7 @@ export function setupSocketEvents(io: Server) {
             };
           } else {
             room.gameRound.envidoResolved = true;
-            room.gameRound.florResolved = true; // Por las dudas
+            room.gameRound.florResolved = true;
             room.pendingTrucoAfterEnvido = null;
           }
 
@@ -1138,4 +1116,4 @@ export function setupSocketEvents(io: Server) {
       } catch (err) { console.error('Error en send_call:', err); }
     });
   });
-} 
+}
