@@ -553,6 +553,7 @@ export function setupSocketEvents(io: Server) {
 
     const winnerId = folderUserId.toLowerCase() === room.creatorId.toLowerCase() ? room.guestId! : room.creatorId;
 
+    // 1. Puntos del Truco base
     let trucoPts = 1;
     if (room.gameRound.awaitingResponseFrom) {
       if (room.gameRound.trucoPointsAtStake === 2) trucoPts = 1;
@@ -562,17 +563,29 @@ export function setupSocketEvents(io: Server) {
       trucoPts = room.trucoLevel || 1;
     }
 
-    let pts = trucoPts;
+    // 2. Puntos pendientes de Envido / Flor
+    let extraPts = 0;
 
-    // Si había un envido aceptado pero se fueron al mazo antes de cantar los tantos, sumamos esos puntos
-    let envidoPtsToAdd = 0;
-    if (room.envidoChain.length > 0 && !room.gameRound.envidoResolved) {
+    if (room.florChain.length > 0 && !room.gameRound.florResolved) {
+      // Si se va al mazo con Flor pendiente, se toma como Flor rechazada
+      extraPts = room.gameRound.calculateFlorPoints(room.florChain, false, room.scoreP1, room.scoreP2);
+      room.gameRound.florResolved = true;
+      room.gameRound.envidoResolved = true; // La flor anula envido
+    } 
+    else if (room.envidoChain.length > 0 && !room.gameRound.envidoResolved) {
       const envidoCalc = calculateEnvidoPoints(room.envidoChain, room);
-      envidoPtsToAdd = envidoCalc.acceptedPts;
+      
+      // Si ya habían dicho "Quiero" (isDeclaringEnvido), se lleva los puntos aceptados.
+      // Si estaba pendiente de respuesta, irse al mazo equivale a "No Quiero" (declinedPts).
+      if (room.isDeclaringEnvido) {
+        extraPts = envidoCalc.acceptedPts;
+      } else {
+        extraPts = envidoCalc.declinedPts;
+      }
       room.gameRound.envidoResolved = true;
     }
 
-    const totalPts = pts + envidoPtsToAdd;
+    const totalPts = trucoPts + extraPts;
 
     if (winnerId.toLowerCase() === room.creatorId.toLowerCase()) room.scoreP1 += totalPts;
     else room.scoreP2 += totalPts;
