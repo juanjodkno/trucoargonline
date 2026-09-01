@@ -134,7 +134,7 @@ export function setupSocketEvents(io: Server) {
     return false;
   }
 
-  function startTurnTimer(room: ActiveRoom, seconds: number = 25) {
+  function startTurnTimer(room: ActiveRoom, seconds: number = 30) {
     clearTurnTimer(room);
     if (room.disconnectedUser) return;
 
@@ -297,7 +297,7 @@ export function setupSocketEvents(io: Server) {
       });
     }
 
-    startTurnTimer(room, 25);
+    startTurnTimer(room, 30);
   }
 
   function calculateEnvidoPoints(chain: string[], room?: ActiveRoom): { acceptedPts: number; declinedPts: number } {
@@ -350,7 +350,7 @@ export function setupSocketEvents(io: Server) {
       chain: isFlor ? room.florChain : room.envidoChain,
       isFlor
     });
-    startTurnTimer(room, 25);
+    startTurnTimer(room, 30);
   }
 
   function executeDeclareEnvido(room: ActiveRoom, userId: string, declaredPoints: number) {
@@ -366,7 +366,7 @@ export function setupSocketEvents(io: Server) {
         userId, points: declaredPoints, nextDeclarer: rivalId,
         highestScore: declaredPoints, highestUser: userId, isFinal: false,
       });
-      startTurnTimer(room, 25);
+      startTurnTimer(room, 30);
     } else {
       io.to(room.roomId).emit('envido_points_announced', {
         userId, points: declaredPoints, nextDeclarer: null,
@@ -399,7 +399,7 @@ export function setupSocketEvents(io: Server) {
         isResumedTruco: true
       });
 
-      startTurnTimer(room, 25);
+      startTurnTimer(room, 30);
       return true;
     }
     return false;
@@ -468,7 +468,7 @@ export function setupSocketEvents(io: Server) {
     }
 
     if (checkAndResumePendingTruco(room)) return;
-    startTurnTimer(room, 25);
+    startTurnTimer(room, 30);
   }
 
   function resolveEnvidoDeclined(room: ActiveRoom, answeringUserId: string) {
@@ -498,7 +498,7 @@ export function setupSocketEvents(io: Server) {
     }
 
     if (checkAndResumePendingTruco(room)) return;
-    startTurnTimer(room, 25);
+    startTurnTimer(room, 30);
   }
 
   function resolveFlorDeclined(room: ActiveRoom, answeringUserId: string) {
@@ -540,7 +540,7 @@ export function setupSocketEvents(io: Server) {
     }
 
     if (checkAndResumePendingTruco(room)) return;
-    startTurnTimer(room, 25);
+    startTurnTimer(room, 30);
   }
 
   function resolveTrucoFold(room: ActiveRoom, folderUserId: string, reason: string = 'NO_QUIERO_TRUCO') {
@@ -611,7 +611,7 @@ export function setupSocketEvents(io: Server) {
     const result = room.gameRound.playCard(userId, cardId);
     if (!result.success) {
       io.to(room.roomId).emit('error_action_player', { targetUser: userId, message: result.message });
-      startTurnTimer(room, 25);
+      startTurnTimer(room, 30);
       return;
     }
 
@@ -636,7 +636,7 @@ export function setupSocketEvents(io: Server) {
       });
       handleRoundTransition(room);
     } else {
-      startTurnTimer(room, 25);
+      startTurnTimer(room, 30);
     }
   }
 
@@ -701,7 +701,7 @@ export function setupSocketEvents(io: Server) {
         if (room.disconnectedUser && room.disconnectedUser.toLowerCase() === userId.toLowerCase()) {
           clearDisconnectTimer(room);
           io.to(roomId).emit('player_reconnected', { reconnectedUser: userId });
-          startTurnTimer(room, 25);
+          startTurnTimer(room, 30);
         }
 
         sendFullSync(socket, room, userId);
@@ -974,7 +974,7 @@ export function setupSocketEvents(io: Server) {
             }
 
             if (checkAndResumePendingTruco(room)) return;
-            return startTurnTimer(room, 25);
+            return startTurnTimer(room, 30);
           }
 
           // Si el rival TIENE flor, o es una Contraflor / Contraflor al Juego
@@ -990,7 +990,7 @@ export function setupSocketEvents(io: Server) {
             awaitingResponseFrom: rivalId, 
             chain: room.florChain 
           });
-          return startTurnTimer(room, 25);
+          return startTurnTimer(room, 30);
         }
 
         if (callType === 'QUIERO_FLOR') return startEnvidoDeclarationPhase(room, true);
@@ -1013,7 +1013,7 @@ export function setupSocketEvents(io: Server) {
           room.gameRound.awaitingResponseFrom = rivalId;
 
           io.to(roomId).emit('call_received', { userId: authUser, callType, category: 'ENVIDO', awaitingResponseFrom: rivalId, chain: room.envidoChain });
-          return startTurnTimer(room, 25);
+          return startTurnTimer(room, 30);
         }
 
         if (callType === 'QUIERO_ENVIDO') return startEnvidoDeclarationPhase(room, false);
@@ -1047,7 +1047,7 @@ export function setupSocketEvents(io: Server) {
             awaitingResponseFrom: rivalId, 
             canCallEnvido: canEnvido 
           });
-          return startTurnTimer(room, 25);
+          return startTurnTimer(room, 30);
         }
 
         if (callType === 'RETRUCO') {
@@ -1057,7 +1057,7 @@ export function setupSocketEvents(io: Server) {
           room.gameRound.trucoPointsAtStake = 3;
           room.gameRound.awaitingResponseFrom = rivalId;
           io.to(roomId).emit('call_received', { userId: authUser, callType: 'RETRUCO', category: 'TRUCO', awaitingResponseFrom: rivalId, canCallEnvido: false });
-          return startTurnTimer(room, 25);
+          return startTurnTimer(room, 30);
         }
 
         if (callType === 'VALE_4') {
@@ -1067,7 +1067,7 @@ export function setupSocketEvents(io: Server) {
           room.gameRound.trucoPointsAtStake = 4;
           room.gameRound.awaitingResponseFrom = rivalId;
           io.to(roomId).emit('call_received', { userId: authUser, callType: 'VALE_4', category: 'TRUCO', awaitingResponseFrom: rivalId, canCallEnvido: false });
-          return startTurnTimer(room, 25);
+          return startTurnTimer(room, 30);
         }
 
         if (callType === 'QUIERO_TRUCO') {
@@ -1082,7 +1082,7 @@ export function setupSocketEvents(io: Server) {
             trucoLevel: room.trucoLevel, 
             trucoOwner: room.trucoOwner 
           });
-          return startTurnTimer(room, 25);
+          return startTurnTimer(room, 30);
         }
 
         if (callType === 'NO_QUIERO_TRUCO' || callType === 'ME_VOY_AL_MAZO') {
