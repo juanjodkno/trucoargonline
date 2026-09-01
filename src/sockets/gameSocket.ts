@@ -563,25 +563,32 @@ export function setupSocketEvents(io: Server) {
       trucoPts = room.trucoLevel || 1;
     }
 
-    // 2. Puntos pendientes de Envido / Flor
+    // 2. Revisamos cuántas cartas se jugaron en la primera baza
+    const p1PlayedInTrick0 = room.gameRound.p1.cardsPlayed[0] !== null;
+    const p2PlayedInTrick0 = room.gameRound.p2.cardsPlayed[0] !== null;
+    const totalCardsPlayedInTrick0 = (p1PlayedInTrick0 ? 1 : 0) + (p2PlayedInTrick0 ? 1 : 0);
+
+    // 3. Puntos pendientes de Envido / Flor
     let extraPts = 0;
 
     if (room.florChain.length > 0 && !room.gameRound.florResolved) {
-      // Si se va al mazo con Flor pendiente, se toma como Flor rechazada
       extraPts = room.gameRound.calculateFlorPoints(room.florChain, false, room.scoreP1, room.scoreP2);
       room.gameRound.florResolved = true;
-      room.gameRound.envidoResolved = true; // La flor anula envido
+      room.gameRound.envidoResolved = true;
     } 
     else if (room.envidoChain.length > 0 && !room.gameRound.envidoResolved) {
       const envidoCalc = calculateEnvidoPoints(room.envidoChain, room);
       
-      // Si ya habían dicho "Quiero" (isDeclaringEnvido), se lleva los puntos aceptados.
-      // Si estaba pendiente de respuesta, irse al mazo equivale a "No Quiero" (declinedPts).
       if (room.isDeclaringEnvido) {
         extraPts = envidoCalc.acceptedPts;
       } else {
         extraPts = envidoCalc.declinedPts;
       }
+      room.gameRound.envidoResolved = true;
+    }
+    // Si nadie cantó nada, pero se van al mazo SIN tirar la primera carta, regalan 1 pt de Envido + 1 de Truco.
+    else if (room.envidoChain.length === 0 && room.florChain.length === 0 && totalCardsPlayedInTrick0 === 0 && !room.gameRound.envidoResolved) {
+      extraPts = 1;
       room.gameRound.envidoResolved = true;
     }
 
