@@ -564,20 +564,12 @@ export function setupSocketEvents(io: Server) {
 
     let pts = trucoPts;
 
-    const p1PlayedInTrick0 = room.gameRound.p1.cardsPlayed[0] !== null;
-    const p2PlayedInTrick0 = room.gameRound.p2.cardsPlayed[0] !== null;
-    const totalCardsPlayedInTrick0 = (p1PlayedInTrick0 ? 1 : 0) + (p2PlayedInTrick0 ? 1 : 0);
-
-    if (reason === 'ME_VOY_AL_MAZO' && !room.gameRound.envidoResolved && room.gameRound.currentTrickIndex === 0 && totalCardsPlayedInTrick0 === 0) {
-      pts = trucoPts + 1;
-    }
-
-    // --- CORRECCIÓN: Si el envido ya había sido aceptado pero se fueron al mazo antes de cantar los tantos ---
+    // Si había un envido aceptado pero se fueron al mazo antes de cantar los tantos, sumamos esos puntos
     let envidoPtsToAdd = 0;
     if (room.envidoChain.length > 0 && !room.gameRound.envidoResolved) {
       const envidoCalc = calculateEnvidoPoints(room.envidoChain, room);
       envidoPtsToAdd = envidoCalc.acceptedPts;
-      room.gameRound.envidoResolved = true; // Lo marcamos como resuelto para evitar duplicaciones
+      room.gameRound.envidoResolved = true;
     }
 
     const totalPts = pts + envidoPtsToAdd;
