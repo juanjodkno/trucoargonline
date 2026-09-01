@@ -113,8 +113,8 @@ export function setupSocketEvents(io: Server) {
       clearDisconnectTimer(room);
       const matchWinner = room.scoreP1 >= room.targetPoints ? room.creatorId : room.guestId!;
       const grossPot = room.betAmount > 0 ? room.betAmount * 2 : 0;
-      const netPot = grossPot * 0.9;
-      const rake = grossPot * 0.1;
+      const netPot = grossPot * 0.95;
+      const rake = grossPot * 0.05;
 
       if (netPot > 0) {
         modifyUserChips(matchWinner, netPot);
@@ -222,8 +222,8 @@ export function setupSocketEvents(io: Server) {
         const isP1 = room.creatorId.toLowerCase() === disconnectedUser.toLowerCase();
         const winnerId = isP1 ? room.guestId! : room.creatorId;
         const grossPot = room.betAmount > 0 ? room.betAmount * 2 : 0;
-        const netPot = grossPot * 0.9;
-        const rake = grossPot * 0.1;
+        const netPot = grossPot * 0.95;
+        const rake = grossPot * 0.05;
 
         if (netPot > 0) {
           modifyUserChips(winnerId, netPot);
@@ -793,8 +793,8 @@ export function setupSocketEvents(io: Server) {
 
       const winnerId = isP1 ? room.guestId : room.creatorId;
       const grossPot = room.betAmount > 0 ? room.betAmount * 2 : 0;
-      const netPot = grossPot * 0.9;
-      const rake = grossPot * 0.1;
+      const netPot = grossPot * 0.95;
+      const rake = grossPot * 0.05;
 
       if (netPot > 0) {
         modifyUserChips(winnerId, netPot);

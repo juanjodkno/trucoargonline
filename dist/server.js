@@ -17,8 +17,8 @@ const server = http_1.default.createServer(app);
 app.set('trust proxy', 1);
 // Inicializar conexión
 (0, userService_1.initDatabase)();
-const ADMIN_PIN = process.env.ADMIN_PIN || '36049655Dk,';
-const ADMIN_PIN_2 = process.env.ADMIN_PIN_2 || 'Emilia051';
+const adminPin1 = process.env.ADMIN_PIN_1;
+const adminPin2 = process.env.ADMIN_PIN_2;
 const io = new socket_io_1.Server(server, {
     cors: { origin: '*' },
     pingTimeout: 30000,
