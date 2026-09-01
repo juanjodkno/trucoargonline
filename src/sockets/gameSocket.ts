@@ -1,4 +1,21 @@
 // src/sockets/gameSocket.ts
+interface ActiveRoom {
+  roomId: string;
+  creatorId: string;
+  creatorSocketId?: string;
+  guestId?: string;
+  guestSocketId?: string;
+  betAmount: number;
+  targetPoints: number;
+  withFlor: boolean;
+  scoreP1: number;
+  scoreP2: number;
+  gameRound?: TrucoRound;
+  manoId: string;
+  
+  waitingTimeout?: NodeJS.Timeout; // <-- NUEVO: Para el tiempo de espera de la mesa vacía
+  // ... resto de propiedades ...
+}
 import { Server, Socket } from 'socket.io';
 import crypto from 'crypto';
 import { TrucoRound } from '../game/trucoGame';
@@ -712,12 +729,19 @@ export function setupSocketEvents(io: Server) {
 
     socket.on('create_room', ({ userId, betAmount, targetPoints, withFlor }) => {
       try {
-        // --- NUEVO: Evitar que el usuario cree más de una mesa a la vez ---
-        for (const existingRoom of rooms.values()) {
-          if (existingRoom.creatorId === userId && !existingRoom.guestId) {
+        for (const [existingRoomId, existingRoom] of rooms.entries()) {
+          if (existingRoom.creatorId.toLowerCase() === userId.toLowerCase() && !existingRoom.guestId) {
+            // Si ya tenía una mesa creada y vuelve a interactuar, reasociamos su socket y limpiamos el timeout de abandono
+            existingRoom.creatorSocketId = socket.id;
+            if (existingRoom.waitingTimeout) {
+              clearTimeout(existingRoom.waitingTimeout);
+              existingRoom.waitingTimeout = undefined;
+            }
+            socket.join(existingRoomId);
             return socket.emit('error_action', { message: 'Ya tenés una mesa creada esperando rival.' });
           }
         }
+        // ... resto de la creación de sala ...
         // ------------------------------------------------------------------
 
         const bet = Number(betAmount) >= 0 ? Number(betAmount) : 0;
@@ -768,9 +792,13 @@ export function setupSocketEvents(io: Server) {
       } catch (err) { console.error('Error creando mesa:', err); }
     });
 
-    socket.on('cancel_waiting_table', ({ roomId }) => {
+    socket.on('cancel_waiting_table', ({ roomId, userId }) => {
       const room = rooms.get(roomId);
-      if (room && !room.guestId && room.creatorSocketId === socket.id) {
+      // Permitimos cancelar si coincide el socket o si se valida el userId del creador tras una reconexión
+      if (room && !room.guestId && (room.creatorSocketId === socket.id || (userId && room.creatorId.toLowerCase() === userId.toLowerCase()))) {
+        if (room.waitingTimeout) {
+          clearTimeout(room.waitingTimeout);
+        }
         if (room.betAmount > 0) {
           modifyUserChips(room.creatorId, room.betAmount);
         }
@@ -861,8 +889,25 @@ export function setupSocketEvents(io: Server) {
     socket.on('disconnect', () => {
       for (const [roomId, room] of rooms.entries()) {
         if (!room.guestId && room.creatorSocketId === socket.id) {
-          if (room.betAmount > 0) modifyUserChips(room.creatorId, room.betAmount);
-          rooms.delete(roomId);
+          // Si la mesa está esperando rival y se desconecta el creador, 
+          // NO la borramos al instante. La dejamos visible por 30 minutos.
+          if (room.waitingTimeout) {
+            clearTimeout(room.waitingTimeout);
+          }
+
+          room.creatorSocketId = undefined;
+
+          room.waitingTimeout = setTimeout(() => {
+            const activeRoom = rooms.get(roomId);
+            if (activeRoom && !activeRoom.guestId) {
+              if (activeRoom.betAmount > 0) {
+                modifyUserChips(activeRoom.creatorId, activeRoom.betAmount);
+              }
+              rooms.delete(roomId);
+              broadcastTables();
+            }
+          }, 30 * 60 * 1000); // 30 minutos exactos
+
           broadcastTables();
           continue;
         }
