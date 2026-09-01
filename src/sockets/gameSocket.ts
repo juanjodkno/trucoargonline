@@ -812,6 +812,18 @@ export function setupSocketEvents(io: Server) {
         if (!room) return socket.emit('error_action', { message: 'La mesa no existe.' });
         if (room.guestId) return socket.emit('error_action', { message: 'La mesa ya está completa.' });
         
+        // --- NUEVO: Eliminar mesa previa del jugador si dejó una esperando ---
+        for (const [pendingRoomId, pendingRoom] of rooms.entries()) {
+          if (pendingRoom.creatorId === userId && !pendingRoom.guestId) {
+            // Si la mesa que abandonó tenía apuesta, le devolvemos las fichas primero
+            if (pendingRoom.betAmount > 0) {
+              modifyUserChips(userId, pendingRoom.betAmount);
+            }
+            rooms.delete(pendingRoomId);
+          }
+        }
+        // -------------------------------------------------------------------
+
         if (room.betAmount > 0) {
           const successDeduct = modifyUserChips(userId, -room.betAmount);
           if (!successDeduct) return socket.emit('error_action', { message: 'Saldo insuficiente.' });
