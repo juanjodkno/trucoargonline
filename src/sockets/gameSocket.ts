@@ -735,6 +735,16 @@ export function setupSocketEvents(io: Server) {
       }
     });
 
+    socket.on('check_active_game', ({ userId }) => {
+      if (!userId) return;
+      for (const [roomId, room] of rooms.entries()) {
+        if (room.guestId && (room.creatorId.toLowerCase() === userId.toLowerCase() || room.guestId.toLowerCase() === userId.toLowerCase())) {
+          socket.emit('active_game_found', { roomId, userId });
+          return;
+        }
+      }
+    });
+
     socket.on('create_room', ({ userId, betAmount, targetPoints, withFlor }) => {
       try {
         for (const [existingRoomId, existingRoom] of rooms.entries()) {
@@ -748,7 +758,6 @@ export function setupSocketEvents(io: Server) {
             return socket.emit('error_action', { message: 'Ya tenés una mesa creada esperando rival.' });
           }
         }
-
         const bet = Number(betAmount) >= 0 ? Number(betAmount) : 0;
         const pts = Number(targetPoints) === 15 ? 15 : 30;
         const flor = (withFlor === true || withFlor === 'true' || withFlor === undefined);

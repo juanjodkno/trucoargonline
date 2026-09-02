@@ -690,7 +690,18 @@
       sessionStorage.removeItem('truco_saved_user');
       window.location.reload();
     }
+// Reconexión automática al volver de segundo plano en el celu
+socket.on('connect', () => {
+  // Verificamos que el usuario ya esté cargado antes de preguntar
+  if (typeof currentUser !== 'undefined' && currentUser?.username) {
+    socket.emit('check_active_game', { userId: currentUser.username });
+  }
+});
 
+socket.on('active_game_found', (data) => {
+  console.log("Partida recuperada del reposo. Entrando a la mesa...");
+  socket.emit('reconnect_game', data);
+});
     function openSupportWhatsApp() {
       triggerHaptic(20);
       const phone = '5493815811724';
