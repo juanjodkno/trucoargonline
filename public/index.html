@@ -1006,7 +1006,7 @@
   if (confirmar) {
     // Si tu nombre de usuario se guarda distinto en tu front, cambialo acá (ej: una variable global)
     const usuarioActual = localStorage.getItem('username'); 
-    socket.emit('cancel_waiting_table', { roomId: roomId, userId: usuarioActual });
+    socket.emit('cancel_waiting_table', { roomId: roomId, userId: currentUser.username });
   }
 }
     function cancelTableFromLobby(roomId) {
