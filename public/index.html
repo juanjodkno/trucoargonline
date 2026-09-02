@@ -1004,18 +1004,9 @@
   triggerHaptic(20);
   const confirmar = confirm('¿Estás seguro de que querés cancelar tu mesa? Si apostaste fichas, se te devolverán al instante.');
   if (confirmar) {
-    // Si tu nombre de usuario se guarda distinto en tu front, cambialo acá (ej: una variable global)
-    const usuarioActual = localStorage.getItem('username'); 
     socket.emit('cancel_waiting_table', { roomId: roomId, userId: currentUser.username });
   }
 }
-    function cancelTableFromLobby(roomId) {
-      triggerHaptic(20);
-      const confirmar = confirm('¿Estás seguro de que querés cancelar tu mesa? Si apostaste fichas, se te devolverán al instante.');
-      if (confirmar) {
-        socket.emit('cancel_waiting_table', { roomId: roomId });
-      }
-    }
     function renderTables(tables) {
       const container = document.getElementById('tableList');
       if (!container) return;
