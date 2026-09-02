@@ -798,17 +798,28 @@ export function setupSocketEvents(io: Server) {
     });
 
     socket.on('cancel_waiting_table', ({ roomId, userId }) => {
-      const room = rooms.get(roomId);
-      if (room && !room.guestId && (room.creatorSocketId === socket.id || (userId && room.creatorId.toLowerCase() === userId.toLowerCase()))) {
-        if (room.waitingTimeout) {
-          clearTimeout(room.waitingTimeout);
+      try {
+        const room = rooms.get(roomId);
+        
+        // Validamos que la mesa exista y que el jugador sea realmente el creador
+        if (room && !room.guestId && (room.creatorSocketId === socket.id || (userId && room.creatorId.toLowerCase() === userId.toLowerCase()))) {
+          
+          if (room.waitingTimeout) {
+            clearTimeout(room.waitingTimeout);
+          }
+          
+          if (room.betAmount > 0) {
+            // Clave: Number() para evitar la concatenación de texto y el crasheo
+            modifyUserChips(room.creatorId, Number(room.betAmount));
+          }
+          
+          rooms.delete(roomId);
+          
+          socket.emit('table_cancelled_ok', { newBalance: getUserChips(room.creatorId) });
+          broadcastTables();
         }
-        if (room.betAmount > 0) {
-          modifyUserChips(room.creatorId, room.betAmount);
-        }
-        rooms.delete(roomId);
-        socket.emit('table_cancelled_ok', { newBalance: getUserChips(room.creatorId) });
-        broadcastTables();
+      } catch (err) {
+        console.error('Error al cancelar la mesa:', err);
       }
     });
 
