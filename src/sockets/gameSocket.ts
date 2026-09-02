@@ -852,17 +852,20 @@ export function setupSocketEvents(io: Server) {
         if (!room) return socket.emit('error_action', { message: 'La mesa no existe.' });
         if (room.guestId) return socket.emit('error_action', { message: 'La mesa ya está completa.' });
         
+        // Limpiamos mesas huérfanas del jugador y devolvemos las fichas
         for (const [pendingRoomId, pendingRoom] of rooms.entries()) {
-          if (pendingRoom.creatorId === userId && !pendingRoom.guestId) {
+          if (pendingRoom.creatorId.toLowerCase() === (userId || '').toLowerCase() && !pendingRoom.guestId) {
             if (pendingRoom.betAmount > 0) {
-              modifyUserChips(userId, pendingRoom.betAmount);
+              // Envolver en Number() evita la concatenación de strings
+              modifyUserChips(userId, Number(pendingRoom.betAmount));
             }
             rooms.delete(pendingRoomId);
           }
         }
 
         if (room.betAmount > 0) {
-          const successDeduct = modifyUserChips(userId, -room.betAmount);
+          // Aplicamos Number() también acá por coherencia en el código
+          const successDeduct = modifyUserChips(userId, -Number(room.betAmount));
           if (!successDeduct) return socket.emit('error_action', { message: 'Saldo insuficiente.' });
         }
 
