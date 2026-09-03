@@ -1020,8 +1020,12 @@ export function setupSocketEvents(io: Server) {
           }
         }
 
-        if ((room.envidoPendingCaller || room.florPendingCaller) && ['TRUCO', 'RETRUCO', 'VALE_4'].includes(callType)) {
-          return socket.emit('error_action', { message: 'Debes responder primero a los tantos/flor.' });
+        const isFirstTrick = room.gameRound && room.gameRound.currentTrickIndex === 0;
+        const envidoActive = room.envidoPendingCaller && !room.gameRound.envidoResolved;
+        const florActive = room.florPendingCaller && !room.gameRound.florResolved;
+
+        if (isFirstTrick && (envidoActive || florActive) && ['TRUCO', 'RETRUCO', 'VALE_4'].includes(callType)) {
+            return socket.emit('error_action', { message: 'Debes responder primero a los tantos/flor.' });
         }
 
         if (['FLOR', 'CONTRAFLOR', 'CONTRAFLOR_AL_JUEGO'].includes(callType)) {
@@ -1042,6 +1046,7 @@ export function setupSocketEvents(io: Server) {
             room.gameRound.florResolved = true;
             room.gameRound.awaitingResponseFrom = null;
             room.florPendingCaller = null;
+            room.envidoPendingCaller = null; // NUEVO: La flor elimina cualquier envido pendiente
 
             if (authUser.toLowerCase() === room.creatorId.toLowerCase()) room.scoreP1 += 3;
             else room.scoreP2 += 3;
@@ -1072,10 +1077,10 @@ export function setupSocketEvents(io: Server) {
           }
 
           room.gameRound.envidoResolved = true;
+          room.envidoPendingCaller = null; // NUEVO: La flor elimina cualquier envido pendiente
           room.florChain.push(callType);
           room.florPendingCaller = authUser;
           room.gameRound.awaitingResponseFrom = rivalId;
-
           io.to(roomId).emit('call_received', { 
             userId: authUser, 
             callType, 
