@@ -636,6 +636,24 @@
     let currentTurnPlayer = '';
     let currentRivalAvatar = 'gaucho';
 
+    // Buscar sesión guardada apenas carga la página
+window.addEventListener('DOMContentLoaded', () => {
+  const savedData = localStorage.getItem('truco_saved_user') || sessionStorage.getItem('truco_saved_user');
+  
+  if (savedData) {
+    currentUser = JSON.parse(savedData);
+    
+    // Reemplazá 'login-screen' y 'lobby-screen' por los IDs reales de tus divs en el HTML
+    document.getElementById('login-screen').style.display = 'none'; 
+    document.getElementById('lobby-screen').style.display = 'block';
+    
+    // Le avisamos al socket por si quedaste colgado en una mesa al apretar F5
+    if (socket) {
+      socket.emit('check_active_game', { userId: currentUser.username });
+    }
+  }
+});
+
     function parseBoolean(val) {
       if (val === true || val === 'true') return true;
       if (val === false || val === 'false') return false;
