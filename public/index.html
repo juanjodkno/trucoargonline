@@ -636,23 +636,7 @@
     let currentTurnPlayer = '';
     let currentRivalAvatar = 'gaucho';
 
-    // Buscar sesión guardada apenas carga la página
-window.addEventListener('DOMContentLoaded', () => {
-  const savedData = localStorage.getItem('truco_saved_user') || sessionStorage.getItem('truco_saved_user');
-  
-  if (savedData) {
-    currentUser = JSON.parse(savedData);
     
-    // Reemplazá 'login-screen' y 'lobby-screen' por los IDs reales de tus divs en el HTML
-    document.getElementById('login-screen').style.display = 'none'; 
-    document.getElementById('lobby-screen').style.display = 'block';
-    
-    // Le avisamos al socket por si quedaste colgado en una mesa al apretar F5
-    if (socket) {
-      socket.emit('check_active_game', { userId: currentUser.username });
-    }
-  }
-});
 
     function parseBoolean(val) {
       if (val === true || val === 'true') return true;
@@ -708,18 +692,7 @@ window.addEventListener('DOMContentLoaded', () => {
       sessionStorage.removeItem('truco_saved_user');
       window.location.reload();
     }
-// Reconexión automática al volver de segundo plano en el celu
-socket.on('connect', () => {
-  // Verificamos que el usuario ya esté cargado antes de preguntar
-  if (typeof currentUser !== 'undefined' && currentUser?.username) {
-    socket.emit('check_active_game', { userId: currentUser.username });
-  }
-});
 
-socket.on('active_game_found', (data) => {
-  console.log("Partida recuperada del reposo. Entrando a la mesa...");
-  socket.emit('reconnect_game', data);
-});
     function openSupportWhatsApp() {
       triggerHaptic(20);
       const phone = '5493815811724';
@@ -1356,6 +1329,14 @@ socket.on('active_game_found', (data) => {
         if (activeRoomId && currentUser) {
           socket.emit('reconnect_game', { roomId: activeRoomId, userId: currentUser.username });
         }
+        if (currentUser && currentUser.username) {
+          socket.emit('check_active_game', { userId: currentUser.username });
+        }
+      });
+
+      socket.on('active_game_found', (data) => {
+        console.log("Partida recuperada del reposo. Entrando a la mesa...");
+        socket.emit('reconnect_game', data);
       });
 
       socket.on('sync_game_state', (data) => {
