@@ -818,9 +818,14 @@ function setupSocketEvents(io) {
                     }
                 }
                 // Si hay Envido o Flor pendientes de responder, se bloquean los cantos de Truco.
-                if ((room.envidoPendingCaller || room.florPendingCaller) && ['TRUCO', 'RETRUCO', 'VALE_4'].includes(callType)) {
-                    return socket.emit('error_action', { message: 'Debes responder primero a los tantos/flor.' });
-                }
+        // NUEVO: Solo bloqueamos si estamos en la primera mano y los tantos NO se resolvieron
+        const isFirstTrick = room.gameRound && room.gameRound.currentTrickIndex === 0;
+        const envidoActive = room.envidoPendingCaller && !room.gameRound.envidoResolved;
+        const florActive = room.florPendingCaller && !room.gameRound.florResolved;
+
+        if (isFirstTrick && (envidoActive || florActive) && ['TRUCO', 'RETRUCO', 'VALE_4'].includes(callType)) {
+            return socket.emit('error_action', { message: 'Debes responder primero a los tantos/flor.' });
+        }
                 // --- LÓGICA DE FLOR (Casos A, B y C integrados) ---
                 if (['FLOR', 'CONTRAFLOR', 'CONTRAFLOR_AL_JUEGO'].includes(callType)) {
                     if (!room.withFlor)
