@@ -652,19 +652,27 @@ export function setupSocketEvents(io: Server) {
     });
 
     if (result.roundOver && result.winnerId) {
+      // Cálculo de puntos
       const finalTrucoPoints = room.trucoLevel > 1 ? room.trucoLevel : (result.points || 1);
-      if (result.winnerId.toLowerCase() === room.creatorId.toLowerCase()) room.scoreP1 += finalTrucoPoints;
-      else room.scoreP2 += finalTrucoPoints;
+      
+      if (result.winnerId.toLowerCase() === room.creatorId.toLowerCase()) {
+        room.scoreP1 += finalTrucoPoints;
+      } else {
+        room.scoreP2 += finalTrucoPoints;
+      }
 
       io.to(room.roomId).emit('round_ended', {
         winnerId: result.winnerId, pointsAwarded: finalTrucoPoints, scores: getScoreMap(room),
       });
+      
+      // LIMPIEZA ESTRICTA: Reseteamos el nivel del truco a 1 para que la próxima mano nazca limpia
+      room.trucoLevel = 1;
+      
       handleRoundTransition(room);
     } else {
       startTurnTimer(room, 30);
     }
   }
-
   function sendFullSync(socket: Socket, room: ActiveRoom, userId: string) {
     if (!room.gameRound) return;
 
@@ -948,15 +956,32 @@ export function setupSocketEvents(io: Server) {
       const room = rooms.get(roomId);
       if (!room || !room.gameRound || room.disconnectedUser) return;
 
+      // NUEVO: Candado anti-spam para evitar la "Condición de Carrera" (doble clic)
+      if (room['isProcessingPlay']) return;
+
       const authUser = getAuthenticatedUserId(room, socket.id);
       if (!authUser) return socket.emit('error_action', { message: 'No perteneces a esta partida.' });
 
+      // Verificar que sea su turno
       if (room.gameRound.currentTurn.toLowerCase() !== authUser.toLowerCase()) {
         return socket.emit('error_action', { message: 'No es tu turno de jugar carta.' });
       }
-      executePlayCard(room, authUser, cardId);
-    });
 
+      // NUEVO: Bloqueo estricto si hay un Envido, Flor o Truco esperando respuesta
+      if (room.gameRound.awaitingResponseFrom) {
+        return socket.emit('error_action', { message: 'Hay un canto pendiente de respuesta.' });
+      }
+
+      // Activamos el candado antes de procesar la carta
+        room['isProcessingPlay'] = true;
+
+      try {
+        executePlayCard(room, authUser, cardId);
+      } finally {
+        // Soltamos el candado inmediatamente después de que se procesó todo
+        room['isProcessingPlay'] = false;
+      }
+    });
     socket.on('declare_envido_points', ({ roomId, points }) => {
       const room = rooms.get(roomId);
       if (!room || room.disconnectedUser) return;
