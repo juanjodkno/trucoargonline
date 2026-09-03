@@ -226,9 +226,16 @@
       <div id="statusMsg" class="msg"></div>
     </div>
 
-    <!-- Lista de Usuarios Registrados -->
+    <!-- Lista de Usuarios Registrados con Buscador -->
     <div class="admin-card">
-      <h3 style="color:#cbd5e1; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 8px;">Jugadores Registrados</h3>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 8px; flex-wrap: wrap; gap: 10px;">
+        <h3 style="color:#cbd5e1; margin: 0;">Jugadores Registrados</h3>
+        <!-- Buscador integrado en el rectángulo blanco -->
+        <div style="width: 260px;">
+          <input type="text" id="searchUserBox" placeholder="🔍 Buscar usuario, nombre o email..." oninput="filterUsersTable()" style="padding: 7px 12px; font-size: 0.85rem;" />
+        </div>
+      </div>
+
       <div class="table-responsive">
         <table class="admin-table">
           <thead>
@@ -255,6 +262,7 @@
     };
 
     let adminToken = localStorage.getItem('truco_admin_key') || '';
+    let allRegisteredUsers = []; // Array global para almacenar los usuarios de la base de datos
 
     function getHeaders() {
       return {
@@ -468,28 +476,56 @@
         const res = await fetch('/api/admin/users-list', { headers: getHeaders() });
         if (res.status === 401) return adminLogout();
 
-        const data = await res.json();
-        const tbody = document.getElementById('userRows');
-        tbody.innerHTML = '';
-
-        data.forEach(u => {
-          const emoji = AVATAR_MAP[u.avatar] || '🤠';
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td style="font-size:1.2rem; cursor:pointer;" onclick="selectUser('${escapeHtml(u.username)}')">${emoji}</td>
-            <td style="cursor:pointer;" onclick="selectUser('${escapeHtml(u.username)}')"><strong>@${escapeHtml(u.username)}</strong></td>
-            <td style="cursor:pointer;" onclick="selectUser('${escapeHtml(u.username)}')">${escapeHtml(u.fullName)}</td>
-            <td style="cursor:pointer; color:#94a3b8;" onclick="selectUser('${escapeHtml(u.username)}')">${escapeHtml(u.email)}</td>
-            <td style="cursor:pointer;" onclick="selectUser('${escapeHtml(u.username)}')"><span class="badge badge-chips">${formatARS(u.chips)}</span></td>
-            <td style="text-align:center;">
-              <button class="btn-action-sm btn-delete-row" onclick="deleteUserPrompt('${escapeHtml(u.username)}')">🗑️ Eliminar</button>
-            </td>
-          `;
-          tbody.appendChild(tr);
-        });
+        allRegisteredUsers = await res.json(); // Guardamos los usuarios traídos de la base de datos
+        renderUsersTable(allRegisteredUsers); // Renderizamos la tabla inicial
       } catch(err) {
         console.error('Error cargando usuarios:', err);
       }
+    }
+
+    // Función encargada de dibujar los usuarios en la tabla
+    function renderUsersTable(usersArray) {
+      const tbody = document.getElementById('userRows');
+      tbody.innerHTML = '';
+
+      if (!usersArray || usersArray.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; color:#64748b; padding:18px;">No se encontraron usuarios.</td></tr>';
+        return;
+      }
+
+      usersArray.forEach(u => {
+        const emoji = AVATAR_MAP[u.avatar] || '🤠';
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td style="font-size:1.2rem; cursor:pointer;" onclick="selectUser('${escapeHtml(u.username)}')">${emoji}</td>
+          <td style="cursor:pointer;" onclick="selectUser('${escapeHtml(u.username)}')"><strong>@${escapeHtml(u.username)}</strong></td>
+          <td style="cursor:pointer;" onclick="selectUser('${escapeHtml(u.username)}')">${escapeHtml(u.fullName)}</td>
+          <td style="cursor:pointer; color:#94a3b8;" onclick="selectUser('${escapeHtml(u.username)}')">${escapeHtml(u.email)}</td>
+          <td style="cursor:pointer;" onclick="selectUser('${escapeHtml(u.username)}')"><span class="badge badge-chips">${formatARS(u.chips)}</span></td>
+          <td style="text-align:center;">
+            <button class="btn-action-sm btn-delete-row" onclick="deleteUserPrompt('${escapeHtml(u.username)}')">🗑️ Eliminar</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Filtrar en tiempo real los usuarios guardados en memoria al escribir en el buscador
+    function filterUsersTable() {
+      const query = document.getElementById('searchUserBox').value.toLowerCase().trim();
+      
+      if (!query) {
+        renderUsersTable(allRegisteredUsers);
+        return;
+      }
+
+      const filtered = allRegisteredUsers.filter(u => 
+        (u.username && u.username.toLowerCase().includes(query)) ||
+        (u.fullName && u.fullName.toLowerCase().includes(query)) ||
+        (u.email && u.email.toLowerCase().includes(query))
+      );
+
+      renderUsersTable(filtered);
     }
 
     function selectUser(username) {
@@ -559,7 +595,7 @@
     async function handleResetPass(e) {
       e.preventDefault();
       const username = document.getElementById('passUser').value.trim();
-      const newPassword = document.getElementById('newPassValue').value.trim();
+      const newPassword = document.getElementById('newPassValue'].value.trim();
       const msg = document.getElementById('statusMsg');
 
       try {
