@@ -434,7 +434,7 @@
         <span id="rivalAvatarDisplay">🤠</span> Ellos: <span id="scoreEllos">0</span>
       </div>
       <div class="turn-badge">Turno: <span id="lblTurn">-</span></div>
-      <div class="timer-badge">⏱️ <span id="lblTimer">25</span>s</div>
+      <div class="timer-badge">⏱️ <span id="lblTimer">30</span>s</div>
       <button id="btnAbandonar" onclick="handleLeaveButton()" style="background:#e63946; color:white; border:none; padding:6px 14px; border-radius:8px; font-weight:bold; font-size:0.85rem; cursor:pointer; transition:0.2s;">Abandonar mesa</button>
     </div>
 
@@ -1892,14 +1892,20 @@
       });
     }
 
-    function playCard(cardId) { 
+    function playCard(cardId) {  
+      // Si las cartas están bloqueadas (por turno o por fase de Envido/Flor), ignoramos el clic
+      const myCardsContainer = document.getElementById('myCards');
+      if (myCardsContainer && myCardsContainer.classList.contains('disabled')) {
+        return;
+      }
+
       const isMyTurn = (currentTurnPlayer || '').toLowerCase() === (currentUser ? currentUser.username.toLowerCase() : '');
       if (!isMyTurn) {
         alert('No es tu turno de jugar carta.');
         return;
       }
       triggerHaptic(25);
-      socket.emit('play_card', { roomId: activeRoomId, userId: currentUser.username, cardId }); 
+      socket.emit('play_card', { roomId: activeRoomId, userId: currentUser.username, cardId });  
     }
 
     function sendCall(callType) { 
