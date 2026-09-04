@@ -109,6 +109,9 @@ let usersCache: User[] = [];
 let depositsCache: DepositRequest[] = [];
 let transactionsCache: Transaction[] = [];
 let settlementsCache: MatchSettlement[] = [];
+// Solo controla desde qué momento se acumula la métrica visible de rake.
+// No borra partidas ni movimientos contables.
+let localRakeCounterResetAt: Date | null = null;
 
 // Fallback idempotente para localhost cuando no hay PostgreSQL configurado.
 const localWalletOperations = new Map<string, WalletOperationResult>();
@@ -252,6 +255,17 @@ export async function initDatabase() {
         loser_balance_after BIGINT,
         finish_reason VARCHAR(50) NOT NULL,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+
+    // Ajustes persistentes del panel. El reset del contador de rake guarda
+    // únicamente una fecha de corte; nunca elimina el historial contable.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        setting_key VARCHAR(100) PRIMARY KEY,
+        setting_value TEXT,
+        updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
     `);
 
@@ -1236,10 +1250,15 @@ export function getAdminMetrics() {
   const pendingDepositsCount = pendingDeposits.length;
   const pendingDepositsAmount = pendingDeposits.reduce((sum, d) => sum + (d.amount || 0), 0);
 
+  const afterRakeReset = (createdAt: string) =>
+    !localRakeCounterResetAt || new Date(createdAt).getTime() > localRakeCounterResetAt.getTime();
+
   const legacyRake = transactionsCache
-    .filter(t => t.type === 'COMMISSION_RAKE')
+    .filter(t => t.type === 'COMMISSION_RAKE' && afterRakeReset(t.createdAt))
     .reduce((sum, t) => sum + (t.amount || 0), 0);
-  const settledRake = settlementsCache.reduce((sum, s) => sum + (s.rakeAmount || 0), 0);
+  const settledRake = settlementsCache
+    .filter(s => afterRakeReset(s.createdAt))
+    .reduce((sum, s) => sum + (s.rakeAmount || 0), 0);
 
   const totalDepositsApproved = transactionsCache
     .filter(t => t.type === 'DEPOSIT')
@@ -1262,17 +1281,30 @@ export function getAdminMetrics() {
 export async function getAdminMetricsFresh() {
   if (!DATABASE_URL) return getAdminMetrics();
 
+  const resetRes = await pool.query(`
+    SELECT setting_value
+    FROM app_settings
+    WHERE setting_key = 'rake_counter_reset_at'
+    LIMIT 1
+  `);
+
+  const resetValue = resetRes.rows[0]?.setting_value || null;
+  const resetAt = resetValue ? new Date(resetValue) : null;
+  const hasValidReset = !!resetAt && Number.isFinite(resetAt.getTime());
+  const rakeDateFilter = hasValidReset ? 'AND created_at > $1::timestamptz' : '';
+  const params = hasValidReset ? [resetAt!.toISOString()] : [];
+
   const res = await pool.query(`
     SELECT
       (SELECT COUNT(*)::bigint FROM users) AS total_users,
       (SELECT COALESCE(SUM(chips), 0)::bigint FROM users) AS total_chips,
       (SELECT COUNT(*)::bigint FROM deposits WHERE status = 'PENDING') AS pending_count,
       (SELECT COALESCE(SUM(amount), 0)::bigint FROM deposits WHERE status = 'PENDING') AS pending_amount,
-      (SELECT COALESCE(SUM(amount), 0)::bigint FROM transactions WHERE type = 'COMMISSION_RAKE') AS legacy_rake,
-      (SELECT COALESCE(SUM(rake_amount), 0)::bigint FROM match_settlements) AS settled_rake,
+      (SELECT COALESCE(SUM(amount), 0)::bigint FROM transactions WHERE type = 'COMMISSION_RAKE' ${rakeDateFilter}) AS legacy_rake,
+      (SELECT COALESCE(SUM(rake_amount), 0)::bigint FROM match_settlements WHERE 1=1 ${rakeDateFilter}) AS settled_rake,
       (SELECT COALESCE(SUM(amount), 0)::bigint FROM transactions WHERE type = 'DEPOSIT') AS total_deposits,
       (SELECT COALESCE(SUM(amount), 0)::bigint FROM transactions WHERE type = 'WITHDRAW') AS total_withdrawals
-  `);
+  `, params);
 
   const r = res.rows[0] || {};
   return {
@@ -1282,8 +1314,37 @@ export async function getAdminMetricsFresh() {
     pendingDepositsAmount: Number(r.pending_amount) || 0,
     totalRakeEarned: (Number(r.legacy_rake) || 0) + (Number(r.settled_rake) || 0),
     totalDepositsApproved: Number(r.total_deposits) || 0,
-    totalWithdrawals: Number(r.total_withdrawals) || 0
+    totalWithdrawals: Number(r.total_withdrawals) || 0,
+    rakeCounterResetAt: hasValidReset ? resetAt!.toISOString() : null
   };
+}
+
+/**
+ * Reinicia SOLO el contador visible de comisión de la casa.
+ * Guarda una fecha de corte persistente en PostgreSQL/Supabase.
+ * No modifica saldos, no borra match_settlements y no elimina transactions.
+ */
+export async function resetRakeCounter(): Promise<{ success: boolean; resetAt?: string; message?: string }> {
+  const resetAt = new Date().toISOString();
+
+  if (!DATABASE_URL) {
+    localRakeCounterResetAt = new Date(resetAt);
+    return { success: true, resetAt };
+  }
+
+  try {
+    await pool.query(`
+      INSERT INTO app_settings (setting_key, setting_value, updated_at)
+      VALUES ('rake_counter_reset_at', $1, CURRENT_TIMESTAMP)
+      ON CONFLICT (setting_key)
+      DO UPDATE SET setting_value = EXCLUDED.setting_value, updated_at = CURRENT_TIMESTAMP
+    `, [resetAt]);
+
+    return { success: true, resetAt };
+  } catch (err) {
+    console.error('Error reiniciando contador de rake:', err);
+    return { success: false, message: 'No se pudo reiniciar el contador de comisión.' };
+  }
 }
 
 export async function deleteUser(username: string): Promise<boolean> {

@@ -22,7 +22,8 @@ import {
   updateUserAvatar,
   ALLOWED_AVATARS,
   getAdminMetricsFresh,
-  getAllTransactionsFresh
+  getAllTransactionsFresh,
+  resetRakeCounter
 } from './auth/userService';
 
 const app = express();
@@ -175,6 +176,19 @@ app.get('/api/admin/metrics', requireAdminAuth, async (req, res) => {
     console.error('Error cargando métricas admin:', err);
     return res.status(503).json({ success: false, message: 'No se pudieron cargar las métricas.' });
   }
+});
+
+
+// Reinicia únicamente el acumulador visible del rake. No borra partidas,
+// transacciones ni modifica fichas de usuarios.
+app.post('/api/admin/reset-rake-counter', requireAdminAuth, async (req, res) => {
+  const result = await resetRakeCounter();
+  return res.status(result.success ? 200 : 503).json({
+    ...result,
+    message: result.success
+      ? 'Contador de comisión reiniciado a $0. El historial se conserva intacto.'
+      : (result.message || 'No se pudo reiniciar el contador de comisión.')
+  });
 });
 
 app.get('/api/admin/transactions', requireAdminAuth, async (req, res) => {

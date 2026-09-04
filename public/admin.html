@@ -131,7 +131,11 @@
       <div class="metric-card">
         <span class="metric-title">💰 Comisión Rake Casa (7%)</span>
         <span class="metric-val" id="metricRakeEarned" style="color:#2ec4b6;">$0</span>
-        <span class="metric-sub">Ganancia retenida de mesas finalizadas</span>
+        <span class="metric-sub">Ganancia retenida de mesas finalizadas desde el último reinicio</span>
+        <button type="button" class="btn-action-sm" onclick="resetRakeCounter()"
+          style="margin-top:10px; background:#475569; color:white; width:100%; padding:9px 10px;">
+          ↺ Poner contador en $0
+        </button>
       </div>
       <div class="metric-card">
         <span class="metric-title">⏳ Depósitos Pendientes</span>
@@ -362,6 +366,41 @@
         loadTransactions(),
         loadUsers()
       ]);
+    }
+
+    async function resetRakeCounter() {
+      const firstConfirm = confirm(
+        '¿Querés poner en $0 el contador visible de Comisión Rake Casa?\n\n' +
+        'Esto NO cambia el rake del 7%, NO modifica fichas y NO borra el historial de partidos.'
+      );
+      if (!firstConfirm) return;
+
+      const finalConfirm = confirm(
+        'Confirmación final: el contador empezará nuevamente desde $0 y las próximas partidas volverán a acumular comisión.'
+      );
+      if (!finalConfirm) return;
+
+      try {
+        const res = await fetch('/api/admin/reset-rake-counter', {
+          method: 'POST',
+          headers: getHeaders()
+        });
+
+        if (res.status === 401) return adminLogout();
+        const data = await res.json();
+
+        if (!res.ok) {
+          alert(data.message || 'No se pudo reiniciar el contador de comisión.');
+          return;
+        }
+
+        document.getElementById('metricRakeEarned').innerText = formatARS(0);
+        alert(data.message || 'Contador de comisión reiniciado a $0.');
+        await loadMetrics();
+      } catch (err) {
+        console.error('Error reiniciando contador de rake:', err);
+        alert('Error de conexión al reiniciar el contador de comisión.');
+      }
     }
 
     async function loadMetrics() {
