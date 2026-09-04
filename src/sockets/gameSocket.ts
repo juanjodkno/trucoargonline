@@ -110,17 +110,23 @@ export function setupSocketEvents(io: Server) {
   }
 
   function checkMatchEnd(room: ActiveRoom): boolean {
+    // NUEVO CANDADO: Si la mesa ya fue borrada del mapa, evitamos pagar dos veces.
+    if (!rooms.has(room.roomId)) return true;
     if (room.scoreP1 >= room.targetPoints || room.scoreP2 >= room.targetPoints) {
       clearTurnTimer(room);
       clearDisconnectTimer(room);
       const matchWinner = room.scoreP1 >= room.targetPoints ? room.creatorId : room.guestId!;
       const grossPot = room.betAmount > 0 ? room.betAmount * 2 : 0;
-      const netPot = grossPot * 0.95;
-      const rake = grossPot * 0.05;
+      const netPot = grossPot * 0.93;
+      const rake = grossPot * 0.07;
 
       if (netPot > 0) {
+        const matchLoser = matchWinner.toLowerCase() === room.creatorId.toLowerCase() ? room.guestId! : room.creatorId;
         modifyUserChips(matchWinner, netPot);
-        recordTransaction('COMMISSION_RAKE', matchWinner, rake, `Comisión mesa ${room.roomId} ($${room.betAmount} c/u)`);
+        const bWinner = getUserChips(matchWinner);
+        const bLoser = getUserChips(matchLoser);
+        const detalle = `Fin normal. Ganó: ${matchWinner} (Saldo: $${bWinner}). Perdió: ${matchLoser} (Saldo: $${bLoser}). Premio entregado: $${netPot} (Comisión 7%: $${rake}). Mesa: ${room.roomId}`;
+        recordTransaction('COMMISSION_RAKE', matchWinner, rake, detalle);
       }
 
       io.to(room.roomId).emit('match_finished', {
@@ -220,16 +226,22 @@ export function setupSocketEvents(io: Server) {
         io.to(room.roomId).emit('disconnect_timer_tick', { secondsLeft: graceLeft });
       } else {
         clearDisconnectTimer(room);
-        
+        // NUEVO CANDADO: Evita doble pago si la mesa ya cerró por otro motivo
+        if (!rooms.has(room.roomId)) return;
+
         const isP1 = room.creatorId.toLowerCase() === disconnectedUser.toLowerCase();
         const winnerId = isP1 ? room.guestId! : room.creatorId;
         const grossPot = room.betAmount > 0 ? room.betAmount * 2 : 0;
-        const netPot = grossPot * 0.95;
-        const rake = grossPot * 0.05;
+        const netPot = grossPot * 0.93;
+        const rake = grossPot * 0.07;
 
         if (netPot > 0) {
+          const loserId = disconnectedUser;
           modifyUserChips(winnerId, netPot);
-          recordTransaction('COMMISSION_RAKE', winnerId, rake, `Comisión abandono mesa ${room.roomId} ($${room.betAmount} c/u)`);
+          const bWinner = getUserChips(winnerId);
+          const bLoser = getUserChips(loserId);
+          const detalle = `Victoria x Desconexión. Ganó: ${winnerId} (Saldo: $${bWinner}). Perdió: ${loserId} (Saldo: $${bLoser}). Premio entregado: $${netPot} (Comisión 7%: $${rake}). Mesa: ${room.roomId}`;
+          recordTransaction('COMMISSION_RAKE', winnerId, rake, detalle);
         }
 
         io.to(room.roomId).emit('player_surrendered', {
@@ -673,6 +685,7 @@ export function setupSocketEvents(io: Server) {
       startTurnTimer(room, 30);
     }
   }
+
   function sendFullSync(socket: Socket, room: ActiveRoom, userId: string) {
     if (!room.gameRound) return;
 
@@ -853,12 +866,16 @@ export function setupSocketEvents(io: Server) {
 
       const winnerId = isP1 ? room.guestId : room.creatorId;
       const grossPot = room.betAmount > 0 ? room.betAmount * 2 : 0;
-      const netPot = grossPot * 0.95;
-      const rake = grossPot * 0.05;
+      const netPot = grossPot * 0.93;
+      const rake = grossPot * 0.07;
 
       if (netPot > 0) {
+        const loserId = authUser;
         modifyUserChips(winnerId, netPot);
-        recordTransaction('COMMISSION_RAKE', winnerId, rake, `Comisión rendición mesa ${room.roomId} ($${room.betAmount} c/u)`);
+        const bWinner = getUserChips(winnerId);
+        const bLoser = getUserChips(loserId);
+        const detalle = `Victoria x Rendición. Ganó: ${winnerId} (Saldo: $${bWinner}). Perdió: ${loserId} (Saldo: $${bLoser}). Premio entregado: $${netPot} (Comisión 7%: $${rake}). Mesa: ${room.roomId}`;
+        recordTransaction('COMMISSION_RAKE', winnerId, rake, detalle);
       }
 
       io.to(roomId).emit('player_surrendered', {
@@ -907,7 +924,7 @@ export function setupSocketEvents(io: Server) {
           creatorAvatar: getUserAvatar(room.creatorId),
           guestId: room.guestId,
           guestAvatar: getUserAvatar(userId),
-          pot: room.betAmount > 0 ? room.betAmount * 2 * 0.95 : 0,
+          pot: room.betAmount > 0 ? room.betAmount * 2 * 0.93 : 0,
           targetPoints: room.targetPoints, 
           withFlor: room.withFlor, 
           betAmount: room.betAmount
