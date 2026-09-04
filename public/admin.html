@@ -129,7 +129,7 @@
         <span class="metric-sub">Saldo total de todos los usuarios</span>
       </div>
       <div class="metric-card">
-        <span class="metric-title">💰 Comisión Rake Casa (5%)</span>
+        <span class="metric-title">💰 Comisión Rake Casa (7%)</span>
         <span class="metric-val" id="metricRakeEarned" style="color:#2ec4b6;">$0</span>
         <span class="metric-sub">Ganancia retenida de mesas finalizadas</span>
       </div>
@@ -192,7 +192,10 @@
 
       <!-- Tab 3: Historial Contable -->
       <div id="tabHistory" style="display:none;">
-        <h4 style="color:#ffd166; margin-bottom:12px;">Auditoría Contable de Transacciones</h4>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
+          <h4 style="color:#ffd166; margin:0;">Auditoría Contable de Transacciones</h4>
+          <button type="button" class="btn-submit" style="background:#217346; padding:9px 14px; font-size:0.85rem;" onclick="exportMatchesExcel()">📥 Exportar partidos a Excel</button>
+        </div>
         <div class="table-responsive">
           <table class="admin-table">
             <thead>
@@ -230,9 +233,12 @@
     <div class="admin-card">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 8px; flex-wrap: wrap; gap: 10px;">
         <h3 style="color:#cbd5e1; margin: 0;">Jugadores Registrados</h3>
-        <!-- Buscador integrado en el rectángulo blanco -->
-        <div style="width: 260px;">
-          <input type="text" id="searchUserBox" placeholder="🔍 Buscar usuario, nombre o email..." oninput="filterUsersTable()" style="padding: 7px 12px; font-size: 0.85rem;" />
+        <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+          <button type="button" class="btn-submit" style="background:#217346; padding:9px 14px; font-size:0.85rem;" onclick="exportUsersExcel()">📥 Exportar usuarios a Excel</button>
+          <!-- Buscador integrado en el rectángulo blanco -->
+          <div style="width: 260px;">
+            <input type="text" id="searchUserBox" placeholder="🔍 Buscar usuario, nombre o email..." oninput="filterUsersTable()" style="padding: 7px 12px; font-size: 0.85rem;" />
+          </div>
         </div>
       </div>
 
@@ -255,6 +261,7 @@
 
   </div>
 
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script>
     const AVATAR_MAP = {
       'gaucho': '🤠', 'mate': '🧉', 'asado': '🥩', 'sol_mayo': '☀️',
@@ -263,6 +270,7 @@
 
     let adminToken = localStorage.getItem('truco_admin_key') || '';
     let allRegisteredUsers = []; // Array global para almacenar los usuarios de la base de datos
+    let allTransactions = []; // Historial cargado desde Supabase para exportación
 
     function getHeaders() {
       return {
@@ -442,6 +450,7 @@
         const res = await fetch('/api/admin/transactions', { headers: getHeaders() });
         if (res.status === 401) return adminLogout();
         const data = await res.json();
+        allTransactions = Array.isArray(data) ? data : [];
         const tbody = document.getElementById('transactionRows');
         tbody.innerHTML = '';
 
@@ -454,7 +463,8 @@
           let badgeClass = 'badge-deposit';
           let typeLabel = 'DEPÓSITO';
           if (t.type === 'WITHDRAW') { badgeClass = 'badge-withdraw'; typeLabel = 'RETIRO'; }
-          else if (t.type === 'COMMISSION_RAKE') { badgeClass = 'badge-rake'; typeLabel = 'RAKE 5%'; }
+          else if (t.type === 'COMMISSION_RAKE') { badgeClass = 'badge-rake'; typeLabel = 'RAKE 7%'; }
+          else if (t.type === 'MATCH_SETTLEMENT') { badgeClass = 'badge-rake'; typeLabel = 'PARTIDA / RAKE 7%'; }
 
           const tr = document.createElement('tr');
           tr.innerHTML = `
@@ -469,6 +479,93 @@
       } catch(err) {
         console.error('Error cargando historial:', err);
       }
+    }
+
+    function excelDateSuffix() {
+      const d = new Date();
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const yyyy = d.getFullYear();
+      return `${dd}-${mm}-${yyyy}`;
+    }
+
+    function ensureExcelLibrary() {
+      if (typeof XLSX === 'undefined') {
+        alert('No se pudo cargar el módulo de Excel. Verificá tu conexión a internet y volvé a intentar.');
+        return false;
+      }
+      return true;
+    }
+
+    function exportUsersExcel() {
+      if (!ensureExcelLibrary()) return;
+      if (!allRegisteredUsers || allRegisteredUsers.length === 0) {
+        return alert('No hay usuarios cargados para exportar. Presioná Actualizar e intentá nuevamente.');
+      }
+
+      const rows = allRegisteredUsers.map(u => ({
+        'Usuario': u.username || '',
+        'Nombre completo': u.fullName || '',
+        'Correo': u.email || '',
+        'Fichas': Number(u.chips) || 0
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = [
+        { wch: 22 },
+        { wch: 30 },
+        { wch: 36 },
+        { wch: 16 }
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Usuarios');
+      XLSX.writeFile(wb, `usuarios_truco_${excelDateSuffix()}.xlsx`);
+    }
+
+    function exportMatchesExcel() {
+      if (!ensureExcelLibrary()) return;
+
+      const matches = (allTransactions || []).filter(t =>
+        t.type === 'MATCH_SETTLEMENT' || t.type === 'COMMISSION_RAKE'
+      );
+
+      if (matches.length === 0) {
+        return alert('No hay partidos en el historial cargado para exportar. Presioná Actualizar e intentá nuevamente.');
+      }
+
+      const rows = matches.map(t => {
+        const grossPot = Number(t.grossPot);
+        const betPerPlayer = Number.isFinite(grossPot) && grossPot > 0 ? grossPot / 2 : '';
+        const rakePct = Number(t.rakePercentage);
+
+        return {
+          'Fecha y hora': t.createdAt ? new Date(t.createdAt).toLocaleString('es-AR') : '',
+          'Mesa': t.roomId || '',
+          'Ganador': t.winnerUsername || t.username || '',
+          'Saldo final ganador': t.winnerBalanceAfter ?? '',
+          'Perdedor': t.loserUsername || '',
+          'Saldo final perdedor': t.loserBalanceAfter ?? '',
+          'Apuesta por jugador': betPerPlayer,
+          'Pozo total': Number.isFinite(grossPot) ? grossPot : '',
+          'Premio ganador': t.winnerPrize ?? '',
+          'Rake %': Number.isFinite(rakePct) ? rakePct : 7,
+          'Rake': Number(t.amount) || 0,
+          'Motivo': t.finishReason || '',
+          'Detalle': t.details || ''
+        };
+      });
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws['!cols'] = [
+        { wch: 20 }, { wch: 18 }, { wch: 22 }, { wch: 20 },
+        { wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 16 },
+        { wch: 18 }, { wch: 10 }, { wch: 14 }, { wch: 22 }, { wch: 70 }
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Partidos');
+      XLSX.writeFile(wb, `partidos_truco_${excelDateSuffix()}.xlsx`);
     }
 
     async function loadUsers() {
