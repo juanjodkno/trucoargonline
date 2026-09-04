@@ -3,11 +3,13 @@ import { Server, Socket } from 'socket.io';
 import crypto from 'crypto';
 import { TrucoRound } from '../game/trucoGame';
 import { getEnvidoDetails, hasFlor, calculateFlor, Card } from '../game/trucoEngine';
-import { 
-  modifyUserChips, 
-  getUserChips, 
+import {
   getUserAvatar,
-  recordTransaction 
+  getUserChipsFresh,
+  debitRoomEntry,
+  refundRoomEntry,
+  settleMatchOnce,
+  calculateMatchPayout
 } from '../auth/userService';
 
 interface EnvidoWinnerRecord {
@@ -53,6 +55,10 @@ interface ActiveRoom {
   trucoLevel: number;
   trucoOwner: string | null;
 
+  // Candados financieros: no modifican reglas del juego.
+  settlementInProgress?: boolean;
+  joiningUser?: string | null;
+
   pendingTrucoAfterEnvido?: {
     callerId: string;
     responderId: string;
@@ -62,6 +68,7 @@ interface ActiveRoom {
 }
 
 const rooms = new Map<string, ActiveRoom>();
+const pendingRoomCreations = new Set<string>();
 
 export function setupSocketEvents(io: Server) {
 
@@ -109,34 +116,74 @@ export function setupSocketEvents(io: Server) {
     return null;
   }
 
-  function checkMatchEnd(room: ActiveRoom): boolean {
-    // NUEVO CANDADO: Si la mesa ya fue borrada del mapa, evitamos pagar dos veces.
-    if (!rooms.has(room.roomId)) return true;
-    if (room.scoreP1 >= room.targetPoints || room.scoreP2 >= room.targetPoints) {
-      clearTurnTimer(room);
-      clearDisconnectTimer(room);
-      const matchWinner = room.scoreP1 >= room.targetPoints ? room.creatorId : room.guestId!;
-      const grossPot = room.betAmount > 0 ? room.betAmount * 2 : 0;
-      const netPot = grossPot * 0.93;
-      const rake = grossPot * 0.07;
+  async function settleAndCloseMatch(
+    room: ActiveRoom,
+    winnerId: string,
+    loserId: string,
+    finishReason: 'SCORE' | 'SURRENDER' | 'DISCONNECT_TIMEOUT',
+    eventType: 'match_finished' | 'player_surrendered',
+    surrenderedUser?: string
+  ) {
+    // Candado rápido en RAM. La garantía definitiva está en PostgreSQL:
+    // match_settlements.room_id es PRIMARY KEY y bloquea el doble premio.
+    if (room.settlementInProgress) {
+      console.warn(`[SETTLEMENT IN PROGRESS] ${room.roomId}: segunda liquidación ignorada.`);
+      return;
+    }
 
-      if (netPot > 0) {
-        const matchLoser = matchWinner.toLowerCase() === room.creatorId.toLowerCase() ? room.guestId! : room.creatorId;
-        modifyUserChips(matchWinner, netPot);
-        const bWinner = getUserChips(matchWinner);
-        const bLoser = getUserChips(matchLoser);
-        const detalle = `Fin normal. Ganó: ${matchWinner} (Saldo: $${bWinner}). Perdió: ${matchLoser} (Saldo: $${bLoser}). Premio entregado: $${netPot} (Comisión 7%: $${rake}). Mesa: ${room.roomId}`;
-        recordTransaction('COMMISSION_RAKE', matchWinner, rake, detalle);
-      }
+    room.settlementInProgress = true;
+    clearTurnTimer(room);
+    clearDisconnectTimer(room);
 
-      io.to(room.roomId).emit('match_finished', {
-        winnerId: matchWinner,
-        scores: getScoreMap(room),
-        pot: netPot,
-        winnerBalance: getUserChips(matchWinner)
+    const result = await settleMatchOnce({
+      roomId: room.roomId,
+      winnerUsername: winnerId,
+      loserUsername: loserId,
+      betPerPlayer: room.betAmount,
+      finishReason
+    });
+
+    if (!result.success || !result.settlement) {
+      room.settlementInProgress = false;
+      console.error(`[SETTLEMENT FAILED] ${room.roomId}: ${result.message || 'error desconocido'}`);
+      io.to(room.roomId).emit('error_action', {
+        message: 'No se pudo liquidar la partida. El saldo quedó protegido y no se duplicó el pago.'
       });
-      rooms.delete(room.roomId);
-      broadcastTables();
+      return;
+    }
+
+    const settlement = result.settlement;
+
+    if (eventType === 'player_surrendered') {
+      io.to(room.roomId).emit('player_surrendered', {
+        surrenderedUser: surrenderedUser || loserId,
+        winnerId,
+        pot: settlement.winnerPrize,
+        scores: getScoreMap(room),
+        winnerBalance: settlement.winnerBalanceAfter,
+        reason: finishReason
+      });
+    } else {
+      io.to(room.roomId).emit('match_finished', {
+        winnerId,
+        scores: getScoreMap(room),
+        pot: settlement.winnerPrize,
+        winnerBalance: settlement.winnerBalanceAfter
+      });
+    }
+
+    if (rooms.get(room.roomId) === room) rooms.delete(room.roomId);
+    broadcastTables();
+  }
+
+  function checkMatchEnd(room: ActiveRoom): boolean {
+    if (room.scoreP1 >= room.targetPoints || room.scoreP2 >= room.targetPoints) {
+      const matchWinner = room.scoreP1 >= room.targetPoints ? room.creatorId : room.guestId!;
+      const matchLoser = matchWinner.toLowerCase() === room.creatorId.toLowerCase()
+        ? room.guestId!
+        : room.creatorId;
+
+      void settleAndCloseMatch(room, matchWinner, matchLoser, 'SCORE', 'match_finished');
       return true;
     }
     return false;
@@ -226,35 +273,19 @@ export function setupSocketEvents(io: Server) {
         io.to(room.roomId).emit('disconnect_timer_tick', { secondsLeft: graceLeft });
       } else {
         clearDisconnectTimer(room);
-        // NUEVO CANDADO: Evita doble pago si la mesa ya cerró por otro motivo
         if (!rooms.has(room.roomId)) return;
 
         const isP1 = room.creatorId.toLowerCase() === disconnectedUser.toLowerCase();
         const winnerId = isP1 ? room.guestId! : room.creatorId;
-        const grossPot = room.betAmount > 0 ? room.betAmount * 2 : 0;
-        const netPot = grossPot * 0.93;
-        const rake = grossPot * 0.07;
 
-        if (netPot > 0) {
-          const loserId = disconnectedUser;
-          modifyUserChips(winnerId, netPot);
-          const bWinner = getUserChips(winnerId);
-          const bLoser = getUserChips(loserId);
-          const detalle = `Victoria x Desconexión. Ganó: ${winnerId} (Saldo: $${bWinner}). Perdió: ${loserId} (Saldo: $${bLoser}). Premio entregado: $${netPot} (Comisión 7%: $${rake}). Mesa: ${room.roomId}`;
-          recordTransaction('COMMISSION_RAKE', winnerId, rake, detalle);
-        }
-
-        io.to(room.roomId).emit('player_surrendered', {
-          surrenderedUser: disconnectedUser,
+        void settleAndCloseMatch(
+          room,
           winnerId,
-          pot: netPot,
-          scores: getScoreMap(room),
-          winnerBalance: getUserChips(winnerId),
-          reason: 'DISCONNECT_TIMEOUT'
-        });
-
-        rooms.delete(room.roomId);
-        broadcastTables();
+          disconnectedUser,
+          'DISCONNECT_TIMEOUT',
+          'player_surrendered',
+          disconnectedUser
+        );
       }
     }, 1000);
   }
@@ -766,10 +797,18 @@ export function setupSocketEvents(io: Server) {
       }
     });
 
-    socket.on('create_room', ({ userId, betAmount, targetPoints, withFlor }) => {
+    socket.on('create_room', async ({ userId, betAmount, targetPoints, withFlor }) => {
+      const cleanUser = (userId || '').trim().toLowerCase();
+      if (!cleanUser) return socket.emit('error_action', { message: 'Usuario inválido.' });
+
+      if (pendingRoomCreations.has(cleanUser)) {
+        return socket.emit('error_action', { message: 'Ya se está creando tu mesa. Esperá un instante.' });
+      }
+
+      pendingRoomCreations.add(cleanUser);
       try {
         for (const [existingRoomId, existingRoom] of rooms.entries()) {
-          if (existingRoom.creatorId.toLowerCase() === userId.toLowerCase() && !existingRoom.guestId) {
+          if (existingRoom.creatorId.toLowerCase() === cleanUser && !existingRoom.guestId) {
             existingRoom.creatorSocketId = socket.id;
             if (existingRoom.waitingTimeout) {
               clearTimeout(existingRoom.waitingTimeout);
@@ -779,73 +818,91 @@ export function setupSocketEvents(io: Server) {
             return socket.emit('error_action', { message: 'Ya tenés una mesa creada esperando rival.' });
           }
         }
-        const bet = Number(betAmount) >= 0 ? Number(betAmount) : 0;
+
+        const bet = Number(betAmount) >= 0 ? Math.round(Number(betAmount)) : 0;
         const pts = Number(targetPoints) === 15 ? 15 : 30;
         const flor = (withFlor === true || withFlor === 'true' || withFlor === undefined);
 
-        if (bet > 0) {
-          const successDeduct = modifyUserChips(userId, -bet);
-          if (!successDeduct) return socket.emit('error_action', { message: 'Saldo insuficiente.' });
+        // El roomId se genera ANTES del débito para que la entrada tenga una
+        // clave idempotente única asociada a esta mesa.
+        const roomId = 'mesa_' + crypto.randomBytes(3).toString('hex');
+
+        const debit = await debitRoomEntry(roomId, cleanUser, bet, 'CREATOR');
+        if (!debit.success) {
+          return socket.emit('error_action', { message: debit.message || 'Saldo insuficiente.' });
         }
 
-        const roomId = 'mesa_' + crypto.randomBytes(3).toString('hex');
         const room: ActiveRoom = {
-          roomId, 
-          creatorId: userId, 
+          roomId,
+          creatorId: userId,
           creatorSocketId: socket.id,
-          betAmount: bet, 
-          targetPoints: pts, 
+          betAmount: bet,
+          targetPoints: pts,
           withFlor: flor,
-          scoreP1: 0, 
-          scoreP2: 0, 
-          manoId: userId, 
-          envidoChain: [], 
+          scoreP1: 0,
+          scoreP2: 0,
+          manoId: userId,
+          envidoChain: [],
           florChain: [],
           envidoPendingCaller: null,
           florPendingCaller: null,
-          isDeclaringEnvido: false, 
+          isDeclaringEnvido: false,
           isFlorDeclaration: false,
-          envidoDeclarer: null, 
-          highestEnvidoScore: 0, 
+          envidoDeclarer: null,
+          highestEnvidoScore: 0,
           highestEnvidoUser: null,
-          trucoLevel: 1, 
-          trucoOwner: null, 
-          pendingTrucoAfterEnvido: null
+          trucoLevel: 1,
+          trucoOwner: null,
+          pendingTrucoAfterEnvido: null,
+          settlementInProgress: false,
+          joiningUser: null
         };
+
         rooms.set(roomId, room);
         socket.join(roomId);
-        
-        socket.emit('room_created', { 
-          roomId, 
-          newBalance: getUserChips(userId), 
-          targetPoints: pts, 
-          withFlor: flor, 
+
+        socket.emit('room_created', {
+          roomId,
+          newBalance: debit.balance ?? await getUserChipsFresh(cleanUser),
+          targetPoints: pts,
+          withFlor: flor,
           betAmount: bet,
           avatar: getUserAvatar(userId)
         });
+
         broadcastTables();
-      } catch (err) { console.error('Error creando mesa:', err); }
+      } catch (err) {
+        console.error('Error creando mesa:', err);
+        socket.emit('error_action', { message: 'No se pudo crear la mesa.' });
+      } finally {
+        pendingRoomCreations.delete(cleanUser);
+      }
     });
 
-    socket.on('cancel_waiting_table', ({ roomId, userId }) => {
+    socket.on('cancel_waiting_table', async ({ roomId, userId }) => {
       try {
         const room = rooms.get(roomId);
-        
-        // Validamos que la mesa exista y que el jugador sea realmente el creador
+
         if (room && !room.guestId && (room.creatorSocketId === socket.id || (userId && room.creatorId.toLowerCase() === userId.toLowerCase()))) {
-          
           if (room.waitingTimeout) {
             clearTimeout(room.waitingTimeout);
+            room.waitingTimeout = undefined;
           }
-          
+
+          let newBalance = await getUserChipsFresh(room.creatorId);
+
           if (room.betAmount > 0) {
-            // Clave: Number() para evitar la concatenación de texto y el crasheo
-            modifyUserChips(room.creatorId, Number(room.betAmount));
+            const refund = await refundRoomEntry(room.roomId, room.creatorId, Number(room.betAmount));
+            if (!refund.success) {
+              return socket.emit('error_action', {
+                message: 'No se pudo devolver la entrada. La mesa permanece abierta para evitar perder fichas.'
+              });
+            }
+            newBalance = refund.balance ?? await getUserChipsFresh(room.creatorId);
           }
-          
+
           rooms.delete(roomId);
-          
-          socket.emit('table_cancelled_ok', { newBalance: getUserChips(room.creatorId) });
+          socket.emit('table_cancelled_ok', { newBalance });
           broadcastTables();
         }
       } catch (err) {
@@ -861,78 +918,106 @@ export function setupSocketEvents(io: Server) {
       if (!authUser) return;
 
       const isP1 = room.creatorId.toLowerCase() === authUser.toLowerCase();
-      clearTurnTimer(room);
-      clearDisconnectTimer(room);
-
       const winnerId = isP1 ? room.guestId : room.creatorId;
-      const grossPot = room.betAmount > 0 ? room.betAmount * 2 : 0;
-      const netPot = grossPot * 0.93;
-      const rake = grossPot * 0.07;
 
-      if (netPot > 0) {
-        const loserId = authUser;
-        modifyUserChips(winnerId, netPot);
-        const bWinner = getUserChips(winnerId);
-        const bLoser = getUserChips(loserId);
-        const detalle = `Victoria x Rendición. Ganó: ${winnerId} (Saldo: $${bWinner}). Perdió: ${loserId} (Saldo: $${bLoser}). Premio entregado: $${netPot} (Comisión 7%: $${rake}). Mesa: ${room.roomId}`;
-        recordTransaction('COMMISSION_RAKE', winnerId, rake, detalle);
-      }
-
-      io.to(roomId).emit('player_surrendered', {
-        surrenderedUser: authUser,
+      void settleAndCloseMatch(
+        room,
         winnerId,
-        pot: netPot,
-        scores: getScoreMap(room),
-        winnerBalance: getUserChips(winnerId),
-        reason: 'SURRENDER'
-      });
-
-      rooms.delete(room.roomId);
-      broadcastTables();
+        authUser,
+        'SURRENDER',
+        'player_surrendered',
+        authUser
+      );
     });
 
-    socket.on('join_room', ({ roomId, userId }) => {
+    socket.on('join_room', async ({ roomId, userId }) => {
+      const cleanUser = (userId || '').trim().toLowerCase();
+
       try {
         const room = rooms.get(roomId);
         if (!room) return socket.emit('error_action', { message: 'La mesa no existe.' });
         if (room.guestId) return socket.emit('error_action', { message: 'La mesa ya está completa.' });
-        
-        // Limpiamos mesas huérfanas del jugador y devolvemos las fichas
+        if (!cleanUser) return socket.emit('error_action', { message: 'Usuario inválido.' });
+        if (room.joiningUser) {
+          return socket.emit('error_action', { message: 'Otro jugador está entrando a la mesa. Intentá nuevamente.' });
+        }
+
+        // Evita dos JOIN simultáneos mientras se espera la confirmación de Supabase.
+        room.joiningUser = cleanUser;
+
+        // Limpiamos mesas huérfanas del jugador y devolvemos sus fichas
+        // únicamente si PostgreSQL confirma que existió el débito original.
         for (const [pendingRoomId, pendingRoom] of rooms.entries()) {
-          if (pendingRoom.creatorId.toLowerCase() === (userId || '').toLowerCase() && !pendingRoom.guestId) {
+          if (pendingRoomId === roomId) continue;
+
+          if (pendingRoom.creatorId.toLowerCase() === cleanUser && !pendingRoom.guestId) {
             if (pendingRoom.betAmount > 0) {
-              // Envolver en Number() evita la concatenación de strings
-              modifyUserChips(userId, Number(pendingRoom.betAmount));
+              const refund = await refundRoomEntry(
+                pendingRoom.roomId,
+                cleanUser,
+                Number(pendingRoom.betAmount)
+              );
+
+              if (!refund.success) {
+                room.joiningUser = null;
+                return socket.emit('error_action', {
+                  message: 'No se pudo devolver el saldo de tu mesa anterior. No se realizó ningún nuevo débito.'
+                });
+              }
             }
+
             rooms.delete(pendingRoomId);
           }
         }
 
-        if (room.betAmount > 0) {
-          // Aplicamos Number() también acá por coherencia en el código
-          const successDeduct = modifyUserChips(userId, -Number(room.betAmount));
-          if (!successDeduct) return socket.emit('error_action', { message: 'Saldo insuficiente.' });
+        const debit = await debitRoomEntry(
+          room.roomId,
+          cleanUser,
+          Number(room.betAmount),
+          'GUEST'
+        );
+
+        if (!debit.success) {
+          room.joiningUser = null;
+          return socket.emit('error_action', { message: debit.message || 'Saldo insuficiente.' });
+        }
+
+        // La mesa pudo cancelarse mientras PostgreSQL procesaba el débito.
+        // En ese caso la devolución también es idempotente.
+        if (rooms.get(roomId) !== room || room.guestId) {
+          if (room.betAmount > 0) {
+            await refundRoomEntry(room.roomId, cleanUser, Number(room.betAmount));
+          }
+          room.joiningUser = null;
+          return socket.emit('error_action', { message: 'La mesa ya no está disponible.' });
         }
 
         room.guestId = userId;
         room.guestSocketId = socket.id;
+        room.joiningUser = null;
         socket.join(roomId);
 
+        const payout = calculateMatchPayout(room.betAmount);
+
         io.to(roomId).emit('game_ready', {
-          roomId: room.roomId, 
-          creatorId: room.creatorId, 
+          roomId: room.roomId,
+          creatorId: room.creatorId,
           creatorAvatar: getUserAvatar(room.creatorId),
           guestId: room.guestId,
           guestAvatar: getUserAvatar(userId),
-          pot: room.betAmount > 0 ? room.betAmount * 2 * 0.93 : 0,
-          targetPoints: room.targetPoints, 
-          withFlor: room.withFlor, 
+          pot: payout.winnerPrize,
+          targetPoints: room.targetPoints,
+          withFlor: room.withFlor,
           betAmount: room.betAmount
         });
 
         broadcastTables();
         setTimeout(() => { dealAutoHand(room); }, 1200);
-      } catch (err) { console.error('Error uniéndose a mesa:', err); }
+      } catch (err) {
+        const room = rooms.get(roomId);
+        if (room && room.joiningUser === cleanUser) room.joiningUser = null;
+        console.error('Error uniéndose a mesa:', err);
+      }
     });
 
     socket.on('disconnect', () => {
@@ -944,12 +1029,22 @@ export function setupSocketEvents(io: Server) {
 
           room.creatorSocketId = undefined;
 
-          room.waitingTimeout = setTimeout(() => {
+          room.waitingTimeout = setTimeout(async () => {
             const activeRoom = rooms.get(roomId);
             if (activeRoom && !activeRoom.guestId) {
               if (activeRoom.betAmount > 0) {
-                modifyUserChips(activeRoom.creatorId, activeRoom.betAmount);
+                const refund = await refundRoomEntry(
+                  activeRoom.roomId,
+                  activeRoom.creatorId,
+                  activeRoom.betAmount
+                );
+
+                if (!refund.success) {
+                  console.error(`[REFUND FAILED] ${activeRoom.roomId}: la mesa no se elimina hasta poder devolver la entrada.`);
+                  return;
+                }
               }
+
               rooms.delete(roomId);
               broadcastTables();
             }

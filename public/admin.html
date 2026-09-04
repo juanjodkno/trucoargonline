@@ -523,45 +523,156 @@
       XLSX.writeFile(wb, `usuarios_truco_${excelDateSuffix()}.xlsx`);
     }
 
+    function parseLegacyMatchTransaction(t) {
+      const details = String(t.details || '');
+
+      const firstNumber = (regex) => {
+        const m = details.match(regex);
+        if (!m) return null;
+        const n = Number(String(m[1]).replace(',', '.'));
+        return Number.isFinite(n) ? n : null;
+      };
+
+      const firstText = (regex) => {
+        const m = details.match(regex);
+        return m ? String(m[1]).trim() : '';
+      };
+
+      const structuredGrossPot = Number(t.grossPot);
+      const structuredRake = Number(t.rakeAmount ?? t.amount);
+      const structuredRakePct = Number(t.rakePercentage);
+      const structuredPrize = Number(t.winnerPrize);
+      const structuredBet = Number(t.betPerPlayer);
+
+      const roomId = t.roomId || firstText(/\b(mesa_[a-zA-Z0-9]+)\b/i);
+
+      const winnerFromDetail = firstText(/Gan[oó]:\s*([^\s(]+)/i);
+      const loserFromDetail = firstText(/Perdi[oó]:\s*([^\s(]+)/i);
+      const winnerBalanceFromDetail = firstNumber(/Gan[oó]:\s*[^\s(]+\s*\(Saldo:\s*\$([0-9]+(?:[.,][0-9]+)?)/i);
+      const loserBalanceFromDetail = firstNumber(/Perdi[oó]:\s*[^\s(]+\s*\(Saldo:\s*\$([0-9]+(?:[.,][0-9]+)?)/i);
+
+      let betPerPlayer = Number.isFinite(structuredBet) && structuredBet > 0 ? structuredBet : null;
+      if (betPerPlayer === null) {
+        betPerPlayer = firstNumber(/Apuesta:\s*\$([0-9]+(?:[.,][0-9]+)?)/i);
+      }
+      if (betPerPlayer === null) {
+        betPerPlayer = firstNumber(/\(\$([0-9]+(?:[.,][0-9]+)?)\s*c\/u\)/i);
+      }
+
+      let grossPot = Number.isFinite(structuredGrossPot) && structuredGrossPot > 0 ? structuredGrossPot : null;
+      if (grossPot === null && betPerPlayer !== null) grossPot = betPerPlayer * 2;
+      if (grossPot === null) grossPot = firstNumber(/Pozo:\s*\$([0-9]+(?:[.,][0-9]+)?)/i);
+
+      let rakeAmount = Number.isFinite(structuredRake) ? structuredRake : 0;
+      const rakeFromDetail = firstNumber(/(?:Comisi[oó]n|Rake)\s*[0-9]+(?:[.,][0-9]+)?%:\s*\$([0-9]+(?:[.,][0-9]+)?)/i);
+      if (rakeFromDetail !== null) rakeAmount = rakeFromDetail;
+
+      let rakePercentage = Number.isFinite(structuredRakePct) && structuredRakePct > 0 ? structuredRakePct : null;
+      const pctFromDetail = firstNumber(/(?:Comisi[oó]n|Rake)\s*([0-9]+(?:[.,][0-9]+)?)%/i);
+      if (pctFromDetail !== null) rakePercentage = pctFromDetail;
+      if (rakePercentage === null && grossPot && rakeAmount >= 0) {
+        rakePercentage = Math.round((rakeAmount / grossPot) * 10000) / 100;
+      }
+
+      let winnerPrize = Number.isFinite(structuredPrize) && structuredPrize > 0 ? structuredPrize : null;
+      const prizeFromDetail = firstNumber(/(?:Premio entregado|Premio):\s*\$([0-9]+(?:[.,][0-9]+)?)/i);
+      if (prizeFromDetail !== null) winnerPrize = prizeFromDetail;
+      if (winnerPrize === null && grossPot !== null) winnerPrize = grossPot - rakeAmount;
+
+      let finishReason = t.finishReason || '';
+      if (!finishReason) {
+        const lower = details.toLowerCase();
+        if (lower.includes('rendición') || lower.includes('rendicion')) finishReason = 'RENDICIÓN';
+        else if (lower.includes('desconexión') || lower.includes('desconexion')) finishReason = 'DESCONEXIÓN';
+        else if (lower.includes('abandono')) finishReason = 'ABANDONO';
+        else if (lower.includes('fin normal') || lower.includes('comisión mesa') || lower.includes('comision mesa')) finishReason = 'NORMAL';
+        else finishReason = 'NO ESPECIFICADO';
+      }
+
+      const winner = t.winnerUsername || winnerFromDetail || t.username || '';
+      const loser = t.loserUsername || loserFromDetail || '';
+      const winnerBalance = t.winnerBalanceAfter ?? winnerBalanceFromDetail;
+      const loserBalance = t.loserBalanceAfter ?? loserBalanceFromDetail;
+
+      const isStructured = t.type === 'MATCH_SETTLEMENT' || Boolean(t.roomId && t.loserUsername);
+      const isCompleteLegacy = Boolean(roomId && winner && loser && winnerBalance !== null && loserBalance !== null);
+
+      return {
+        createdAt: t.createdAt || '',
+        roomId,
+        winner,
+        winnerBalance,
+        loser,
+        loserBalance,
+        betPerPlayer,
+        grossPot,
+        winnerPrize,
+        rakePercentage,
+        rakeAmount,
+        finishReason,
+        details,
+        sourceQuality: isStructured ? 3 : (isCompleteLegacy ? 2 : 1)
+      };
+    }
+
     function exportMatchesExcel() {
       if (!ensureExcelLibrary()) return;
 
-      const matches = (allTransactions || []).filter(t =>
+      const source = (allTransactions || []).filter(t =>
         t.type === 'MATCH_SETTLEMENT' || t.type === 'COMMISSION_RAKE'
       );
 
-      if (matches.length === 0) {
+      if (source.length === 0) {
         return alert('No hay partidos en el historial cargado para exportar. Presioná Actualizar e intentá nuevamente.');
       }
 
-      const rows = matches.map(t => {
-        const grossPot = Number(t.grossPot);
-        const betPerPlayer = Number.isFinite(grossPot) && grossPot > 0 ? grossPot / 2 : '';
-        const rakePct = Number(t.rakePercentage);
+      // Normaliza registros nuevos y antiguos. Los registros históricos viejos
+      // guardaban menos datos, por eso intentamos recuperar mesa/apuesta/rake desde "details".
+      const parsed = source.map(parseLegacyMatchTransaction);
 
-        return {
-          'Fecha y hora': t.createdAt ? new Date(t.createdAt).toLocaleString('es-AR') : '',
-          'Mesa': t.roomId || '',
-          'Ganador': t.winnerUsername || t.username || '',
-          'Saldo final ganador': t.winnerBalanceAfter ?? '',
-          'Perdedor': t.loserUsername || '',
-          'Saldo final perdedor': t.loserBalanceAfter ?? '',
-          'Apuesta por jugador': betPerPlayer,
-          'Pozo total': Number.isFinite(grossPot) ? grossPot : '',
-          'Premio ganador': t.winnerPrize ?? '',
-          'Rake %': Number.isFinite(rakePct) ? rakePct : 7,
-          'Rake': Number(t.amount) || 0,
-          'Motivo': t.finishReason || '',
-          'Detalle': t.details || ''
-        };
+      // En la base antigua hubo partidos con la comisión registrada más de una vez.
+      // Para el Excel mostramos una sola fila por mesa, priorizando el registro más completo.
+      const uniqueByRoom = new Map();
+      const withoutRoom = [];
+      parsed.forEach(match => {
+        if (!match.roomId) {
+          withoutRoom.push(match);
+          return;
+        }
+        const current = uniqueByRoom.get(match.roomId);
+        if (!current || match.sourceQuality > current.sourceQuality) {
+          uniqueByRoom.set(match.roomId, match);
+        }
       });
+
+      const matches = [...uniqueByRoom.values(), ...withoutRoom]
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+      const unavailable = 'No disponible (registro antiguo)';
+
+      const rows = matches.map(m => ({
+        'Fecha y hora': m.createdAt ? new Date(m.createdAt).toLocaleString('es-AR') : '',
+        'Mesa': m.roomId || unavailable,
+        'Ganador': m.winner || unavailable,
+        'Saldo final ganador': m.winnerBalance ?? unavailable,
+        'Perdedor': m.loser || unavailable,
+        'Saldo final perdedor': m.loserBalance ?? unavailable,
+        'Apuesta por jugador': m.betPerPlayer ?? unavailable,
+        'Pozo total': m.grossPot ?? unavailable,
+        'Premio ganador': m.winnerPrize ?? unavailable,
+        'Rake %': m.rakePercentage ?? unavailable,
+        'Rake': m.rakeAmount,
+        'Motivo': m.finishReason || unavailable,
+        'Detalle': m.details || ''
+      }));
 
       const ws = XLSX.utils.json_to_sheet(rows);
       ws['!cols'] = [
-        { wch: 20 }, { wch: 18 }, { wch: 22 }, { wch: 20 },
-        { wch: 22 }, { wch: 20 }, { wch: 20 }, { wch: 16 },
-        { wch: 18 }, { wch: 10 }, { wch: 14 }, { wch: 22 }, { wch: 70 }
+        { wch: 21 }, { wch: 18 }, { wch: 22 }, { wch: 23 },
+        { wch: 22 }, { wch: 23 }, { wch: 21 }, { wch: 16 },
+        { wch: 18 }, { wch: 10 }, { wch: 14 }, { wch: 18 }, { wch: 72 }
       ];
+      ws['!autofilter'] = { ref: `A1:M${rows.length + 1}` };
 
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Partidos');

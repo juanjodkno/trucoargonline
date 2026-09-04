@@ -5,25 +5,24 @@ import path from 'path';
 import { Server } from 'socket.io';
 import rateLimit from 'express-rate-limit';
 import { setupSocketEvents } from './sockets/gameSocket';
-import { 
+import {
   initDatabase,
-  registerUser, 
-  loginUser, 
-  requestDeposit, 
-  getPendingDeposits, 
-  approveDeposit, 
+  registerUser,
+  loginUser,
+  requestDepositPersistent,
+  getPendingDepositsFresh,
+  approveDeposit,
   rejectDeposit,
-  getUserChips,
-  modifyUserChips,
-  getAllUsersList,
+  getUserChipsFresh,
+  adjustUserChipsAndRecord,
+  getAllUsersListFresh,
   resetUserPassword,
   deleteUser,
   getUserAvatar,
   updateUserAvatar,
   ALLOWED_AVATARS,
-  getAdminMetrics,
-  getAllTransactions,
-  recordTransaction
+  getAdminMetricsFresh,
+  getAllTransactionsFresh
 } from './auth/userService';
 
 const app = express();
@@ -32,11 +31,8 @@ const server = http.createServer(app);
 // Habilitar trust proxy para reconocer la IP real del cliente detrás del proxy de Render
 app.set('trust proxy', 1);
 
-// Inicializar conexión
-initDatabase();
-
 const ADMIN_PIN = process.env.ADMIN_PIN || '36049655Dk,';
-const ADMIN_PIN_2 = process.env.ADMIN_PIN_2|| 'Emilia051';
+const ADMIN_PIN_2 = process.env.ADMIN_PIN_2 || 'Emilia051';
 
 const io = new Server(server, {
   cors: { origin: '*' },
@@ -62,10 +58,12 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Limitador estricto para el acceso de Administrador
+// Limitador estricto para el acceso de Administrador.
+// Se conserva el fix previo: los accesos correctos no consumen intentos.
 const adminAuthLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 5,
+  skipSuccessfulRequests: true,
   message: { success: false, message: 'Demasiados intentos de acceso admin. Bloqueado temporalmente.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -125,18 +123,22 @@ app.post('/api/user/avatar', (req, res) => {
 });
 
 // Billetera
-app.get('/api/wallet/balance/:username', (req, res) => {
-  const chips = getUserChips(req.params.username);
-  return res.json({ chips });
+app.get('/api/wallet/balance/:username', async (req, res) => {
+  try {
+    const chips = await getUserChipsFresh(req.params.username);
+    return res.json({ chips });
+  } catch {
+    return res.status(503).json({ success: false, message: 'No se pudo consultar el saldo.' });
+  }
 });
 
-app.post('/api/wallet/deposit-request', (req, res) => {
+app.post('/api/wallet/deposit-request', async (req, res) => {
   const { username, amount, reference } = req.body;
-  const result = requestDeposit(username, Number(amount), reference);
+  const result = await requestDepositPersistent(username, Number(amount), reference);
   return res.status(result.success ? 200 : 400).json(result);
 });
 
-app.post('/api/wallet/withdraw-request', (req, res) => {
+app.post('/api/wallet/withdraw-request', async (req, res) => {
   const { username, amount, cbuAlias } = req.body;
   const numAmount = Number(amount);
 
@@ -144,74 +146,108 @@ app.post('/api/wallet/withdraw-request', (req, res) => {
     return res.status(400).json({ success: false, message: 'Monto de retiro inválido.' });
   }
 
-  const success = modifyUserChips(username, -numAmount);
-  if (!success) {
-    return res.status(400).json({ success: false, message: 'Saldo insuficiente para realizar el retiro.' });
+  const result = await adjustUserChipsAndRecord(
+    username,
+    -numAmount,
+    'WITHDRAW',
+    `Retiro solicitado a ${cbuAlias || 'Alias/CBU'}`
+  );
+
+  if (!result.success) {
+    return res.status(400).json({
+      success: false,
+      message: result.message || 'Saldo insuficiente para realizar el retiro.'
+    });
   }
 
-  recordTransaction('WITHDRAW', username, numAmount, `Retiro solicitado a ${cbuAlias || 'Alias/CBU'}`);
-
-  const currentChips = getUserChips(username);
-  return res.json({ 
-    success: true, 
+  return res.json({
+    success: true,
     message: 'Retiro procesado y descontado correctamente.',
-    chips: currentChips 
+    chips: result.balance ?? 0
   });
 });
 
 // Panel Administrativo - Métricas y Contabilidad
-app.get('/api/admin/metrics', requireAdminAuth, (req, res) => {
-  return res.json(getAdminMetrics());
+app.get('/api/admin/metrics', requireAdminAuth, async (req, res) => {
+  try {
+    return res.json(await getAdminMetricsFresh());
+  } catch (err) {
+    console.error('Error cargando métricas admin:', err);
+    return res.status(503).json({ success: false, message: 'No se pudieron cargar las métricas.' });
+  }
 });
 
-app.get('/api/admin/transactions', requireAdminAuth, (req, res) => {
-  return res.json(getAllTransactions(100));
+app.get('/api/admin/transactions', requireAdminAuth, async (req, res) => {
+  try {
+    return res.json(await getAllTransactionsFresh(100));
+  } catch (err) {
+    console.error('Error cargando historial admin:', err);
+    return res.status(503).json({ success: false, message: 'No se pudo cargar el historial contable.' });
+  }
 });
 
-app.get('/api/admin/users-list', requireAdminAuth, (req, res) => {
-  const users = getAllUsersList();
-  return res.json(users);
+app.get('/api/admin/users-list', requireAdminAuth, async (req, res) => {
+  try {
+    const users = await getAllUsersListFresh();
+    return res.json(users);
+  } catch (err) {
+    console.error('Error cargando usuarios admin:', err);
+    return res.status(503).json({ success: false, message: 'No se pudo cargar la lista de usuarios.' });
+  }
 });
 
-app.post('/api/admin/add-chips', requireAdminAuth, (req, res) => {
+app.post('/api/admin/add-chips', requireAdminAuth, async (req, res) => {
   const { username, amount } = req.body;
   const numAmount = Number(amount);
+
   if (!numAmount || numAmount <= 0) {
     return res.status(400).json({ success: false, message: 'Monto inválido.' });
   }
 
-  const success = modifyUserChips(username, numAmount);
-  if (!success) {
-    return res.status(400).json({ success: false, message: 'Usuario no encontrado.' });
+  const result = await adjustUserChipsAndRecord(
+    username,
+    numAmount,
+    'DEPOSIT',
+    'Carga manual desde Panel Admin'
+  );
+
+  if (!result.success) {
+    return res.status(400).json({ success: false, message: result.message || 'Usuario no encontrado.' });
   }
-  
-  recordTransaction('DEPOSIT', username, numAmount, 'Carga manual desde Panel Admin');
-  const currentChips = getUserChips(username);
-  return res.json({ 
-    success: true, 
-    message: `¡Se acreditaron $${new Intl.NumberFormat('es-AR').format(numAmount)} fichas a @${username}!`, 
-    chips: currentChips 
+
+  return res.json({
+    success: true,
+    message: `¡Se acreditaron $${new Intl.NumberFormat('es-AR').format(numAmount)} fichas a @${username}!`,
+    chips: result.balance ?? 0
   });
 });
 
-app.post('/api/admin/remove-chips', requireAdminAuth, (req, res) => {
+app.post('/api/admin/remove-chips', requireAdminAuth, async (req, res) => {
   const { username, amount } = req.body;
   const numAmount = Number(amount);
+
   if (!numAmount || numAmount <= 0) {
     return res.status(400).json({ success: false, message: 'Monto inválido.' });
   }
 
-  const success = modifyUserChips(username, -numAmount);
-  if (!success) {
-    return res.status(400).json({ success: false, message: 'Usuario no encontrado o saldo insuficiente para descontar.' });
+  const result = await adjustUserChipsAndRecord(
+    username,
+    -numAmount,
+    'WITHDRAW',
+    'Débito manual desde Panel Admin'
+  );
+
+  if (!result.success) {
+    return res.status(400).json({
+      success: false,
+      message: result.message || 'Usuario no encontrado o saldo insuficiente para descontar.'
+    });
   }
-  
-  recordTransaction('WITHDRAW', username, numAmount, 'Débito manual desde Panel Admin');
-  const currentChips = getUserChips(username);
-  return res.json({ 
-    success: true, 
-    message: `¡Se descontaron $${new Intl.NumberFormat('es-AR').format(numAmount)} fichas a @${username}!`, 
-    chips: currentChips 
+
+  return res.json({
+    success: true,
+    message: `¡Se descontaron $${new Intl.NumberFormat('es-AR').format(numAmount)} fichas a @${username}!`,
+    chips: result.balance ?? 0
   });
 });
 
@@ -233,25 +269,41 @@ app.post('/api/admin/delete-user', requireAdminAuth, async (req, res) => {
   return res.json({ success: true, message: `Usuario @${username} eliminado correctamente.` });
 });
 
-app.get('/api/admin/pending-deposits', requireAdminAuth, (req, res) => {
-  return res.json(getPendingDeposits());
+app.get('/api/admin/pending-deposits', requireAdminAuth, async (req, res) => {
+  try {
+    return res.json(await getPendingDepositsFresh());
+  } catch (err) {
+    console.error('Error cargando depósitos pendientes:', err);
+    return res.status(503).json({ success: false, message: 'No se pudieron cargar los depósitos pendientes.' });
+  }
 });
 
-app.post('/api/admin/approve-deposit', requireAdminAuth, (req, res) => {
+app.post('/api/admin/approve-deposit', requireAdminAuth, async (req, res) => {
   const { depositId } = req.body;
-  const result = approveDeposit(depositId);
+  const result = await approveDeposit(depositId);
   return res.status(result.success ? 200 : 400).json(result);
 });
 
-app.post('/api/admin/reject-deposit', requireAdminAuth, (req, res) => {
+app.post('/api/admin/reject-deposit', requireAdminAuth, async (req, res) => {
   const { depositId } = req.body;
-  const result = rejectDeposit(depositId);
+  const result = await rejectDeposit(depositId);
   return res.status(result.success ? 200 : 400).json(result);
 });
 
 setupSocketEvents(io);
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-  console.log(`🎮 Servidor de Truco corriendo en http://localhost:${PORT}`);
+
+async function startServer() {
+  // Una sola inicialización. userService.ts ya no se auto-inicializa al importarse.
+  await initDatabase();
+
+  server.listen(PORT, () => {
+    console.log(`🎮 Servidor de Truco corriendo en http://localhost:${PORT}`);
+  });
+}
+
+startServer().catch(err => {
+  console.error('❌ No se pudo iniciar el servidor:', err);
+  process.exit(1);
 });
