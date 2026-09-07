@@ -213,6 +213,162 @@
     .envido-title { font-size: 1.6rem; font-weight: 900; color: #ffd166; margin-bottom: 6px; }
     .envido-cards-row { display: flex; gap: 20px; justify-content: center; }
 
+
+    /* CHAT 1 VS 1 - Solo interfaz, sin alterar la mesa ni los controles del juego */
+    .game-chat-fab {
+      position: fixed;
+      right: max(16px, env(safe-area-inset-right));
+      bottom: max(16px, env(safe-area-inset-bottom));
+      z-index: 180;
+      display: none;
+      align-items: center;
+      gap: 7px;
+      background: #0077b6;
+      color: white;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 24px;
+      padding: 10px 16px;
+      font-size: .9rem;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 8px 24px rgba(0,0,0,.45);
+      user-select: none;
+    }
+    .game-chat-fab:hover { background:#0096c7; }
+    .game-chat-unread {
+      display: none;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: #e63946;
+      color: white;
+      font-size: .72rem;
+      line-height: 20px;
+      font-weight: 900;
+    }
+    .game-chat-panel {
+      position: fixed;
+      right: max(16px, env(safe-area-inset-right));
+      bottom: calc(max(16px, env(safe-area-inset-bottom)) + 56px);
+      z-index: 181;
+      width: min(360px, calc(100vw - 24px));
+      height: min(430px, calc(100vh - 110px));
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+      background: #101923;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      box-shadow: 0 18px 48px rgba(0,0,0,.58);
+    }
+    .game-chat-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      background: #16222f;
+      border-bottom: 1px solid #334155;
+    }
+    .game-chat-title { font-weight: 900; color: #ffd166; font-size: .92rem; }
+    .game-chat-close {
+      background: transparent;
+      border: none;
+      color: #cbd5e1;
+      font-size: 1.15rem;
+      cursor: pointer;
+      padding: 2px 5px;
+    }
+    .game-chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: #0b1320;
+    }
+    .game-chat-empty {
+      margin: auto;
+      color: #64748b;
+      font-size: .82rem;
+      text-align: center;
+      padding: 20px;
+    }
+    .game-chat-message {
+      max-width: 82%;
+      padding: 8px 10px;
+      border-radius: 12px;
+      font-size: .84rem;
+      line-height: 1.3;
+      overflow-wrap: anywhere;
+    }
+    .game-chat-message.mine {
+      align-self: flex-end;
+      background: #0077b6;
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+    .game-chat-message.rival {
+      align-self: flex-start;
+      background: #1e293b;
+      color: #e2e8f0;
+      border-bottom-left-radius: 4px;
+    }
+    .game-chat-author {
+      display: block;
+      font-size: .68rem;
+      font-weight: 800;
+      opacity: .8;
+      margin-bottom: 3px;
+    }
+    .game-chat-form {
+      display: flex;
+      gap: 8px;
+      padding: 10px;
+      background: #16222f;
+      border-top: 1px solid #334155;
+    }
+    .game-chat-input {
+      flex: 1;
+      min-width: 0;
+      padding: 9px 11px;
+      border-radius: 9px;
+      border: 1px solid #334155;
+      outline: none;
+      background: #080c10;
+      color: white;
+      font-size: .86rem;
+    }
+    .game-chat-input:focus { border-color: #0077b6; }
+    .game-chat-send {
+      border: none;
+      border-radius: 9px;
+      background: #2a9d8f;
+      color: white;
+      font-weight: 900;
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+
+    @media (max-width: 480px) {
+      .game-chat-fab {
+        right: max(12px, env(safe-area-inset-right));
+        bottom: max(12px, env(safe-area-inset-bottom));
+        padding: 9px 14px;
+      }
+      .game-chat-panel {
+        left: 12px;
+        right: 12px;
+        width: auto;
+        bottom: calc(max(12px, env(safe-area-inset-bottom)) + 54px);
+        height: min(55vh, 420px);
+      }
+    }
+
     .winner-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.88); backdrop-filter: blur(10px); display: none; justify-content: center; align-items: center; z-index: 100; }
     .winner-card { background: #1c2541; padding: 35px 45px; border-radius: 20px; text-align: center; border: 3px solid #ffd166; }
   </style>
@@ -516,6 +672,28 @@
     </div>
   </div>
 
+
+  <!-- Chat temporal de la partida 1 vs 1 -->
+  <button type="button" class="game-chat-fab" id="gameChatFab" onclick="toggleGameChat()" aria-label="Abrir chat con el rival">
+    <span>💬 Chat</span>
+    <span class="game-chat-unread" id="gameChatUnread">0</span>
+  </button>
+
+  <div class="game-chat-panel" id="gameChatPanel" aria-live="polite">
+    <div class="game-chat-header">
+      <div class="game-chat-title">💬 Chat con <span id="gameChatRival">@rival</span></div>
+      <button type="button" class="game-chat-close" onclick="toggleGameChat(false)" aria-label="Cerrar chat">✕</button>
+    </div>
+    <div class="game-chat-messages" id="gameChatMessages">
+      <div class="game-chat-empty" id="gameChatEmpty">Todavía no hay mensajes.</div>
+    </div>
+    <form class="game-chat-form" onsubmit="sendGameChatMessage(event)">
+      <input id="gameChatInput" class="game-chat-input" type="text" maxlength="300" autocomplete="off"
+        placeholder="Escribí un mensaje..." aria-label="Mensaje para el rival" />
+      <button type="submit" class="game-chat-send">Enviar</button>
+    </form>
+  </div>
+
   <div class="winner-overlay" id="winnerModal">
     <div class="winner-card">
       <div style="font-size:2.2rem; font-weight:900; margin-bottom:10px; color:#ffd166;" id="winnerTitle">🏆 ¡PARTIDA FINALIZADA!</div>
@@ -655,6 +833,137 @@
     let currentTrucoOwner = null;
     let currentTurnPlayer = '';
     let currentRivalAvatar = 'gaucho';
+
+    let currentRivalUsername = '';
+    let gameChatUnreadCount = 0;
+
+    function isGameChatOpen() {
+      return document.getElementById('gameChatPanel')?.style.display === 'flex';
+    }
+
+    function setGameChatRival(username) {
+      currentRivalUsername = (username || '').toString();
+      const label = document.getElementById('gameChatRival');
+      if (label) label.innerText = currentRivalUsername ? `@${currentRivalUsername}` : '@rival';
+    }
+
+    function updateGameChatUnreadBadge() {
+      const badge = document.getElementById('gameChatUnread');
+      if (!badge) return;
+      if (gameChatUnreadCount > 0) {
+        badge.innerText = gameChatUnreadCount > 99 ? '99+' : String(gameChatUnreadCount);
+        badge.style.display = 'inline-flex';
+      } else {
+        badge.innerText = '0';
+        badge.style.display = 'none';
+      }
+    }
+
+    function showGameChatButton() {
+      const fab = document.getElementById('gameChatFab');
+      if (fab && isGameStarted && activeRoomId) fab.style.display = 'flex';
+    }
+
+    function hideGameChatUI() {
+      const fab = document.getElementById('gameChatFab');
+      const panel = document.getElementById('gameChatPanel');
+      if (fab) fab.style.display = 'none';
+      if (panel) panel.style.display = 'none';
+    }
+
+    function resetGameChat() {
+      gameChatUnreadCount = 0;
+      updateGameChatUnreadBadge();
+      setGameChatRival('');
+      const panel = document.getElementById('gameChatPanel');
+      const messages = document.getElementById('gameChatMessages');
+      if (panel) panel.style.display = 'none';
+      if (messages) {
+        messages.innerHTML = '';
+        const empty = document.createElement('div');
+        empty.className = 'game-chat-empty';
+        empty.id = 'gameChatEmpty';
+        empty.innerText = 'Todavía no hay mensajes.';
+        messages.appendChild(empty);
+      }
+    }
+
+    function toggleGameChat(forceOpen) {
+      if (!isGameStarted || !activeRoomId) return;
+
+      const panel = document.getElementById('gameChatPanel');
+      const input = document.getElementById('gameChatInput');
+      if (!panel) return;
+
+      const shouldOpen = typeof forceOpen === 'boolean'
+        ? forceOpen
+        : panel.style.display !== 'flex';
+
+      panel.style.display = shouldOpen ? 'flex' : 'none';
+
+      if (shouldOpen) {
+        gameChatUnreadCount = 0;
+        updateGameChatUnreadBadge();
+        setTimeout(() => input?.focus(), 0);
+        const messages = document.getElementById('gameChatMessages');
+        if (messages) messages.scrollTop = messages.scrollHeight;
+      }
+    }
+
+    function appendGameChatMessage(data) {
+      if (!data || !data.message) return;
+
+      const messages = document.getElementById('gameChatMessages');
+      if (!messages) return;
+
+      const empty = document.getElementById('gameChatEmpty');
+      if (empty) empty.remove();
+
+      const from = (data.userId || '').toString();
+      const mine = currentUser?.username &&
+        from.toLowerCase() === currentUser.username.toLowerCase();
+
+      const bubble = document.createElement('div');
+      bubble.className = `game-chat-message ${mine ? 'mine' : 'rival'}`;
+
+      const author = document.createElement('span');
+      author.className = 'game-chat-author';
+      author.innerText = mine ? 'Vos' : `@${from || currentRivalUsername || 'rival'}`;
+
+      const body = document.createElement('span');
+      body.innerText = String(data.message);
+
+      bubble.appendChild(author);
+      bubble.appendChild(body);
+      messages.appendChild(bubble);
+      messages.scrollTop = messages.scrollHeight;
+
+      if (!mine && !isGameChatOpen()) {
+        gameChatUnreadCount++;
+        updateGameChatUnreadBadge();
+        triggerHaptic(15);
+      }
+    }
+
+    function sendGameChatMessage(event) {
+      event.preventDefault();
+
+      const input = document.getElementById('gameChatInput');
+      if (!input || !socket || !socket.connected || !activeRoomId || !isGameStarted) return;
+
+      const message = input.value.trim();
+      if (!message) return;
+
+      socket.emit('send_chat_message', {
+        roomId: activeRoomId,
+        message: message.slice(0, 300)
+      });
+
+      input.value = '';
+      input.focus();
+    }
+
+
 
     // Resincronización al volver desde otra app / pestaña en móviles.
     // El servidor seguirá siendo la única fuente de verdad del estado de la partida.
@@ -1197,6 +1506,9 @@
       document.getElementById('lobbyContainer').style.display = 'none';
       document.getElementById('gameContainer').style.display = 'flex';
       document.getElementById('gameActions').style.display = 'flex';
+
+      if (isPlaying) showGameChatButton();
+      else hideGameChatUI();
       
       updateAvatarDisplay();
 
@@ -1231,6 +1543,8 @@
       sessionStorage.removeItem('truco_active_room');
       activeRoomId = null;
       isGameStarted = false;
+      hideGameChatUI();
+      resetGameChat();
       resetTableVisuals(false);
       document.getElementById('disconnectModal').style.display = 'none';
       document.getElementById('winnerModal').style.display = 'none';
@@ -1414,6 +1728,8 @@
 
       socket.on('sync_game_state', (data) => {
         enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, true);
+        setGameChatRival(data.rivalUsername || currentRivalUsername);
+        showGameChatButton();
         document.getElementById('disconnectModal').style.display = 'none';
         document.getElementById('envidoOverlay').style.display = 'none';
         document.getElementById('gameActions').style.display = 'flex';
@@ -1516,11 +1832,14 @@
       });
 
       socket.on('game_ready', (data) => {
+        resetGameChat();
         enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, true);
         resetTableVisuals(true);
         roomWithFlor = parseBoolean(data.withFlor);
 
         const isP1 = (data.creatorId || '').toLowerCase() === currentUser.username.toLowerCase();
+        setGameChatRival(isP1 ? data.guestId : data.creatorId);
+        showGameChatButton();
         currentRivalAvatar = isP1 ? data.guestAvatar : data.creatorAvatar;
         document.getElementById('rivalAvatarDisplay').innerText = getAvatarEmoji(currentRivalAvatar);
 
@@ -1923,6 +2242,7 @@
 
       socket.on('player_surrendered', (data) => {
         sessionStorage.removeItem('truco_active_room');
+        hideGameChatUI();
         setScores(data.scores);
         document.getElementById('disconnectModal').style.display = 'none';
         document.getElementById('gameActions').style.display = 'none';
@@ -1945,6 +2265,7 @@
 
       socket.on('match_finished', (data) => {
         sessionStorage.removeItem('truco_active_room');
+        hideGameChatUI();
         setScores(data.scores);
         document.getElementById('disconnectModal').style.display = 'none';
         document.getElementById('gameActions').style.display = 'none';
@@ -1964,6 +2285,15 @@
           : 'Partida Amistosa (Gratis)';
         desc.innerText = `Ganador: ${data.winnerId} | ${potText}`;
         modal.style.display = 'flex';
+      });
+
+      socket.on('chat_message', (data) => {
+        if (!data || data.roomId !== activeRoomId) return;
+        appendGameChatMessage(data);
+      });
+
+      socket.on('chat_error', (data) => {
+        alert(data?.message || 'No se pudo enviar el mensaje.');
       });
 
       socket.on('error_action', (data) => { alert(data.message); });
