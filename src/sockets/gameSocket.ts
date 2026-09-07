@@ -926,6 +926,30 @@ export function setupSocketEvents(io: Server) {
       }
     });
 
+
+    // Chat temporal 1 vs 1. No se guarda en la base de datos ni altera el estado del juego.
+    socket.on('send_chat_message', ({ roomId, message }) => {
+      const room = rooms.get(roomId);
+      if (!room || !room.guestId) {
+        return socket.emit('chat_error', { message: 'La partida ya no está disponible.' });
+      }
+
+      const authUser = getAuthenticatedUserId(room, socket.id);
+      if (!authUser) {
+        return socket.emit('chat_error', { message: 'No perteneces a esta partida.' });
+      }
+
+      const cleanMessage = String(message ?? '').trim().slice(0, 300);
+      if (!cleanMessage) return;
+
+      io.to(room.roomId).emit('chat_message', {
+        roomId: room.roomId,
+        userId: authUser,
+        message: cleanMessage,
+        sentAt: Date.now()
+      });
+    });
+
     socket.on('create_room', async ({ userId, betAmount, targetPoints, withFlor }) => {
       const cleanUser = (userId || '').trim().toLowerCase();
       if (!cleanUser) return socket.emit('error_action', { message: 'Usuario inválido.' });

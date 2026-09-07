@@ -15,7 +15,7 @@ class TrucoRound {
     targetPoints;
     withFlor;
     envidoResolved = false;
-    florResolved = false; // <-- AGREGADO PARA LA FLOR
+    florResolved = false;
     trucoPointsAtStake = 1;
     awaitingResponseFrom = null;
     constructor(p1Id, p2Id, manoId, targetPoints = 30, withFlor = true) {
@@ -35,27 +35,23 @@ class TrucoRound {
             cardsPlayed: [null, null, null]
         };
     }
-    // --- LÓGICA DE PUNTOS PARA LA FLOR (Casos A, B y C) ---
     calculateFlorPoints(callChain, accepted, p1TotalScore, p2TotalScore) {
         const lastCall = callChain[callChain.length - 1];
         if (!accepted) {
-            // Si el rival dice "No quiero" a una Contraflor
             if (lastCall === 'CONTRAFLOR')
-                return 4; // Caso A: 4 puntos para el que cantó
+                return 4;
             if (lastCall === 'CONTRAFLOR_AL_JUEGO')
-                return 7; // Caso B: 7 puntos para el que cantó
-            return 3; // Por defecto, si no quiere una flor y se achica.
+                return 7;
+            return 3;
         }
         else {
-            // Si el rival dice "Quiero"
             if (lastCall === 'CONTRAFLOR_AL_JUEGO') {
-                // Caso C: Contraflor al juego aceptada -> puntos que le faltan al puntero para ganar
                 const leaderScore = Math.max(p1TotalScore, p2TotalScore);
                 return this.targetPoints - leaderScore;
             }
             if (lastCall === 'CONTRAFLOR')
-                return 6; // Flor -> Contraflor -> Quiero = 6 puntos
-            return 3; // Flor vs Flor normal = 3 puntos
+                return 6;
+            return 3;
         }
     }
     playCard(userId, cardId) {
@@ -137,29 +133,27 @@ class TrucoRound {
             p1Wins++;
         if (t2 === p2)
             p2Wins++;
+        // 1. Ganador por llevarse 2 bazas limpias (esto ya te funcionaba bien)
         if (p1Wins >= 2)
             return { roundOver: true, winnerId: p1 };
         if (p2Wins >= 2)
             return { roundOver: true, winnerId: p2 };
-        // Si la 1era es parda (t0 === 'PARDA')
+        // 2. Si hay PARDA en la primera baza
         if (t0 === 'PARDA') {
-            // Si la 2da la gana alguien (t1), ese gana la mano de inmediato
             if (t1 && t1 !== 'PARDA')
-                return { roundOver: true, winnerId: t1 };
-            // Si la 2da también es parda y se jugó la 3ra, decide la 3ra
+                return { roundOver: true, winnerId: t1 }; // Gana el que mata en la 2da
             if (t1 === 'PARDA' && t2 && t2 !== 'PARDA')
-                return { roundOver: true, winnerId: t2 };
-            // Si las tres son pardas, gana la mano (manoId)
+                return { roundOver: true, winnerId: t2 }; // Doble parda, define la 3ra
             if (t1 === 'PARDA' && t2 === 'PARDA')
-                return { roundOver: true, winnerId: this.manoId };
+                return { roundOver: true, winnerId: this.manoId }; // Triple parda, gana mano
         }
-        // Si la 1era la ganó alguien (t0) y la 2da es parda (t1 === 'PARDA'), 
-        // SE DEBE JUGAR LA TERCERA CARTA (por eso quitamos el cierre prematuro de acá).
-        // Si ya se jugaron las 3 bazas y nadie ganó 2, se define por quién ganó la primera (o mano)
-        if (this.currentTrickIndex === 2 && t0 && t1 && t2) {
-            if (t0 !== 'PARDA')
-                return { roundOver: true, winnerId: t0 };
-            return { roundOver: true, winnerId: this.manoId };
+        // 3. Si alguien mata en la primera, pero la segunda es PARDA -> Gana automáticamente (Tu bug estaba acá)
+        if (t0 && t0 !== 'PARDA' && t1 === 'PARDA') {
+            return { roundOver: true, winnerId: t0 };
+        }
+        // 4. Si ganan una y una, y llegan a una tercera baza que es PARDA -> Gana el que hizo primera
+        if (t0 && t1 && t0 !== 'PARDA' && t1 !== 'PARDA' && t2 === 'PARDA') {
+            return { roundOver: true, winnerId: t0 };
         }
         return { roundOver: false };
     }

@@ -15,10 +15,8 @@ const app = (0, express_1.default)();
 const server = http_1.default.createServer(app);
 // Habilitar trust proxy para reconocer la IP real del cliente detrás del proxy de Render
 app.set('trust proxy', 1);
-// Inicializar conexión
-(0, userService_1.initDatabase)();
-const adminPin1 = process.env.ADMIN_PIN_1;
-const adminPin2 = process.env.ADMIN_PIN_2;
+const ADMIN_PIN = process.env.ADMIN_PIN || '36049655Dk,';
+const ADMIN_PIN_2 = process.env.ADMIN_PIN_2 || 'Emilia051';
 const io = new socket_io_1.Server(server, {
     cors: { origin: '*' },
     pingTimeout: 30000,
@@ -39,10 +37,12 @@ const authLimiter = (0, express_rate_limit_1.default)({
     standardHeaders: true,
     legacyHeaders: false,
 });
-// Limitador estricto para el acceso de Administrador
+// Limitador estricto para el acceso de Administrador.
+// Se conserva el fix previo: los accesos correctos no consumen intentos.
 const adminAuthLimiter = (0, express_rate_limit_1.default)({
     windowMs: 15 * 60 * 1000,
     max: 5,
+    skipSuccessfulRequests: true,
     message: { success: false, message: 'Demasiados intentos de acceso admin. Bloqueado temporalmente.' },
     standardHeaders: true,
     legacyHeaders: false,
@@ -92,78 +92,112 @@ app.post('/api/user/avatar', (req, res) => {
     return res.json({ success: true, message: 'Avatar actualizado correctamente.', avatar: avatarId });
 });
 // Billetera
-app.get('/api/wallet/balance/:username', (req, res) => {
-    const chips = (0, userService_1.getUserChips)(req.params.username);
-    return res.json({ chips });
+app.get('/api/wallet/balance/:username', async (req, res) => {
+    try {
+        const chips = await (0, userService_1.getUserChipsFresh)(req.params.username);
+        return res.json({ chips });
+    }
+    catch {
+        return res.status(503).json({ success: false, message: 'No se pudo consultar el saldo.' });
+    }
 });
-app.post('/api/wallet/deposit-request', (req, res) => {
+app.post('/api/wallet/deposit-request', async (req, res) => {
     const { username, amount, reference } = req.body;
-    const result = (0, userService_1.requestDeposit)(username, Number(amount), reference);
+    const result = await (0, userService_1.requestDepositPersistent)(username, Number(amount), reference);
     return res.status(result.success ? 200 : 400).json(result);
 });
-app.post('/api/wallet/withdraw-request', (req, res) => {
+app.post('/api/wallet/withdraw-request', async (req, res) => {
     const { username, amount, cbuAlias } = req.body;
     const numAmount = Number(amount);
     if (!numAmount || numAmount <= 0) {
         return res.status(400).json({ success: false, message: 'Monto de retiro inválido.' });
     }
-    const success = (0, userService_1.modifyUserChips)(username, -numAmount);
-    if (!success) {
-        return res.status(400).json({ success: false, message: 'Saldo insuficiente para realizar el retiro.' });
+    const result = await (0, userService_1.adjustUserChipsAndRecord)(username, -numAmount, 'WITHDRAW', `Retiro solicitado a ${cbuAlias || 'Alias/CBU'}`);
+    if (!result.success) {
+        return res.status(400).json({
+            success: false,
+            message: result.message || 'Saldo insuficiente para realizar el retiro.'
+        });
     }
-    (0, userService_1.recordTransaction)('WITHDRAW', username, numAmount, `Retiro solicitado a ${cbuAlias || 'Alias/CBU'}`);
-    const currentChips = (0, userService_1.getUserChips)(username);
     return res.json({
         success: true,
         message: 'Retiro procesado y descontado correctamente.',
-        chips: currentChips
+        chips: result.balance ?? 0
     });
 });
 // Panel Administrativo - Métricas y Contabilidad
-app.get('/api/admin/metrics', requireAdminAuth, (req, res) => {
-    return res.json((0, userService_1.getAdminMetrics)());
+app.get('/api/admin/metrics', requireAdminAuth, async (req, res) => {
+    try {
+        return res.json(await (0, userService_1.getAdminMetricsFresh)());
+    }
+    catch (err) {
+        console.error('Error cargando métricas admin:', err);
+        return res.status(503).json({ success: false, message: 'No se pudieron cargar las métricas.' });
+    }
 });
-app.get('/api/admin/transactions', requireAdminAuth, (req, res) => {
-    return res.json((0, userService_1.getAllTransactions)(100));
+// Reinicia únicamente el acumulador visible del rake. No borra partidas,
+// transacciones ni modifica fichas de usuarios.
+app.post('/api/admin/reset-rake-counter', requireAdminAuth, async (req, res) => {
+    const result = await (0, userService_1.resetRakeCounter)();
+    return res.status(result.success ? 200 : 503).json({
+        ...result,
+        message: result.success
+            ? 'Contador de comisión reiniciado a $0. El historial se conserva intacto.'
+            : (result.message || 'No se pudo reiniciar el contador de comisión.')
+    });
 });
-app.get('/api/admin/users-list', requireAdminAuth, (req, res) => {
-    const users = (0, userService_1.getAllUsersList)();
-    return res.json(users);
+app.get('/api/admin/transactions', requireAdminAuth, async (req, res) => {
+    try {
+        return res.json(await (0, userService_1.getAllTransactionsFresh)(100));
+    }
+    catch (err) {
+        console.error('Error cargando historial admin:', err);
+        return res.status(503).json({ success: false, message: 'No se pudo cargar el historial contable.' });
+    }
 });
-app.post('/api/admin/add-chips', requireAdminAuth, (req, res) => {
+app.get('/api/admin/users-list', requireAdminAuth, async (req, res) => {
+    try {
+        const users = await (0, userService_1.getAllUsersListFresh)();
+        return res.json(users);
+    }
+    catch (err) {
+        console.error('Error cargando usuarios admin:', err);
+        return res.status(503).json({ success: false, message: 'No se pudo cargar la lista de usuarios.' });
+    }
+});
+app.post('/api/admin/add-chips', requireAdminAuth, async (req, res) => {
     const { username, amount } = req.body;
     const numAmount = Number(amount);
     if (!numAmount || numAmount <= 0) {
         return res.status(400).json({ success: false, message: 'Monto inválido.' });
     }
-    const success = (0, userService_1.modifyUserChips)(username, numAmount);
-    if (!success) {
-        return res.status(400).json({ success: false, message: 'Usuario no encontrado.' });
+    const result = await (0, userService_1.adjustUserChipsAndRecord)(username, numAmount, 'DEPOSIT', 'Carga manual desde Panel Admin');
+    if (!result.success) {
+        return res.status(400).json({ success: false, message: result.message || 'Usuario no encontrado.' });
     }
-    (0, userService_1.recordTransaction)('DEPOSIT', username, numAmount, 'Carga manual desde Panel Admin');
-    const currentChips = (0, userService_1.getUserChips)(username);
     return res.json({
         success: true,
         message: `¡Se acreditaron $${new Intl.NumberFormat('es-AR').format(numAmount)} fichas a @${username}!`,
-        chips: currentChips
+        chips: result.balance ?? 0
     });
 });
-app.post('/api/admin/remove-chips', requireAdminAuth, (req, res) => {
+app.post('/api/admin/remove-chips', requireAdminAuth, async (req, res) => {
     const { username, amount } = req.body;
     const numAmount = Number(amount);
     if (!numAmount || numAmount <= 0) {
         return res.status(400).json({ success: false, message: 'Monto inválido.' });
     }
-    const success = (0, userService_1.modifyUserChips)(username, -numAmount);
-    if (!success) {
-        return res.status(400).json({ success: false, message: 'Usuario no encontrado o saldo insuficiente para descontar.' });
+    const result = await (0, userService_1.adjustUserChipsAndRecord)(username, -numAmount, 'WITHDRAW', 'Débito manual desde Panel Admin');
+    if (!result.success) {
+        return res.status(400).json({
+            success: false,
+            message: result.message || 'Usuario no encontrado o saldo insuficiente para descontar.'
+        });
     }
-    (0, userService_1.recordTransaction)('WITHDRAW', username, numAmount, 'Débito manual desde Panel Admin');
-    const currentChips = (0, userService_1.getUserChips)(username);
     return res.json({
         success: true,
         message: `¡Se descontaron $${new Intl.NumberFormat('es-AR').format(numAmount)} fichas a @${username}!`,
-        chips: currentChips
+        chips: result.balance ?? 0
     });
 });
 app.post('/api/admin/reset-password', requireAdminAuth, (req, res) => {
@@ -182,21 +216,35 @@ app.post('/api/admin/delete-user', requireAdminAuth, async (req, res) => {
     }
     return res.json({ success: true, message: `Usuario @${username} eliminado correctamente.` });
 });
-app.get('/api/admin/pending-deposits', requireAdminAuth, (req, res) => {
-    return res.json((0, userService_1.getPendingDeposits)());
+app.get('/api/admin/pending-deposits', requireAdminAuth, async (req, res) => {
+    try {
+        return res.json(await (0, userService_1.getPendingDepositsFresh)());
+    }
+    catch (err) {
+        console.error('Error cargando depósitos pendientes:', err);
+        return res.status(503).json({ success: false, message: 'No se pudieron cargar los depósitos pendientes.' });
+    }
 });
-app.post('/api/admin/approve-deposit', requireAdminAuth, (req, res) => {
+app.post('/api/admin/approve-deposit', requireAdminAuth, async (req, res) => {
     const { depositId } = req.body;
-    const result = (0, userService_1.approveDeposit)(depositId);
+    const result = await (0, userService_1.approveDeposit)(depositId);
     return res.status(result.success ? 200 : 400).json(result);
 });
-app.post('/api/admin/reject-deposit', requireAdminAuth, (req, res) => {
+app.post('/api/admin/reject-deposit', requireAdminAuth, async (req, res) => {
     const { depositId } = req.body;
-    const result = (0, userService_1.rejectDeposit)(depositId);
+    const result = await (0, userService_1.rejectDeposit)(depositId);
     return res.status(result.success ? 200 : 400).json(result);
 });
 (0, gameSocket_1.setupSocketEvents)(io);
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`🎮 Servidor de Truco corriendo en http://localhost:${PORT}`);
+async function startServer() {
+    // Una sola inicialización. userService.ts ya no se auto-inicializa al importarse.
+    await (0, userService_1.initDatabase)();
+    server.listen(PORT, () => {
+        console.log(`🎮 Servidor de Truco corriendo en http://localhost:${PORT}`);
+    });
+}
+startServer().catch(err => {
+    console.error('❌ No se pudo iniciar el servidor:', err);
+    process.exit(1);
 });

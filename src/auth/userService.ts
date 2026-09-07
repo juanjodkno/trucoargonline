@@ -1117,7 +1117,7 @@ export async function approveDeposit(depositId: string): Promise<{ success: bool
       `INSERT INTO transactions
        (id, type, username, amount, details, created_at, idempotency_key)
        VALUES ($1, 'DEPOSIT', $2, $3, $4, CURRENT_TIMESTAMP, $5)
-       ON CONFLICT (idempotency_key) DO NOTHING`,
+       ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING`,
       [
         'tx_' + crypto.randomBytes(8).toString('hex'),
         clean,
