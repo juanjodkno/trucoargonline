@@ -132,12 +132,32 @@
     .turn-badge { color: #ffd166; font-weight: bold; }
     .timer-badge { background: #d90429; padding: 4px 10px; border-radius: 15px; font-weight: bold; font-size: 0.95rem; }
 
-    .truco-table { width: 100%; max-width: 880px; height: 550px; background: radial-gradient(circle, #1e6b3b 0%, #0d381e 100%); border: 12px solid #3e2723; border-radius: 40px; position: relative; display: flex; flex-direction: column; justify-content: space-between; align-items: center; padding: 15px 30px; box-shadow: inset 0 0 35px rgba(0,0,0,0.85), 0 12px 30px rgba(0,0,0,0.6); }
-    .opponent-cards, .my-cards { display: flex; gap: 15px; min-height: 135px; align-items: center; }
+    .truco-table {
+      width: 100%; max-width: 880px; height: 550px;
+      background: radial-gradient(circle, #0e5e83 0%, #083f64 64%, #062743 100%);
+      border: 12px solid #3e2723;
+      border-radius: 40px;
+      position: relative;
+      display: flex; flex-direction: column; justify-content: space-between; align-items: center;
+      padding: 15px 30px;
+      box-shadow: inset 0 0 35px rgba(0,0,0,0.55), 0 12px 30px rgba(0,0,0,0.6);
+    }
+    .truco-table::before { content:none; display:none; }
+    .truco-table::after {
+      content:"Truco Argentino Online";
+      position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+      color:rgba(255,255,255,.88); font-weight:900; letter-spacing:.015em;
+      font-size:clamp(1rem, 2vw, 1.55rem); white-space:nowrap;
+      text-shadow:0 3px 8px rgba(0,0,0,.28); z-index:1; pointer-events:none;
+    }
+    .opponent-cards, .my-cards { display: flex; gap: 15px; min-height: 135px; align-items: center; position:relative; z-index:3; }
     
-    .table-tricks { display: flex; gap: 40px; width: 100%; justify-content: center; align-items: center; padding: 10px; }
+    .table-tricks { display: flex; gap: 40px; width: 100%; justify-content: center; align-items: center; padding: 10px; position:relative; z-index:3; }
+    @media (max-width: 480px) {
+      .truco-table::after { font-size:.82rem; letter-spacing:0; }
+    }
     .trick-slot { width: 110px; height: 185px; position: relative; display: flex; justify-content: center; align-items: center; }
-    .trick-label { position: absolute; font-size: 0.85rem; color: rgba(255, 255, 255, 0.35); font-weight: 800; text-transform: uppercase; letter-spacing: 1px; pointer-events: none; z-index: 1; user-select: none; }
+    .trick-label { display:none !important; }
 
     .card-img { 
       width: 88px; height: 140px; border-radius: 8px; box-shadow: 0 6px 12px rgba(0,0,0,0.45); 
@@ -442,9 +462,9 @@
       <div class="opponent-cards" id="opponentCards"></div>
 
       <div class="table-tricks">
-        <div class="trick-slot" id="trick-0"><span class="trick-label">1ra Mano</span></div>
-        <div class="trick-slot" id="trick-1"><span class="trick-label">2da Mano</span></div>
-        <div class="trick-slot" id="trick-2"><span class="trick-label">3ra Mano</span></div>
+        <div class="trick-slot" id="trick-0"></div>
+        <div class="trick-slot" id="trick-1"></div>
+        <div class="trick-slot" id="trick-2"></div>
       </div>
 
       <div class="my-cards" id="myCards"></div>
@@ -636,7 +656,56 @@
     let currentTurnPlayer = '';
     let currentRivalAvatar = 'gaucho';
 
-    
+    // Resincronización al volver desde otra app / pestaña en móviles.
+    // El servidor seguirá siendo la única fuente de verdad del estado de la partida.
+    let lastGameStateRequestAt = 0;
+
+    function requestLiveGameState(reason = 'resume') {
+      if (!socket || !socket.connected || !activeRoomId || !currentUser?.username || !isGameStarted) return;
+
+      const now = Date.now();
+      // visibilitychange + focus suelen dispararse casi juntos en Android/iOS.
+      if (now - lastGameStateRequestAt < 250) return;
+      lastGameStateRequestAt = now;
+
+      socket.emit('request_game_state', {
+        roomId: activeRoomId,
+        userId: currentUser.username,
+        reason
+      });
+    }
+
+    function syncTimerFromGameState(data) {
+      const timer = document.getElementById('lblTimer');
+      if (!timer || !data) return;
+
+      if (Number.isFinite(Number(data.secondsLeft))) {
+        timer.innerText = Math.max(0, Math.ceil(Number(data.secondsLeft)));
+        return;
+      }
+
+      if (data.turnDeadline) {
+        const deadline = Number(data.turnDeadline);
+        if (Number.isFinite(deadline)) {
+          timer.innerText = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+        }
+      }
+    }
+
+    function installGameResumeListeners() {
+      if (window.__trucoResumeListenersInstalled) return;
+      window.__trucoResumeListenersInstalled = true;
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+          requestLiveGameState('visibilitychange');
+        }
+      });
+
+      window.addEventListener('focus', () => requestLiveGameState('focus'));
+      window.addEventListener('pageshow', () => requestLiveGameState('pageshow'));
+      window.addEventListener('online', () => requestLiveGameState('online'));
+    }
 
     function parseBoolean(val) {
       if (val === true || val === 'true') return true;
@@ -829,6 +898,7 @@
         setupSocketListeners();
       }
 
+      installGameResumeListeners();
       socket.emit('request_tables');
 
       if (!window.tablesInterval) {
@@ -1081,7 +1151,7 @@
 
       for (let i = 0; i < 3; i++) {
         const slot = document.getElementById(`trick-${i}`);
-        if (slot) slot.innerHTML = `<span class="trick-label">${getTrickLabel(i)}</span>`;
+        if (slot) slot.innerHTML = '';
       }
 
       const opp = document.getElementById('opponentCards');
@@ -1328,6 +1398,8 @@
         socket.emit('request_tables');
         if (activeRoomId && currentUser) {
           socket.emit('reconnect_game', { roomId: activeRoomId, userId: currentUser.username });
+          // Tras re-vincular el socket a la sala, pedimos el estado real de juego.
+          setTimeout(() => requestLiveGameState('socket_connect'), 80);
         }
         if (currentUser && currentUser.username) {
           socket.emit('check_active_game', { userId: currentUser.username });
@@ -1337,6 +1409,7 @@
       socket.on('active_game_found', (data) => {
         console.log("Partida recuperada del reposo. Entrando a la mesa...");
         socket.emit('reconnect_game', data);
+        setTimeout(() => requestLiveGameState('active_game_found'), 80);
       });
 
       socket.on('sync_game_state', (data) => {
@@ -1382,7 +1455,7 @@
 
         for (let i = 0; i < 3; i++) {
           const slot = document.getElementById(`trick-${i}`);
-          slot.innerHTML = `<span class="trick-label">${getTrickLabel(i)}</span>`;
+          slot.innerHTML = '';
           if (data.tricks[i]) {
             data.tricks[i].forEach((cardObj) => {
               const isMine = cardObj.userId.toLowerCase() === currentUser.username.toLowerCase();
@@ -1395,6 +1468,7 @@
           }
         }
 
+        syncTimerFromGameState(data);
         updateTurnControls(data.currentTurn);
       });
 
@@ -1476,7 +1550,7 @@
         currentTrucoOwner = null;
 
         for (let i = 0; i < 3; i++) {
-          document.getElementById(`trick-${i}`).innerHTML = `<span class="trick-label">${getTrickLabel(i)}</span>`;
+          document.getElementById(`trick-${i}`).innerHTML = '';
         }
         const opp = document.getElementById('opponentCards');
         opp.innerHTML = `
@@ -1558,22 +1632,26 @@
       });
 
       socket.on('call_received', (data) => {
-        triggerHaptic(25);
-        log(`🗣️ <strong>${data.userId}</strong> cantó: <strong>${data.callType}</strong>`);
+        if (!data.silentSync) {
+          triggerHaptic(25);
+          log(`🗣️ <strong>${data.userId}</strong> cantó: <strong>${data.callType}</strong>`);
+        }
         pendingCategory = data.category;
         document.getElementById('gameActions').style.display = 'flex';
         document.getElementById('myCards').classList.add('disabled');
 
-        if (data.callType === 'TRUCO') playAudio('truco');
-        else if (data.callType === 'RETRUCO') playAudio('retruco');
-        else if (data.callType === 'VALE_4') playAudio('vale 4');
-        else if (data.callType === 'ENVIDO' || data.callType === 'ENVIDO_ENVIDO') playAudio('envido');
-        else if (data.callType === 'REAL_ENVIDO') playAudio('real envido');
-        else if (data.callType === 'FALTA_ENVIDO') playAudio('falta envido');
-        else if (data.callType === 'ME_VOY_AL_MAZO') playAudio('me voy al mazo');
-        else if (data.callType === 'FLOR') playAudio('flor');
-        else if (data.callType === 'CONTRAFLOR') playAudio('contraflor');
-        else if (data.callType === 'CONTRAFLOR_AL_JUEGO') playAudio('contraflor al juego');
+        if (!data.silentSync) {
+          if (data.callType === 'TRUCO') playAudio('truco');
+          else if (data.callType === 'RETRUCO') playAudio('retruco');
+          else if (data.callType === 'VALE_4') playAudio('vale 4');
+          else if (data.callType === 'ENVIDO' || data.callType === 'ENVIDO_ENVIDO') playAudio('envido');
+          else if (data.callType === 'REAL_ENVIDO') playAudio('real envido');
+          else if (data.callType === 'FALTA_ENVIDO') playAudio('falta envido');
+          else if (data.callType === 'ME_VOY_AL_MAZO') playAudio('me voy al mazo');
+          else if (data.callType === 'FLOR') playAudio('flor');
+          else if (data.callType === 'CONTRAFLOR') playAudio('contraflor');
+          else if (data.callType === 'CONTRAFLOR_AL_JUEGO') playAudio('contraflor al juego');
+        }
 
         const userHasFlor = checkIfIHaveFlor();
         const hasPlayedAnyCard = currentMyCards.length < 3;
@@ -1707,7 +1785,7 @@
       });
 
       socket.on('start_envido_declaration', (data) => {
-        playAudio('quiero');
+        if (!data.silentSync) playAudio('quiero');
         document.getElementById('gameActions').style.display = 'flex';
         document.getElementById('envidoGroup').style.display = 'none';
         document.getElementById('florGroup').style.display = 'none';
@@ -1733,13 +1811,15 @@
           document.getElementById('btnSonBuenas').style.display = 'none';
         } else {
           document.getElementById('envidoDeclareGroup').style.display = 'none';
-          log(`⏳ Esperando que el rival cante sus puntos...`);
+          if (!data.silentSync) log(`⏳ Esperando que el rival cante sus puntos...`);
         }
       });
 
       socket.on('envido_points_announced', (data) => {
-        log(`🗣️ <strong>${data.userId}</strong> cantó: <strong>${data.points}</strong> puntos`);
-        playAudio(data.points);
+        if (!data.silentSync) {
+          log(`🗣️ <strong>${data.userId}</strong> cantó: <strong>${data.points}</strong> puntos`);
+          playAudio(data.points);
+        }
 
         if (data.isFinal) {
           document.getElementById('envidoDeclareGroup').style.display = 'none';

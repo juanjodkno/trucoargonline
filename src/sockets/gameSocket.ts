@@ -43,6 +43,7 @@ interface ActiveRoom {
   florPendingCaller: string | null;
 
   turnInterval?: NodeJS.Timeout;
+  turnDeadline?: number;
   disconnectInterval?: NodeJS.Timeout;
   disconnectedUser?: string | null;
 
@@ -100,6 +101,7 @@ export function setupSocketEvents(io: Server) {
       clearInterval(room.turnInterval);
       room.turnInterval = undefined;
     }
+    room.turnDeadline = undefined;
   }
 
   function clearDisconnectTimer(room: ActiveRoom) {
@@ -194,14 +196,22 @@ export function setupSocketEvents(io: Server) {
     if (room.disconnectedUser) return;
 
     let timeLeft = seconds;
-    io.to(room.roomId).emit('timer_tick', { secondsLeft: timeLeft });
+    room.turnDeadline = Date.now() + (seconds * 1000);
+
+    io.to(room.roomId).emit('timer_tick', {
+      secondsLeft: timeLeft,
+      turnDeadline: room.turnDeadline
+    });
 
     room.turnInterval = setInterval(() => {
       timeLeft--;
       if (timeLeft > 0) {
-        io.to(room.roomId).emit('timer_tick', { secondsLeft: timeLeft });
+        io.to(room.roomId).emit('timer_tick', {
+          secondsLeft: timeLeft,
+          turnDeadline: room.turnDeadline
+        });
       } else {
-        io.to(room.roomId).emit('timer_tick', { secondsLeft: 0 });
+        io.to(room.roomId).emit('timer_tick', { secondsLeft: 0, turnDeadline: room.turnDeadline });
         clearTurnTimer(room);
         handleTimeout(room);
       }
@@ -733,6 +743,10 @@ export function setupSocketEvents(io: Server) {
       if (p2Card && room.guestId) tricksData[i].push({ userId: room.guestId, cardId: p2Card.id });
     }
 
+    const secondsLeft = room.turnDeadline
+      ? Math.max(0, Math.ceil((room.turnDeadline - Date.now()) / 1000))
+      : undefined;
+
     socket.emit('sync_game_state', {
       roomId: room.roomId,
       creatorId: room.creatorId,
@@ -752,9 +766,106 @@ export function setupSocketEvents(io: Server) {
       trucoLevel: room.trucoLevel,
       trucoOwner: room.trucoOwner,
       awaitingResponseFrom: room.gameRound.awaitingResponseFrom,
+      isDeclaringEnvido: room.isDeclaringEnvido,
+      isFlorDeclaration: !!room.isFlorDeclaration,
+      envidoDeclarer: room.envidoDeclarer,
+      highestEnvidoScore: room.highestEnvidoScore,
+      highestEnvidoUser: room.highestEnvidoUser,
+      envidoChain: room.envidoChain,
+      florChain: room.florChain,
+      secondsLeft,
+      turnDeadline: room.turnDeadline,
       myAvatar: getUserAvatar(userId),
       rivalAvatar: rivalUsername ? getUserAvatar(rivalUsername) : 'gaucho'
     });
+  }
+
+  // Reconstruye únicamente los controles/cantos que estén pendientes.
+  // silentSync evita repetir audios y líneas del log al volver desde otra app.
+  function sendPendingInteractionSync(socket: Socket, room: ActiveRoom) {
+    if (!room.gameRound) return;
+
+    if (room.isDeclaringEnvido && room.envidoDeclarer) {
+      const isFlor = !!room.isFlorDeclaration;
+      const chain = isFlor ? room.florChain : room.envidoChain;
+
+      // Primero dejamos la interfaz en el modo de declaración.
+      // Si ya hubo un primer canto, el evento siguiente reconstruye exactamente
+      // si corresponde CANTAR o SON BUENAS al segundo declarante.
+      socket.emit('start_envido_declaration', {
+        firstDeclarer: room.highestEnvidoUser ? '__sync_wait__' : room.envidoDeclarer,
+        chain,
+        isFlor,
+        silentSync: true
+      });
+
+      if (room.highestEnvidoUser) {
+        socket.emit('envido_points_announced', {
+          userId: room.highestEnvidoUser,
+          points: room.highestEnvidoScore,
+          nextDeclarer: room.envidoDeclarer,
+          highestScore: room.highestEnvidoScore,
+          highestUser: room.highestEnvidoUser,
+          isFinal: false,
+          silentSync: true
+        });
+      }
+      return;
+    }
+
+    const awaitingResponseFrom = room.gameRound.awaitingResponseFrom;
+    if (!awaitingResponseFrom) return;
+
+    if (room.envidoPendingCaller) {
+      const callType = room.envidoChain[room.envidoChain.length - 1] || 'ENVIDO';
+      socket.emit('call_received', {
+        userId: room.envidoPendingCaller,
+        callType,
+        category: 'ENVIDO',
+        awaitingResponseFrom,
+        chain: room.envidoChain,
+        silentSync: true
+      });
+      return;
+    }
+
+    if (room.florPendingCaller) {
+      const callType = room.florChain[room.florChain.length - 1] || 'FLOR';
+      socket.emit('call_received', {
+        userId: room.florPendingCaller,
+        callType,
+        category: 'FLOR',
+        awaitingResponseFrom,
+        chain: room.florChain,
+        silentSync: true
+      });
+      return;
+    }
+
+    const trucoPointsAtStake = room.gameRound.trucoPointsAtStake || 2;
+    const callType = trucoPointsAtStake >= 4
+      ? 'VALE_4'
+      : trucoPointsAtStake === 3
+        ? 'RETRUCO'
+        : 'TRUCO';
+
+    const callerId = awaitingResponseFrom.toLowerCase() === room.creatorId.toLowerCase()
+      ? room.guestId!
+      : room.creatorId;
+
+    socket.emit('call_received', {
+      userId: callerId,
+      callType,
+      category: 'TRUCO',
+      awaitingResponseFrom,
+      canCallEnvido: callType === 'TRUCO' && !!room.pendingTrucoAfterEnvido,
+      silentSync: true
+    });
+  }
+
+  function sendCompleteGameSync(socket: Socket, room: ActiveRoom, userId: string) {
+    sendFullSync(socket, room, userId);
+    sendPendingInteractionSync(socket, room);
   }
 
   io.on('connection', (socket: Socket) => {
@@ -781,10 +892,28 @@ export function setupSocketEvents(io: Server) {
           startTurnTimer(room, 30);
         }
 
-        sendFullSync(socket, room, userId);
+        sendCompleteGameSync(socket, room, userId);
       } else {
         socket.emit('reconnect_failed');
       }
+    });
+
+    socket.on('request_game_state', ({ roomId, userId }) => {
+      const room = rooms.get(roomId);
+      if (!room || !room.gameRound || !userId) return;
+
+      const cleanUser = userId.toLowerCase();
+      const isCreator = room.creatorId.toLowerCase() === cleanUser;
+      const isGuest = !!room.guestId && room.guestId.toLowerCase() === cleanUser;
+      if (!isCreator && !isGuest) return;
+
+      // Si el socket sigue siendo el de la partida, sólo resincronizamos.
+      // Si Socket.IO ya reconectó y cambió el id, volvemos a vincularlo al mismo asiento.
+      socket.join(roomId);
+      if (isCreator) room.creatorSocketId = socket.id;
+      else room.guestSocketId = socket.id;
+
+      sendCompleteGameSync(socket, room, userId);
     });
 
     socket.on('check_active_game', ({ userId }) => {
