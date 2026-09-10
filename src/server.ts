@@ -5,6 +5,7 @@ import path from 'path';
 import { Server } from 'socket.io';
 import rateLimit from 'express-rate-limit';
 import { setupSocketEvents } from './sockets/gameSocket';
+import { setupTeamSocketEvents } from './sockets/teamGameSocket';
 import {
   initDatabase,
   registerUser,
@@ -14,6 +15,7 @@ import {
   approveDeposit,
   rejectDeposit,
   getUserChipsFresh,
+  userExistsFresh,
   adjustUserChipsAndRecord,
   getAllUsersListFresh,
   resetUserPassword,
@@ -48,6 +50,11 @@ app.use(express.static(path.join(__dirname, '../public')));
 // Servir la vista de administración
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/admin.html'));
+});
+
+// Modo 2 vs 2 integrado. La interfaz y la lógica 2v2 se mantienen en archivos separados.
+app.get('/2v2', (_req, res) => {
+  res.sendFile(path.join(__dirname, '../public/team.html'));
 });
 
 // Limitador de tasa contra ataques de fuerza bruta en Login y Registro
@@ -97,6 +104,17 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   const { usernameOrEmail, password } = req.body;
   const result = await loginUser(usernameOrEmail, password);
   return res.status(result.success ? 200 : 401).json(result);
+});
+
+// Valida sesiones guardadas en el navegador contra la fuente autoritativa.
+app.get('/api/auth/session/:username', async (req, res) => {
+  try {
+    const exists = await userExistsFresh(req.params.username);
+    if (!exists) return res.status(404).json({ success: false, valid: false, message: 'La cuenta ya no existe.' });
+    return res.json({ success: true, valid: true });
+  } catch {
+    return res.status(503).json({ success: false, valid: false, message: 'No se pudo validar la sesión.' });
+  }
 });
 
 // Gestión de Avatares
@@ -305,6 +323,7 @@ app.post('/api/admin/reject-deposit', requireAdminAuth, async (req, res) => {
 });
 
 setupSocketEvents(io);
+setupTeamSocketEvents(io);
 
 const PORT = process.env.PORT || 3000;
 

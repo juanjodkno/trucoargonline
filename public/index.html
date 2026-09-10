@@ -66,6 +66,148 @@
     .btn-submit:hover { background: #0096c7; }
     .auth-error { color: #ef4444; font-size: 0.85rem; margin-top: 10px; display: none; }
 
+    /* Portada previa al registro */
+    .welcome-card {
+      width: min(920px, calc(100vw - 28px)); min-height: 500px; display: grid; grid-template-columns: 1.05fr .95fr;
+      overflow: hidden; border-radius: 26px; background: #111c29; border: 1px solid rgba(255,255,255,.14);
+      box-shadow: 0 26px 70px rgba(0,0,0,.55);
+    }
+    .welcome-visual {
+      position: relative; padding: 42px; display: flex; flex-direction: column; justify-content: space-between;
+      background: radial-gradient(circle at 35% 35%, rgba(0,150,199,.28), transparent 42%), linear-gradient(145deg, #0d5276, #071724 78%);
+      overflow: hidden;
+    }
+    .welcome-brand { display:flex; align-items:center; gap:12px; font-size:1.05rem; font-weight:900; color:#fff; letter-spacing:.2px; }
+    .welcome-brand img { width:42px; height:42px; object-fit:contain; }
+    .welcome-visual h1 { font-size: clamp(2rem, 4vw, 3.25rem); line-height:1.02; margin: 28px 0 14px; color:#fff; }
+    .welcome-visual h1 span { color:#ffd166; }
+    .welcome-visual p { color:#cbd5e1; font-size:1rem; line-height:1.55; max-width:430px; }
+    .welcome-cards { position: relative; height: 190px; margin-top: 20px; }
+    .welcome-cards img { position:absolute; width:112px; border-radius:10px; box-shadow:0 16px 28px rgba(0,0,0,.42); }
+    .welcome-cards img:nth-child(1) { left:12%; top:34px; transform:rotate(-13deg); }
+    .welcome-cards img:nth-child(2) { left:35%; top:12px; transform:rotate(1deg); z-index:2; }
+    .welcome-cards img:nth-child(3) { left:58%; top:34px; transform:rotate(13deg); }
+    .welcome-action { padding:42px 38px; display:flex; flex-direction:column; justify-content:center; background:#16222f; }
+    .welcome-pill { align-self:flex-start; background:rgba(46,196,182,.14); color:#5eead4; border:1px solid rgba(94,234,212,.25); padding:6px 10px; border-radius:999px; font-size:.78rem; font-weight:900; margin-bottom:16px; }
+    .welcome-action h2 { font-size:1.75rem; color:#fff; margin-bottom:9px; }
+    .welcome-action > p { color:#94a3b8; line-height:1.5; margin-bottom:24px; }
+    .btn-try-now { width:100%; border:none; border-radius:13px; padding:16px 18px; background:linear-gradient(135deg,#0096c7,#0077b6); color:white; font-size:1.08rem; font-weight:900; cursor:pointer; box-shadow:0 10px 26px rgba(0,119,182,.38); transition:.18s; }
+    .btn-try-now:hover { transform:translateY(-2px); filter:brightness(1.08); }
+    .btn-try-now:disabled { opacity:.65; cursor:wait; transform:none; }
+    .try-note { text-align:center; color:#94a3b8; font-size:.78rem; margin:10px 0 22px; }
+    .welcome-divider { display:flex; align-items:center; gap:10px; color:#64748b; font-size:.75rem; margin:2px 0 15px; }
+    .welcome-divider::before,.welcome-divider::after { content:''; height:1px; background:#334155; flex:1; }
+    .welcome-auth-buttons { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .btn-auth-secondary { border:1px solid #334155; background:#0f172a; color:#dbeafe; border-radius:10px; padding:11px; font-weight:800; cursor:pointer; }
+    .btn-auth-secondary:hover { border-color:#0077b6; background:#15243a; }
+    .btn-whatsapp-community {
+      width:100%; margin-top:14px; padding:12px 14px; border:0; border-radius:10px; background:#25D366;
+      color:#062d16; font-weight:900; font-size:.9rem; text-decoration:none; display:flex; align-items:center;
+      justify-content:center; gap:8px; cursor:pointer; box-shadow:0 8px 20px rgba(37,211,102,.20); transition:.18s;
+    }
+    .btn-whatsapp-community:hover { transform:translateY(-1px); filter:brightness(1.06); }
+    .auth-back { border:0; background:transparent; color:#94a3b8; cursor:pointer; font-weight:700; margin-bottom:12px; display:inline-flex; align-items:center; gap:5px; }
+    .auth-back:hover { color:white; }
+    .lobby-bot-card { background:linear-gradient(135deg,rgba(0,119,182,.18),rgba(42,157,143,.12)); border:1px solid rgba(72,202,228,.28); border-radius:12px; padding:14px 16px; display:flex; align-items:center; justify-content:space-between; gap:14px; }
+    .lobby-bot-card strong { color:#7dd3fc; display:block; margin-bottom:3px; }
+    .lobby-bot-card span { color:#94a3b8; font-size:.82rem; }
+    .btn-bot-lobby { border:0; background:#0077b6; color:#fff; border-radius:9px; padding:10px 14px; font-weight:900; white-space:nowrap; cursor:pointer; }
+
+    @media (max-width: 720px) {
+      .auth-overlay { align-items:flex-start; overflow-y:auto; padding:12px 0; }
+      .welcome-card { grid-template-columns:1fr; min-height:0; }
+      .welcome-visual { padding:24px 24px 16px; min-height:270px; }
+      .welcome-visual h1 { margin:18px 0 9px; font-size:2.05rem; }
+      .welcome-visual p { font-size:.9rem; }
+      .welcome-cards { height:115px; margin-top:8px; }
+      .welcome-cards img { width:76px; }
+      .welcome-cards img:nth-child(1) { left:18%; top:25px; }
+      .welcome-cards img:nth-child(2) { left:39%; top:7px; }
+      .welcome-cards img:nth-child(3) { left:60%; top:25px; }
+      .welcome-action { padding:24px; }
+      .welcome-action h2 { font-size:1.4rem; }
+      .auth-card { margin:8px 12px; padding:23px; }
+      .lobby-bot-card { flex-direction:column; align-items:stretch; }
+      .btn-bot-lobby { width:100%; }
+    }
+
+
+
+    /* Selector de modos dentro del lobby principal */
+    .game-mode-selector {
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      gap:12px;
+    }
+    .game-mode-card {
+      background:#0b1320;
+      border:1px solid #334155;
+      border-radius:14px;
+      padding:16px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      min-height:148px;
+    }
+    .game-mode-card.active { border-color:#0077b6; box-shadow:0 0 0 1px rgba(0,119,182,.22); }
+    .game-mode-card.team { border-color:rgba(242,196,95,.42); }
+    .game-mode-title { font-size:1.08rem; font-weight:900; color:#fff; }
+    .game-mode-title span { color:#ffd166; }
+    .game-mode-desc { color:#94a3b8; font-size:.82rem; line-height:1.42; flex:1; }
+    .game-mode-btn {
+      width:100%; border:0; border-radius:9px; padding:10px 12px;
+      color:#fff; font-weight:900; cursor:pointer; background:#0077b6;
+    }
+    .game-mode-btn.team { background:#b98524; color:#fff; }
+    .game-mode-current { color:#5eead4; font-size:.78rem; font-weight:900; }
+    .lobby-section-title { color:#cbd5e1; font-size:.84rem; font-weight:900; letter-spacing:.03em; }
+
+    /* El 2vs2 se abre dentro de la misma página principal. */
+    .team-mode-container {
+      display:none;
+      width:100%;
+      max-width:1220px;
+      min-height:calc(100vh - 20px);
+      flex-direction:column;
+      gap:10px;
+    }
+    .team-mode-toolbar {
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      background:#16222f;
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:12px;
+      padding:9px 12px;
+      box-shadow:0 8px 24px rgba(0,0,0,.35);
+    }
+    .team-mode-toolbar strong { color:#ffd166; }
+    .team-mode-back {
+      border:1px solid #334155;
+      background:#0b1320;
+      color:#e2e8f0;
+      border-radius:8px;
+      padding:8px 12px;
+      font-weight:800;
+      cursor:pointer;
+    }
+    .team-mode-frame {
+      width:100%;
+      height:calc(100vh - 78px);
+      min-height:720px;
+      border:0;
+      border-radius:14px;
+      background:#07101a;
+    }
+
+    @media (max-width:720px) {
+      .game-mode-selector { grid-template-columns:1fr; }
+      .team-mode-container { min-height:calc(100vh - 10px); }
+      .team-mode-frame { height:calc(100vh - 68px); min-height:640px; border-radius:10px; }
+      .team-mode-toolbar { position:sticky; top:0; z-index:20; }
+    }
+
     /* LOBBY */
     .lobby-container {
       width: 100%; max-width: 760px; background: #16222f; padding: 25px; border-radius: 16px;
@@ -131,6 +273,13 @@
     .score-badge { background: #0077b6; padding: 5px 14px; border-radius: 20px; font-weight: bold; font-size: 0.95rem; display: flex; align-items: center; gap: 8px; }
     .turn-badge { color: #ffd166; font-weight: bold; }
     .timer-badge { background: #d90429; padding: 4px 10px; border-radius: 15px; font-weight: bold; font-size: 0.95rem; }
+    .header-end { display:flex; align-items:center; gap:10px; flex-shrink:0; margin-left:auto; }
+    .header-end .turn-badge { width:190px; text-align:right; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+    @media (max-width: 600px) {
+      .header-end { width:100%; justify-content:flex-end; }
+      .header-end .turn-badge { width:165px; }
+    }
 
     .truco-table {
       width: 100%; max-width: 880px; height: 550px;
@@ -375,14 +524,52 @@
 </head>
 <body>
 
-  <!-- Modal de Registro / Login -->
+  <!-- Portada + Registro / Login -->
   <div class="auth-overlay" id="authOverlay">
-    <div class="auth-card">
+    <div class="welcome-card" id="welcomePanel">
+      <section class="welcome-visual">
+        <div>
+          <div class="welcome-brand">
+            <img src="/logo.png" alt="Truco Argentino Online" />
+            <span>Truco Argentino Online</span>
+          </div>
+          <h1>El Truco argentino de siempre, <span>ahora online.</span></h1>
+          <p>Jugá desde el celular o la computadora, sin instalar nada. Probá una partida completa antes de crear tu cuenta.</p>
+        </div>
+        <div class="welcome-cards" aria-hidden="true">
+          <img src="/cards/1_espada.png" alt="" />
+          <img src="/cards/7_oro.png" alt="" />
+          <img src="/cards/3_copa.png" alt="" />
+        </div>
+      </section>
+
+      <section class="welcome-action">
+        <div class="welcome-pill">🎮 MODO DE PRUEBA GRATIS</div>
+        <h2>Entrá a jugar en segundos</h2>
+        <p>Jugá un 1 vs 1 contra la máquina con Envido, Flor, Truco, Retruco y Vale 4. No necesitás registrarte.</p>
+        <button type="button" class="btn-try-now" id="btnStartGuestBot" onclick="startBotGame()">🤖 JUGAR GRATIS CONTRA LA MÁQUINA</button>
+        <div class="try-note">Sin registro · Sin fichas · Partida a 15 puntos</div>
+        <div class="welcome-divider">o continuá con tu cuenta</div>
+        <div class="welcome-auth-buttons">
+          <button type="button" class="btn-auth-secondary" onclick="openAuthPanel('register')">Crear cuenta</button>
+          <button type="button" class="btn-auth-secondary" onclick="openAuthPanel('login')">Ingresar</button>
+        </div>
+        <a
+          class="btn-whatsapp-community"
+          href="https://chat.whatsapp.com/D7bCv6H6q1z5WRBHlqIItE?s=cl&amp;p=a&amp;mlu=4&amp;ilr=4"
+          target="_blank"
+          rel="noopener noreferrer"
+        >💬 UNITE A LA COMUNIDAD DE JUGADORES EN WHATSAPP</a>
+      </section>
+    </div>
+
+    <div class="auth-card" id="authFormPanel" style="display:none;">
+      <button type="button" class="auth-back" onclick="showWelcomePanel()">← Volver</button>
       <div class="auth-title">
         <img src="/logo.png" alt="Logo" style="width: 38px; height: 38px; object-fit: contain;" />
         <span>Truco Argentino</span>
       </div>
-      <div class="auth-subtitle">Ingresá a tu cuenta para jugar por fichas reales o gratis</div>
+      <div class="auth-subtitle">Creá tu cuenta para jugar contra otras personas y acceder al lobby.</div>
 
       <div class="auth-tabs">
         <button type="button" class="auth-tab active" id="tabRegister" onclick="switchTab('register')">Registro</button>
@@ -406,12 +593,10 @@
           <label>Contraseña</label>
           <input type="password" id="regPassword" class="form-control" placeholder="••••••••" required />
         </div>
-        
         <div style="display:flex; align-items:center; gap:8px; margin: 12px 0 6px 0; font-size:0.85rem; color:#cbd5e1; text-align:left;">
           <input type="checkbox" id="regRememberMe" checked style="width:17px; height:17px; cursor:pointer;" />
           <label for="regRememberMe" style="cursor:pointer; margin:0;">Mantener sesión iniciada</label>
         </div>
-
         <button type="submit" class="btn-submit">Crear Cuenta</button>
       </form>
 
@@ -424,15 +609,12 @@
           <label>Contraseña</label>
           <input type="password" id="logPassword" class="form-control" placeholder="••••••••" required />
         </div>
-
         <div style="display:flex; align-items:center; gap:8px; margin: 12px 0 6px 0; font-size:0.85rem; color:#cbd5e1; text-align:left;">
           <input type="checkbox" id="logRememberMe" checked style="width:17px; height:17px; cursor:pointer;" />
           <label for="logRememberMe" style="cursor:pointer; margin:0;">Mantener sesión iniciada</label>
         </div>
-
         <button type="submit" class="btn-submit">Ingresar al Lobby</button>
       </form>
-
       <div class="auth-error" id="authError"></div>
     </div>
   </div>
@@ -460,13 +642,33 @@
       </div>
     </div>
     <div style="margin-bottom: 20px;">
-  <a href="https://chat.whatsapp.com/FrneWEons7oJAibQS64m4z" target="_blank" style="background-color: #25D366; color: #ffffff; padding: 10px 20px; border-radius: 8px; font-weight: 900; text-decoration: none; display: inline-block; font-size: 15px;">
+  <a href="https://chat.whatsapp.com/D7bCv6H6q1z5WRBHlqIItE?s=cl&p=a&mlu=4&ilr=4" target="_blank" style="background-color: #25D366; color: #ffffff; padding: 10px 20px; border-radius: 8px; font-weight: 900; text-decoration: none; display: inline-block; font-size: 15px;">
     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="currentColor" viewBox="0 0 16 16">
       <path d="M13.601 2.326A7.85 7.85 0 0 0 7.994 0C3.627 0 .068 3.558.064 7.926c0 1.399.366 2.76 1.057 3.965L0 16l4.204-1.102a7.9 7.9 0 0 0 3.79.965h.004c4.368 0 7.926-3.558 7.93-7.93A7.9 7.9 0 0 0 13.6 2.326zM7.994 14.521a6.6 6.6 0 0 1-3.356-.92l-.24-.144-2.494.654.666-2.433-.156-.251a6.56 6.56 0 0 1-1.007-3.505c0-3.626 2.957-6.584 6.591-6.584a6.56 6.56 0 0 1 4.66 1.931 6.56 6.56 0 0 1 1.928 4.66c-.004 3.639-2.961 6.592-6.592 6.592m3.615-4.934c-.197-.099-1.17-.578-1.353-.646-.182-.065-.315-.099-.445.099-.133.197-.513.646-.627.775-.114.133-.232.148-.43.05-.197-.1-.836-.308-1.592-.985-.59-.525-.985-1.175-1.103-1.372-.114-.198-.011-.304.088-.403.087-.088.197-.232.296-.346.1-.114.133-.198.198-.33.065-.134.034-.248-.015-.347-.05-.099-.445-1.076-.612-1.47-.16-.389-.323-.335-.445-.34-.114-.007-.247-.007-.38-.007a.73.73 0 0 0-.529.247c-.182.198-.691.677-.691 1.654s.71 1.916.81 2.049c.098.133 1.394 2.132 3.383 2.992.47.205.84.326 1.129.418.475.152.904.129 1.246.08.38-.058 1.171-.48 1.338-.943.164-.464.164-.86.114-.943-.05-.084-.182-.133-.38-.232"/>
     </svg>
-    Busca rivales en la comunidad de WhatsApp.
+    Unete al grupo y encontra tu próximo rival
   </a>
 </div>
+
+    <div class="lobby-section-title">ELEGÍ CÓMO QUERÉS JUGAR</div>
+    <div class="game-mode-selector">
+      <div class="game-mode-card active">
+        <div class="game-mode-title">🃏 Truco <span>1 vs 1</span></div>
+        <div class="game-mode-desc">Mesas individuales, gratis o con fichas. Todo el modo 1 vs 1 sigue funcionando exactamente como hasta ahora.</div>
+        <div class="game-mode-current">● Modo visible actualmente</div>
+      </div>
+      <div class="game-mode-card team">
+        <div class="game-mode-title">👥 Truco <span>2 vs 2</span></div>
+        <div class="game-mode-desc">Jugá por equipos con J1/J3 contra J2/J4, chat privado con tu compañero y las reglas del laboratorio 2 vs 2.</div>
+        <button type="button" class="game-mode-btn team" onclick="openTeam2v2()">Entrar al lobby 2 vs 2</button>
+      </div>
+    </div>
+
+    <div class="lobby-section-title">LOBBY 1 VS 1</div>
+    <div class="lobby-bot-card">
+      <div><strong>🤖 ¿No hay rivales conectados?</strong><span>Jugá una partida de práctica contra la máquina mientras esperás.</span></div>
+      <button type="button" class="btn-bot-lobby" onclick="startBotGame()">Jugar contra la máquina</button>
+    </div>
     <div class="create-table-card">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <span style="font-weight:bold; color:#ffd166; font-size:0.95rem;">➕ Crear Nueva Mesa</span>
@@ -501,6 +703,16 @@
 
     <h4 style="color:#94a3b8; border-bottom:1px solid #334155; padding-bottom:8px;">Mesas en Espera de Rival</h4>
     <div class="table-list" id="tableList"></div>
+  </div>
+
+  <!-- Modo 2 vs 2 integrado en la misma página principal -->
+  <div class="team-mode-container" id="teamModeContainer">
+    <div class="team-mode-toolbar">
+      <button type="button" class="team-mode-back" onclick="closeTeam2v2()">← Volver al lobby principal</button>
+      <strong>👥 Truco 2 vs 2</strong>
+      <span style="width:122px;"></span>
+    </div>
+    <iframe id="teamModeFrame" class="team-mode-frame" title="Truco Argentino Online 2 vs 2"></iframe>
   </div>
 
   <!-- Modal Perfil y Selector de Avatar -->
@@ -609,9 +821,11 @@
         | 
         <span id="rivalAvatarDisplay">🤠</span> Ellos: <span id="scoreEllos">0</span>
       </div>
-      <div class="turn-badge">Turno: <span id="lblTurn">-</span></div>
       <div class="timer-badge">⏱️ <span id="lblTimer">30</span>s</div>
-      <button id="btnAbandonar" onclick="handleLeaveButton()" style="background:#e63946; color:white; border:none; padding:6px 14px; border-radius:8px; font-weight:bold; font-size:0.85rem; cursor:pointer; transition:0.2s;">Abandonar mesa</button>
+      <div class="header-end">
+        <div class="turn-badge" title="Turno actual">Turno: <span id="lblTurn">-</span></div>
+        <button id="btnAbandonar" onclick="handleLeaveButton()" style="background:#e63946; color:white; border:none; padding:6px 14px; border-radius:8px; font-weight:bold; font-size:0.85rem; cursor:pointer; transition:0.2s;">Abandonar mesa</button>
+      </div>
     </div>
 
     <div class="truco-table">
@@ -698,7 +912,10 @@
     <div class="winner-card">
       <div style="font-size:2.2rem; font-weight:900; margin-bottom:10px; color:#ffd166;" id="winnerTitle">🏆 ¡PARTIDA FINALIZADA!</div>
       <div style="font-size:1.1rem; color:#e0e1dd; margin-bottom:25px;" id="winnerDesc">...</div>
-      <button class="action-btn" onclick="returnToLobbyAfterMatch()" style="background:#2ec4b6; font-size:1.1rem; padding:12px 28px;">Volver al Lobby</button>
+      <div id="winnerActions" style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap;">
+        <button id="winnerPrimaryBtn" class="action-btn" onclick="returnToLobbyAfterMatch()" style="background:#2ec4b6; font-size:1.05rem; padding:12px 24px;">Volver al Lobby</button>
+        <button id="winnerSecondaryBtn" class="action-btn" style="display:none; background:#0077b6; font-size:1.05rem; padding:12px 24px;">Jugar otra vez</button>
+      </div>
     </div>
   </div>
 
@@ -823,8 +1040,10 @@
     let currentUser = null;
     let activeRoomId = sessionStorage.getItem('truco_active_room') || null;
     let isGameStarted = false;
+    let currentGameIsBot = false;
     let pendingCategory = null;
     let currentMyCards = [];
+    let currentOriginalMyCards = [];
     let roomTargetPoints = 30;
     let roomWithFlor = true;
     let currentTrickIndex = 0;
@@ -1030,6 +1249,121 @@
       audio.play().catch(err => console.warn('Audio no disponible:', src, err));
     }
 
+    function showWelcomePanel() {
+      const overlay = document.getElementById('authOverlay');
+      const welcome = document.getElementById('welcomePanel');
+      const forms = document.getElementById('authFormPanel');
+      if (overlay) overlay.style.display = 'flex';
+      if (welcome) welcome.style.display = 'grid';
+      if (forms) forms.style.display = 'none';
+      const err = document.getElementById('authError');
+      if (err) err.style.display = 'none';
+      const btn = document.getElementById('btnStartGuestBot');
+      if (btn) { btn.disabled = false; btn.innerText = '🤖 JUGAR GRATIS CONTRA LA MÁQUINA'; }
+    }
+
+    function openAuthPanel(tab = 'register') {
+      triggerHaptic(15);
+      const overlay = document.getElementById('authOverlay');
+      const welcome = document.getElementById('welcomePanel');
+      const forms = document.getElementById('authFormPanel');
+      if (overlay) overlay.style.display = 'flex';
+      if (welcome) welcome.style.display = 'none';
+      if (forms) forms.style.display = 'block';
+      switchTab(tab);
+    }
+
+    function ensureSocket() {
+      if (!socket) {
+        socket = io({ transports: ['websocket', 'polling'] });
+        setupSocketListeners();
+      }
+      installGameResumeListeners();
+    }
+
+    function createGuestUser() {
+      const savedGuest = sessionStorage.getItem('truco_guest_user');
+      if (savedGuest) {
+        try { return JSON.parse(savedGuest); } catch(e) {}
+      }
+      const suffix = Math.random().toString(36).slice(2, 7).toUpperCase();
+      const guest = { username: `Invitado_${suffix}`, chips: 0, avatar: 'gaucho', isGuest: true };
+      sessionStorage.setItem('truco_guest_user', JSON.stringify(guest));
+      return guest;
+    }
+
+    function startBotGame() {
+      triggerHaptic(20);
+      if (!currentUser) currentUser = createGuestUser();
+      if (currentUser.isGuest) sessionStorage.setItem('truco_guest_user', JSON.stringify(currentUser));
+
+      currentGameIsBot = true;
+      const btn = document.getElementById('btnStartGuestBot');
+      if (btn) { btn.disabled = true; btn.innerText = '🃏 Preparando las cartas...'; }
+
+      ensureSocket();
+      resetTableVisuals(true);
+      socket.emit('start_bot_game', { userId: currentUser.username });
+    }
+
+    function resetFinishedGameView() {
+      sessionStorage.removeItem('truco_active_room');
+      activeRoomId = null;
+      isGameStarted = false;
+      currentGameIsBot = false;
+      hideGameChatUI();
+      resetGameChat();
+      resetTableVisuals(false);
+      document.getElementById('disconnectModal').style.display = 'none';
+      document.getElementById('winnerModal').style.display = 'none';
+      document.getElementById('gameContainer').style.display = 'none';
+    }
+
+    function showGuestWelcomeAfterGame() {
+      resetFinishedGameView();
+      sessionStorage.removeItem('truco_guest_user');
+      currentUser = null;
+      document.getElementById('lobbyContainer').style.display = 'none';
+      showWelcomePanel();
+    }
+
+    function registerAfterDemo() {
+      resetFinishedGameView();
+      sessionStorage.removeItem('truco_guest_user');
+      currentUser = null;
+      document.getElementById('lobbyContainer').style.display = 'none';
+      openAuthPanel('register');
+    }
+
+    function playDemoAgain() {
+      document.getElementById('winnerModal').style.display = 'none';
+      sessionStorage.removeItem('truco_active_room');
+      activeRoomId = null;
+      isGameStarted = false;
+      currentGameIsBot = true;
+      resetTableVisuals(true);
+      startBotGame();
+    }
+
+    function configureWinnerActions(forGuestDemo = false) {
+      const primary = document.getElementById('winnerPrimaryBtn');
+      const secondary = document.getElementById('winnerSecondaryBtn');
+      if (!primary || !secondary) return;
+
+      if (forGuestDemo) {
+        primary.innerText = 'Crear mi cuenta gratis';
+        primary.onclick = registerAfterDemo;
+        secondary.style.display = 'inline-block';
+        secondary.innerText = 'Jugar otra vez';
+        secondary.onclick = playDemoAgain;
+      } else {
+        primary.innerText = 'Volver al Lobby';
+        primary.onclick = returnToLobbyAfterMatch;
+        secondary.style.display = 'none';
+        secondary.onclick = null;
+      }
+    }
+
     function switchTab(tab) {
       triggerHaptic(15);
       const err = document.getElementById('authError');
@@ -1195,19 +1529,70 @@
       } catch { err.innerText = 'Error de conexión.'; err.style.display = 'block'; }
     }
 
+    function openTeam2v2() {
+      if (!currentUser || currentUser.isGuest) return;
+      triggerHaptic(20);
+
+      const lobby = document.getElementById('lobbyContainer');
+      const teamContainer = document.getElementById('teamModeContainer');
+      const frame = document.getElementById('teamModeFrame');
+      if (!lobby || !teamContainer || !frame) return;
+
+      const user = encodeURIComponent(currentUser.username || '');
+      sessionStorage.setItem('team2v2_mode_open', '1');
+      const desiredSrc = `/team.html?embedded=1&user=${user}`;
+      if (!frame.getAttribute('src')) frame.setAttribute('src', desiredSrc);
+
+      lobby.style.display = 'none';
+      teamContainer.style.display = 'flex';
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+
+    function closeTeam2v2() {
+      triggerHaptic(15);
+      sessionStorage.removeItem('team2v2_mode_open');
+      const lobby = document.getElementById('lobbyContainer');
+      const teamContainer = document.getElementById('teamModeContainer');
+      if (teamContainer) teamContainer.style.display = 'none';
+      if (lobby) lobby.style.display = 'flex';
+      if (socket) socket.emit('request_tables');
+      if (currentUser?.username) {
+        fetch(`/api/wallet/balance/${encodeURIComponent(currentUser.username)}`)
+          .then(res => res.json())
+          .then(data => { if (data.chips !== undefined) updateChipsDisplay(data.chips); })
+          .catch(() => {});
+      }
+      window.scrollTo({ top: 0, behavior: 'auto' });
+    }
+
+    window.addEventListener('message', (event) => {
+      if (event.origin !== window.location.origin) return;
+      if (event.data?.type === 'team2v2_invalid_session') {
+        localStorage.removeItem('truco_saved_user');
+        sessionStorage.removeItem('truco_saved_user');
+        sessionStorage.removeItem('truco_active_room');
+        currentUser = null;
+        activeRoomId = null;
+        alert(event.data?.message || 'La cuenta guardada ya no existe. Iniciá sesión nuevamente.');
+        window.location.reload();
+        return;
+      }
+      if (event.data?.type !== 'team2v2_balance') return;
+      const balance = Number(event.data.balance);
+      if (Number.isFinite(balance) && currentUser) updateChipsDisplay(balance);
+    });
+
     function initLobby() {
       document.getElementById('authOverlay').style.display = 'none';
+      const teamModeContainer = document.getElementById('teamModeContainer');
+      if (teamModeContainer) teamModeContainer.style.display = 'none';
       document.getElementById('lobbyContainer').style.display = 'flex';
       document.getElementById('lobbyUsername').innerText = currentUser.username;
       updateAvatarDisplay();
       updateChipsDisplay(currentUser.chips || 0);
 
-      if (!socket) {
-        socket = io({ transports: ['websocket', 'polling'] });
-        setupSocketListeners();
-      }
-
-      installGameResumeListeners();
+      currentGameIsBot = false;
+      ensureSocket();
       socket.emit('request_tables');
 
       if (!window.tablesInterval) {
@@ -1220,6 +1605,13 @@
 
       if (activeRoomId) {
         socket.emit('reconnect_game', { roomId: activeRoomId, userId: currentUser.username });
+      }
+
+      // Si el usuario actualizó la página mientras estaba dentro del 2v2,
+      // reabrimos automáticamente el iframe. La sala real se recupera luego
+      // desde el servidor por team_reconnect_room, sin tocar turnos ni fichas.
+      if (sessionStorage.getItem('team2v2_mode_open') === '1' && !currentUser.isGuest) {
+        setTimeout(() => openTeam2v2(), 0);
       }
     }
 
@@ -1445,6 +1837,7 @@
 
     function resetTableVisuals(isPlaying = false) {
       currentMyCards = [];
+      currentOriginalMyCards = [];
       currentTurnPlayer = '';
       
       const disc = document.getElementById('disconnectModal');
@@ -1500,9 +1893,18 @@
       activeRoomId = roomId;
       isGameStarted = isPlaying;
       sessionStorage.setItem('truco_active_room', roomId);
+
+      if (isPlaying) {
+        restoreStoredGameLog(roomId);
+      } else {
+        clearStoredGameLog(roomId);
+        const gameLogBox = document.getElementById('gameLogs');
+        if (gameLogBox) gameLogBox.innerHTML = '<div>🟢 Esperando al rival para comenzar...</div>';
+      }
       roomTargetPoints = Number(points) || 30;
       roomWithFlor = parseBoolean(flor);
 
+      document.getElementById('authOverlay').style.display = 'none';
       document.getElementById('lobbyContainer').style.display = 'none';
       document.getElementById('gameContainer').style.display = 'flex';
       document.getElementById('gameActions').style.display = 'flex';
@@ -1527,6 +1929,16 @@
 
     function handleLeaveButton() {
       triggerHaptic(25);
+
+      if (currentGameIsBot && isGameStarted) {
+        const confirmar = confirm('¿Querés salir de la partida de práctica contra la máquina?');
+        if (!confirmar) return;
+        if (socket && activeRoomId) socket.emit('surrender_match', { roomId: activeRoomId, userId: currentUser.username });
+        if (currentUser?.isGuest) showGuestWelcomeAfterGame();
+        else returnToLobbyAfterMatch();
+        return;
+      }
+
       if (!isGameStarted) {
         socket.emit('cancel_waiting_table', { roomId: activeRoomId, userId: currentUser.username });
       } else {
@@ -1540,6 +1952,13 @@
     }
 
     function returnToLobbyAfterMatch() {
+      if (currentUser?.isGuest) {
+        showGuestWelcomeAfterGame();
+        return;
+      }
+
+      const finishedRoomId = activeRoomId;
+      clearStoredGameLog(finishedRoomId);
       sessionStorage.removeItem('truco_active_room');
       activeRoomId = null;
       isGameStarted = false;
@@ -1562,21 +1981,50 @@
       return `/cards/${cardId.toLowerCase()}.png`;
     }
 
+    function getGameLogStorageKey(roomId = activeRoomId) {
+      return roomId ? `truco_game_log_${roomId}` : '';
+    }
+
+    function clearStoredGameLog(roomId = activeRoomId) {
+      const key = getGameLogStorageKey(roomId);
+      if (key) sessionStorage.removeItem(key);
+    }
+
+    function restoreStoredGameLog(roomId = activeRoomId) {
+      const box = document.getElementById('gameLogs');
+      if (!box) return;
+      const key = getGameLogStorageKey(roomId);
+      const saved = key ? sessionStorage.getItem(key) : null;
+      box.innerHTML = saved || '';
+      box.scrollTop = box.scrollHeight;
+    }
+
     function log(msg) {
       const box = document.getElementById('gameLogs');
       box.innerHTML += `<div>${msg}</div>`;
       box.scrollTop = box.scrollHeight;
+
+      const key = getGameLogStorageKey();
+      if (key) sessionStorage.setItem(key, box.innerHTML);
+
+      // El historial autoritativo vive en la sala del servidor.
+      if (socket && activeRoomId && isGameStarted) {
+        socket.emit('game_log_line', { roomId: activeRoomId, message: String(msg) });
+      }
     }
 
     function getCardEnvidoVal(num) { return (num >= 10 && num <= 12) ? 0 : num; }
 
     function getMyEnvidoScore() {
-      if (!currentMyCards || currentMyCards.length === 0) return 0;
+      const scoreCards = (currentOriginalMyCards && currentOriginalMyCards.length)
+        ? currentOriginalMyCards
+        : currentMyCards;
+      if (!scoreCards || scoreCards.length === 0) return 0;
       
       const isFlorConflict = pendingCategory === 'FLOR' || document.getElementById('envidoTitle')?.innerText.includes('FLOR');
 
       const suits = {};
-      currentMyCards.forEach(c => {
+      scoreCards.forEach(c => {
         const s = (c.suit || '').toLowerCase();
         suits[s] = suits[s] || [];
         suits[s].push(c);
@@ -1604,7 +2052,7 @@
       }
 
       if (maxScore === -1) {
-        currentMyCards.forEach(c => {
+        scoreCards.forEach(c => {
           const v = getCardEnvidoVal(c.number);
           if (v > maxScore) maxScore = v;
         });
@@ -1613,10 +2061,13 @@
     }
 
     function checkIfIHaveFlor() {
-      if (!roomWithFlor || !currentMyCards || currentMyCards.length < 3) return false;
-      const s0 = (currentMyCards[0].suit || '').toLowerCase();
-      const s1 = (currentMyCards[1].suit || '').toLowerCase();
-      const s2 = (currentMyCards[2].suit || '').toLowerCase();
+      const florCards = (currentOriginalMyCards && currentOriginalMyCards.length)
+        ? currentOriginalMyCards
+        : currentMyCards;
+      if (!roomWithFlor || !florCards || florCards.length < 3) return false;
+      const s0 = (florCards[0].suit || '').toLowerCase();
+      const s1 = (florCards[1].suit || '').toLowerCase();
+      const s2 = (florCards[2].suit || '').toLowerCase();
       return Boolean(s0 && s0 === s1 && s1 === s2);
     }
 
@@ -1715,7 +2166,7 @@
           // Tras re-vincular el socket a la sala, pedimos el estado real de juego.
           setTimeout(() => requestLiveGameState('socket_connect'), 80);
         }
-        if (currentUser && currentUser.username) {
+        if (currentUser && currentUser.username && !currentUser.isGuest) {
           socket.emit('check_active_game', { userId: currentUser.username });
         }
       });
@@ -1727,10 +2178,22 @@
       });
 
       socket.on('sync_game_state', (data) => {
+        currentGameIsBot = !!data.isBotGame;
         enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, true);
+
+        // Al reconectar, el servidor reemplaza el log local con el historial completo de la sala.
+        if (Array.isArray(data.logs)) {
+          const gameLogBox = document.getElementById('gameLogs');
+          if (gameLogBox) {
+            gameLogBox.innerHTML = data.logs.map(line => `<div>${line}</div>`).join('');
+            gameLogBox.scrollTop = gameLogBox.scrollHeight;
+            const key = getGameLogStorageKey(data.roomId);
+            if (key) sessionStorage.setItem(key, gameLogBox.innerHTML);
+          }
+        }
         setGameChatRival(data.rivalUsername || currentRivalUsername);
-        showGameChatButton();
-        document.getElementById('disconnectModal').style.display = 'none';
+        if (currentGameIsBot) hideGameChatUI();
+        else showGameChatButton();
         document.getElementById('envidoOverlay').style.display = 'none';
         document.getElementById('gameActions').style.display = 'flex';
         setScores(data.scores);
@@ -1746,6 +2209,7 @@
         }
 
         currentMyCards = data.myCards || [];
+        currentOriginalMyCards = data.myOriginalCards || currentMyCards;
         const myCardsContainer = document.getElementById('myCards');
         myCardsContainer.innerHTML = '';
         currentMyCards.forEach((c, idx) => {
@@ -1781,10 +2245,37 @@
               img.src = getCardSrc(cardObj.cardId);
               slot.appendChild(img);
             });
+
+            const trickWinnerId = Array.isArray(data.trickWinners) ? data.trickWinners[i] : null;
+            if (trickWinnerId && trickWinnerId !== 'PARDA') {
+              slot.querySelectorAll('.card-in-trick').forEach(card => {
+                if ((card.dataset.owner || '').toLowerCase() === trickWinnerId.toLowerCase()) {
+                  card.classList.add('matadora');
+                } else {
+                  card.classList.add('matada');
+                }
+              });
+            }
           }
         }
 
         syncTimerFromGameState(data);
+
+        const disconnectedUser = (data.disconnectedUser || '').toString();
+        const disconnectedIsMe = disconnectedUser && currentUser?.username &&
+          disconnectedUser.toLowerCase() === currentUser.username.toLowerCase();
+        if (disconnectedUser && !disconnectedIsMe) {
+          const disconnectModal = document.getElementById('disconnectModal');
+          disconnectModal.style.display = 'flex';
+          document.getElementById('disconnectText').innerText = `El jugador @${disconnectedUser} se desconectó. Esperando reconexión...`;
+          const left = Number.isFinite(Number(data.disconnectSecondsLeft))
+            ? Math.max(0, Math.ceil(Number(data.disconnectSecondsLeft)))
+            : 45;
+          document.getElementById('disconnectTimer').innerText = `${left}s`;
+        } else {
+          document.getElementById('disconnectModal').style.display = 'none';
+        }
+
         updateTurnControls(data.currentTurn);
       });
 
@@ -1799,6 +2290,17 @@
       });
 
       socket.on('disconnect_timer_tick', (data) => {
+        const disconnectedUser = (data.disconnectedUser || '').toString();
+        const isMe = disconnectedUser && currentUser?.username &&
+          disconnectedUser.toLowerCase() === currentUser.username.toLowerCase();
+
+        if (disconnectedUser && !isMe) {
+          const modal = document.getElementById('disconnectModal');
+          if (modal) modal.style.display = 'flex';
+          const text = document.getElementById('disconnectText');
+          if (text) text.innerText = `El jugador @${disconnectedUser} se desconectó. Esperando reconexión...`;
+        }
+
         const timer = document.getElementById('disconnectTimer');
         if (timer) timer.innerText = `${data.secondsLeft}s`;
       });
@@ -1833,18 +2335,24 @@
 
       socket.on('game_ready', (data) => {
         resetGameChat();
+        clearStoredGameLog(data.roomId);
+        const gameLogBox = document.getElementById('gameLogs');
+        if (gameLogBox) gameLogBox.innerHTML = '';
+        currentGameIsBot = !!data.isBotGame;
         enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, true);
         resetTableVisuals(true);
         roomWithFlor = parseBoolean(data.withFlor);
 
         const isP1 = (data.creatorId || '').toLowerCase() === currentUser.username.toLowerCase();
         setGameChatRival(isP1 ? data.guestId : data.creatorId);
-        showGameChatButton();
+        if (currentGameIsBot) hideGameChatUI();
+        else showGameChatButton();
         currentRivalAvatar = isP1 ? data.guestAvatar : data.creatorAvatar;
         document.getElementById('rivalAvatarDisplay').innerText = getAvatarEmoji(currentRivalAvatar);
 
         const potMsg = data.pot > 0 ? `Pozo en juego: $${new Intl.NumberFormat('es-AR').format(data.pot)} ARS` : '¡Partida Amistosa (Gratis)!';
-        log(`🏆 ¡Rival encontrado! ${potMsg}`);
+        if (currentGameIsBot) log('🤖 <strong>Modo de prueba:</strong> estás jugando contra La Máquina.');
+        else log(`🏆 ¡Rival encontrado! ${potMsg}`);
       });
 
       socket.on('timer_tick', (data) => {
@@ -1886,6 +2394,7 @@
         const isP1 = (data.p1Id || '').toLowerCase() === currentUser.username.toLowerCase();
         const myCards = isP1 ? data.p1Cards : data.p2Cards;
         currentMyCards = myCards || [];
+        currentOriginalMyCards = [...currentMyCards];
 
         if (data.withFlor !== undefined) {
           roomWithFlor = parseBoolean(data.withFlor);
@@ -2104,7 +2613,10 @@
       });
 
       socket.on('start_envido_declaration', (data) => {
-        if (!data.silentSync) playAudio('quiero');
+        if (!data.silentSync) {
+          playAudio('quiero');
+          if (data.acceptedBy) log(`✅ <strong>${data.acceptedBy}</strong> dijo: <strong>Quiero</strong>.`);
+        }
         document.getElementById('gameActions').style.display = 'flex';
         document.getElementById('envidoGroup').style.display = 'none';
         document.getElementById('florGroup').style.display = 'none';
@@ -2265,6 +2777,7 @@
 
       socket.on('match_finished', (data) => {
         sessionStorage.removeItem('truco_active_room');
+        currentGameIsBot = !!data.isBotGame || currentGameIsBot;
         hideGameChatUI();
         setScores(data.scores);
         document.getElementById('disconnectModal').style.display = 'none';
@@ -2283,8 +2796,25 @@
         const potText = data.pot > 0 
           ? `Pozo neto ganado: $${new Intl.NumberFormat('es-AR').format(data.pot)} ARS` 
           : 'Partida Amistosa (Gratis)';
-        desc.innerText = `Ganador: ${data.winnerId} | ${potText}`;
-        modal.style.display = 'flex';
+
+        if (currentGameIsBot && currentUser?.isGuest) {
+          desc.innerText = `${isWinner ? '¡Muy buena partida!' : 'La Máquina se quedó con esta.'} Creá tu cuenta gratis para entrar al lobby y jugar contra personas reales.`;
+          configureWinnerActions(true);
+        } else {
+          desc.innerText = `Ganador: ${data.winnerId} | ${potText}`;
+          configureWinnerActions(false);
+        }
+
+        // Dejar visible la última jugada antes de tapar la mesa con el cartel final.
+        // El resultado ya está resuelto en el servidor; sólo demoramos el overlay visual.
+        modal.style.display = 'none';
+        setTimeout(() => {
+          modal.style.display = 'flex';
+        }, 2000);
+      });
+
+      socket.on('bot_game_closed', () => {
+        // El cliente ya vuelve de inmediato; este evento sólo confirma que el servidor limpió la prueba.
       });
 
       socket.on('chat_message', (data) => {
@@ -2296,7 +2826,21 @@
         alert(data?.message || 'No se pudo enviar el mensaje.');
       });
 
-      socket.on('error_action', (data) => { alert(data.message); });
+      socket.on('session_invalid', (data) => {
+        localStorage.removeItem('truco_saved_user');
+        sessionStorage.removeItem('truco_saved_user');
+        sessionStorage.removeItem('truco_active_room');
+        currentUser = null;
+        activeRoomId = null;
+        alert(data?.message || 'La cuenta guardada ya no existe. Iniciá sesión nuevamente.');
+        window.location.reload();
+      });
+
+      socket.on('error_action', (data) => {
+        const btn = document.getElementById('btnStartGuestBot');
+        if (btn && !isGameStarted) { btn.disabled = false; btn.innerText = '🤖 JUGAR GRATIS CONTRA LA MÁQUINA'; }
+        alert(data.message);
+      });
       socket.on('error_action_player', (data) => {
         if (data.targetUser.toLowerCase() === currentUser.username.toLowerCase()) alert(data.message);
       });
@@ -2356,19 +2900,53 @@
       if (saved) {
         try {
           currentUser = JSON.parse(saved);
-          fetch(`/api/wallet/balance/${currentUser.username}`)
-            .then(res => res.json())
-            .then(data => {
-              if (data && data.chips !== undefined) {
-                currentUser.chips = data.chips;
+          const savedUsername = String(currentUser?.username || '').trim();
+          if (!savedUsername) throw new Error('Sesión inválida');
+
+          fetch(`/api/auth/session/${encodeURIComponent(savedUsername)}`)
+            .then(async res => {
+              if (res.status === 404) {
+                localStorage.removeItem('truco_saved_user');
+                sessionStorage.removeItem('truco_saved_user');
+                sessionStorage.removeItem('truco_active_room');
+                currentUser = null;
+                activeRoomId = null;
+                showWelcomePanel();
+                return null;
               }
+              if (!res.ok) throw new Error('No se pudo validar la sesión');
+              return fetch(`/api/wallet/balance/${encodeURIComponent(savedUsername)}`);
+            })
+            .then(res => res ? res.json() : null)
+            .then(data => {
+              if (!currentUser) return;
+              if (data && data.chips !== undefined) currentUser.chips = data.chips;
               initLobby();
             })
-            .catch(() => initLobby());
+            .catch(() => {
+              // Ante una caída temporal de la BD no borramos la sesión guardada, pero tampoco habilitamos el lobby.
+              currentUser = null;
+              showWelcomePanel();
+            });
+          return;
         } catch {
-          // Ignorar y mostrar formulario
+          localStorage.removeItem('truco_saved_user');
+          sessionStorage.removeItem('truco_saved_user');
         }
       }
+
+      const guestSaved = sessionStorage.getItem('truco_guest_user');
+      if (guestSaved && activeRoomId) {
+        try {
+          currentUser = JSON.parse(guestSaved);
+          currentGameIsBot = true;
+          ensureSocket();
+          return;
+        } catch {}
+      }
+
+      if (!activeRoomId) sessionStorage.removeItem('truco_guest_user');
+      showWelcomePanel();
     });
   </script>
 </body>

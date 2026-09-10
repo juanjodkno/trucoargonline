@@ -5,16 +5,21 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.pool = exports.ALLOWED_AVATARS = exports.RAKE_RATE = exports.RAKE_PERCENTAGE = void 0;
 exports.calculateMatchPayout = calculateMatchPayout;
+exports.calculateTeamMatchPayout = calculateTeamMatchPayout;
 exports.initDatabase = initDatabase;
 exports.registerUser = registerUser;
 exports.loginUser = loginUser;
 exports.resetUserPassword = resetUserPassword;
 exports.getUserChips = getUserChips;
 exports.getUserChipsFresh = getUserChipsFresh;
+exports.userExistsFresh = userExistsFresh;
 exports.modifyUserChips = modifyUserChips;
 exports.modifyUserChipsAtomic = modifyUserChipsAtomic;
 exports.debitRoomEntry = debitRoomEntry;
 exports.refundRoomEntry = refundRoomEntry;
+exports.debitTeamRoomEntry = debitTeamRoomEntry;
+exports.refundTeamRoomEntry = refundTeamRoomEntry;
+exports.settleTeamMatchOnce = settleTeamMatchOnce;
 exports.settleMatchOnce = settleMatchOnce;
 exports.getUserAvatar = getUserAvatar;
 exports.updateUserAvatar = updateUserAvatar;
@@ -48,6 +53,22 @@ function calculateMatchPayout(betPerPlayer) {
     const winnerPrize = grossPot - rakeAmount;
     return { betPerPlayer: bet, grossPot, rakeAmount, winnerPrize };
 }
+function calculateTeamMatchPayout(betPerPlayer) {
+    const bet = Math.max(0, Math.round(Number(betPerPlayer) || 0));
+    const grossPot = bet * 4;
+    const rakeAmount = Math.round(grossPot * exports.RAKE_RATE);
+    const winnerPrizeTotal = grossPot - rakeAmount;
+    // Se reparte el premio exacto entre los dos ganadores sin crear ni perder fichas.
+    const winner1Prize = Math.floor(winnerPrizeTotal / 2);
+    const winner2Prize = winnerPrizeTotal - winner1Prize;
+    return {
+        betPerPlayer: bet,
+        grossPot,
+        rakeAmount,
+        winnerPrizeTotal,
+        winnerPrizes: [winner1Prize, winner2Prize]
+    };
+}
 exports.ALLOWED_AVATARS = [
     'gaucho',
     'mate',
@@ -76,6 +97,7 @@ let localRakeCounterResetAt = null;
 // Fallback idempotente para localhost cuando no hay PostgreSQL configurado.
 const localWalletOperations = new Map();
 const localSettlements = new Map();
+const localTeamSettlements = new Map();
 function cleanUsername(username) {
     return (username || '').trim().toLowerCase();
 }
@@ -200,6 +222,31 @@ async function initDatabase() {
         rake_amount BIGINT NOT NULL,
         winner_balance_after BIGINT,
         loser_balance_after BIGINT,
+        finish_reason VARCHAR(50) NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+        // Liquidaciones 2 vs 2 separadas de las 1 vs 1. room_id sigue siendo único:
+        // un partido 2v2 solo puede pagar una vez, aun si el evento se repite.
+        await client.query(`
+      CREATE TABLE IF NOT EXISTS team_match_settlements (
+        room_id VARCHAR(100) PRIMARY KEY,
+        winner_team VARCHAR(1) NOT NULL,
+        winner1_username VARCHAR(100) NOT NULL,
+        winner2_username VARCHAR(100) NOT NULL,
+        loser1_username VARCHAR(100) NOT NULL,
+        loser2_username VARCHAR(100) NOT NULL,
+        bet_per_player BIGINT NOT NULL,
+        gross_pot BIGINT NOT NULL,
+        winner_prize_total BIGINT NOT NULL,
+        winner1_prize BIGINT NOT NULL,
+        winner2_prize BIGINT NOT NULL,
+        rake_percentage INTEGER NOT NULL DEFAULT 7,
+        rake_amount BIGINT NOT NULL,
+        winner1_balance_after BIGINT,
+        winner2_balance_after BIGINT,
+        loser1_balance_after BIGINT,
+        loser2_balance_after BIGINT,
         finish_reason VARCHAR(50) NOT NULL,
         created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
       );
@@ -379,6 +426,27 @@ async function getUserChipsFresh(username) {
     }
 }
 /**
+ * Verifica de forma autoritativa que una cuenta registrada siga existiendo.
+ * En producción consulta PostgreSQL; en localhost sin DATABASE_URL usa el cache local.
+ * No autentica invitados del modo práctica contra la máquina.
+ */
+async function userExistsFresh(username) {
+    const clean = cleanUsername(username);
+    if (!clean)
+        return false;
+    if (!DATABASE_URL) {
+        return usersCache.some(u => cleanUsername(u.username) === clean);
+    }
+    try {
+        const res = await exports.pool.query('SELECT 1 FROM users WHERE LOWER(username) = $1 LIMIT 1', [clean]);
+        return res.rows.length > 0;
+    }
+    catch (err) {
+        console.error('Error validando existencia de usuario en PostgreSQL:', err);
+        throw err;
+    }
+}
+/**
  * Compatibilidad con código antiguo/local. Para operaciones reales de saldo en
  * endpoints y mesas usar modifyUserChipsAtomic/debitRoomEntry/refundRoomEntry/
  * settleMatchOnce, que esperan confirmación de PostgreSQL.
@@ -547,6 +615,264 @@ async function refundRoomEntry(roomId, username, amount) {
         catch { }
         console.error(`[REFUND ERROR] ${roomId}/${clean}:`, err);
         return { success: false, message: 'Error de base de datos al devolver la entrada.' };
+    }
+    finally {
+        client.release();
+    }
+}
+async function debitTeamRoomEntry(roomId, username, amount, entryToken) {
+    const bet = Math.max(0, integerAmount(amount));
+    const clean = cleanUsername(username);
+    const token = String(entryToken || '').trim();
+    if (!clean || !token)
+        return { success: false, message: 'Entrada 2v2 inválida.' };
+    if (bet === 0)
+        return { success: true, balance: await getUserChipsFresh(clean) };
+    return applyRoomWalletOperation(`${roomId}:TEAM_ENTRY:${clean}:${token}`, roomId, clean, 'TEAM_ENTRY', -bet);
+}
+async function refundTeamRoomEntry(roomId, username, amount, entryToken) {
+    const clean = cleanUsername(username);
+    const bet = Math.max(0, integerAmount(amount));
+    const token = String(entryToken || '').trim();
+    if (!clean || !token)
+        return { success: false, message: 'Devolución 2v2 inválida.' };
+    if (bet === 0)
+        return { success: true, balance: await getUserChipsFresh(clean) };
+    const entryKey = `${roomId}:TEAM_ENTRY:${clean}:${token}`;
+    const refundKey = `${roomId}:TEAM_REFUND:${clean}:${token}`;
+    if (!DATABASE_URL) {
+        const entry = localWalletOperations.get(entryKey);
+        if (!entry?.success)
+            return { success: false, message: 'No existe una entrada 2v2 debitada para devolver.' };
+        const previous = localWalletOperations.get(refundKey);
+        if (previous)
+            return { ...previous, alreadyProcessed: true };
+        const result = await modifyUserChipsAtomic(clean, bet);
+        if (result.success)
+            localWalletOperations.set(refundKey, result);
+        return result;
+    }
+    const client = await exports.pool.connect();
+    try {
+        await client.query('BEGIN');
+        const entryRes = await client.query(`SELECT amount FROM wallet_operations
+       WHERE idempotency_key = $1 AND room_id = $2 AND LOWER(username) = $3
+       FOR UPDATE`, [entryKey, roomId, clean]);
+        if (!entryRes.rows.length || Number(entryRes.rows[0].amount) !== -bet) {
+            await client.query('ROLLBACK');
+            return { success: false, message: 'No existe una entrada 2v2 válida para devolver.' };
+        }
+        const reserved = await client.query(`INSERT INTO wallet_operations
+       (idempotency_key, room_id, username, operation_type, amount, balance_after)
+       VALUES ($1, $2, $3, 'TEAM_REFUND', $4, NULL)
+       ON CONFLICT (idempotency_key) DO NOTHING
+       RETURNING idempotency_key`, [refundKey, roomId, clean, bet]);
+        if (!reserved.rows.length) {
+            const previous = await client.query('SELECT balance_after FROM wallet_operations WHERE idempotency_key = $1', [refundKey]);
+            await client.query('COMMIT');
+            const balance = Number(previous.rows[0]?.balance_after) || await getUserChipsFresh(clean);
+            syncUserCacheBalance(clean, balance);
+            return { success: true, alreadyProcessed: true, balance };
+        }
+        const changed = await client.query(`UPDATE users SET chips = chips + $1
+       WHERE LOWER(username) = $2
+       RETURNING chips`, [bet, clean]);
+        if (!changed.rows.length) {
+            await client.query('ROLLBACK');
+            return { success: false, message: 'Usuario inexistente.' };
+        }
+        const balance = Number(changed.rows[0].chips) || 0;
+        await client.query('UPDATE wallet_operations SET balance_after = $1 WHERE idempotency_key = $2', [balance, refundKey]);
+        await client.query('COMMIT');
+        syncUserCacheBalance(clean, balance);
+        return { success: true, balance };
+    }
+    catch (err) {
+        try {
+            await client.query('ROLLBACK');
+        }
+        catch { }
+        console.error(`[TEAM REFUND ERROR] ${roomId}/${clean}:`, err);
+        return { success: false, message: 'Error de base de datos al devolver la entrada 2v2.' };
+    }
+    finally {
+        client.release();
+    }
+}
+function teamSettlementFromRow(r) {
+    const winners = [r.winner1_username, r.winner2_username].map(cleanUsername);
+    const losers = [r.loser1_username, r.loser2_username].map(cleanUsername);
+    const winnerBalancesAfter = {
+        [winners[0]]: Number(r.winner1_balance_after) || 0,
+        [winners[1]]: Number(r.winner2_balance_after) || 0
+    };
+    const loserBalancesAfter = {
+        [losers[0]]: Number(r.loser1_balance_after) || 0,
+        [losers[1]]: Number(r.loser2_balance_after) || 0
+    };
+    return {
+        roomId: r.room_id,
+        winnerTeam: r.winner_team === 'B' ? 'B' : 'A',
+        winnerUsernames: winners,
+        loserUsernames: losers,
+        betPerPlayer: Number(r.bet_per_player) || 0,
+        grossPot: Number(r.gross_pot) || 0,
+        winnerPrizeTotal: Number(r.winner_prize_total) || 0,
+        winnerPrizes: [Number(r.winner1_prize) || 0, Number(r.winner2_prize) || 0],
+        rakePercentage: Number(r.rake_percentage) || exports.RAKE_PERCENTAGE,
+        rakeAmount: Number(r.rake_amount) || 0,
+        winnerBalancesAfter,
+        loserBalancesAfter,
+        finishReason: r.finish_reason || 'SCORE',
+        createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
+    };
+}
+async function settleTeamMatchOnce(params) {
+    const winners = params.winnerUsernames.map(cleanUsername);
+    const losers = params.loserUsernames.map(cleanUsername);
+    const allUsers = [...winners, ...losers];
+    const payout = calculateTeamMatchPayout(params.betPerPlayer);
+    if (winners.length !== 2 || losers.length !== 2 || new Set(allUsers).size !== 4 || allUsers.some(u => !u)) {
+        return { success: false, message: 'Jugadores inválidos para liquidación 2v2.' };
+    }
+    if (params.entries.length !== 4) {
+        return { success: false, message: 'Faltan entradas para liquidar la mesa 2v2.' };
+    }
+    const normalizedEntries = params.entries.map(e => ({
+        username: cleanUsername(e.username),
+        entryToken: String(e.entryToken || '').trim()
+    }));
+    if (normalizedEntries.some(e => !e.username || !e.entryToken)) {
+        return { success: false, message: 'Entradas 2v2 inválidas.' };
+    }
+    if (!DATABASE_URL) {
+        const old = localTeamSettlements.get(params.roomId);
+        if (old)
+            return { success: true, alreadySettled: true, settlement: old };
+        if (payout.betPerPlayer > 0) {
+            for (const e of normalizedEntries) {
+                const entryKey = `${params.roomId}:TEAM_ENTRY:${e.username}:${e.entryToken}`;
+                const refundKey = `${params.roomId}:TEAM_REFUND:${e.username}:${e.entryToken}`;
+                if (!localWalletOperations.get(entryKey)?.success || localWalletOperations.get(refundKey)?.success) {
+                    return { success: false, message: 'La liquidación 2v2 fue bloqueada porque una entrada no está confirmada.' };
+                }
+            }
+        }
+        const winnerBalancesAfter = {};
+        const loserBalancesAfter = {};
+        for (let i = 0; i < winners.length; i++) {
+            const prize = payout.winnerPrizes[i];
+            if (prize > 0) {
+                const credit = await modifyUserChipsAtomic(winners[i], prize);
+                if (!credit.success)
+                    return { success: false, message: credit.message };
+            }
+            winnerBalancesAfter[winners[i]] = getUserChips(winners[i]);
+        }
+        for (const loser of losers)
+            loserBalancesAfter[loser] = getUserChips(loser);
+        const settlement = {
+            roomId: params.roomId,
+            winnerTeam: params.winnerTeam,
+            winnerUsernames: winners,
+            loserUsernames: losers,
+            betPerPlayer: payout.betPerPlayer,
+            grossPot: payout.grossPot,
+            winnerPrizeTotal: payout.winnerPrizeTotal,
+            winnerPrizes: payout.winnerPrizes,
+            rakePercentage: exports.RAKE_PERCENTAGE,
+            rakeAmount: payout.rakeAmount,
+            winnerBalancesAfter,
+            loserBalancesAfter,
+            finishReason: params.finishReason,
+            createdAt: new Date().toISOString()
+        };
+        localTeamSettlements.set(params.roomId, settlement);
+        return { success: true, settlement };
+    }
+    const client = await exports.pool.connect();
+    try {
+        await client.query('BEGIN');
+        const inserted = await client.query(`INSERT INTO team_match_settlements
+       (room_id, winner_team, winner1_username, winner2_username, loser1_username, loser2_username,
+        bet_per_player, gross_pot, winner_prize_total, winner1_prize, winner2_prize,
+        rake_percentage, rake_amount, finish_reason)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       ON CONFLICT (room_id) DO NOTHING
+       RETURNING created_at`, [params.roomId, params.winnerTeam, winners[0], winners[1], losers[0], losers[1],
+            payout.betPerPlayer, payout.grossPot, payout.winnerPrizeTotal,
+            payout.winnerPrizes[0], payout.winnerPrizes[1], exports.RAKE_PERCENTAGE, payout.rakeAmount, params.finishReason]);
+        if (!inserted.rows.length) {
+            const existingRes = await client.query('SELECT * FROM team_match_settlements WHERE room_id = $1', [params.roomId]);
+            await client.query('COMMIT');
+            if (!existingRes.rows.length)
+                return { success: false, message: 'No se pudo recuperar la liquidación 2v2 existente.' };
+            const existing = teamSettlementFromRow(existingRes.rows[0]);
+            for (const [u, b] of Object.entries(existing.winnerBalancesAfter))
+                syncUserCacheBalance(u, b);
+            for (const [u, b] of Object.entries(existing.loserBalancesAfter))
+                syncUserCacheBalance(u, b);
+            return { success: true, alreadySettled: true, settlement: existing };
+        }
+        if (payout.betPerPlayer > 0) {
+            const entryKeys = normalizedEntries.map(e => `${params.roomId}:TEAM_ENTRY:${e.username}:${e.entryToken}`);
+            const refundKeys = normalizedEntries.map(e => `${params.roomId}:TEAM_REFUND:${e.username}:${e.entryToken}`);
+            const entriesRes = await client.query(`SELECT idempotency_key, LOWER(username) AS username, amount
+         FROM wallet_operations
+         WHERE room_id = $1 AND idempotency_key = ANY($2::text[])
+         FOR UPDATE`, [params.roomId, entryKeys]);
+            const refundsRes = await client.query(`SELECT idempotency_key
+         FROM wallet_operations
+         WHERE room_id = $1 AND idempotency_key = ANY($2::text[])`, [params.roomId, refundKeys]);
+            if (entriesRes.rows.length !== 4 || refundsRes.rows.length > 0 ||
+                entriesRes.rows.some((r) => Number(r.amount) !== -payout.betPerPlayer)) {
+                await client.query('ROLLBACK');
+                return { success: false, message: 'La liquidación 2v2 fue bloqueada porque no están confirmadas las cuatro entradas.' };
+            }
+        }
+        const lockUsers = [...allUsers].sort();
+        const locked = await client.query('SELECT username, chips FROM users WHERE LOWER(username) = ANY($1::text[]) ORDER BY LOWER(username) FOR UPDATE', [lockUsers]);
+        if (locked.rows.length !== 4) {
+            await client.query('ROLLBACK');
+            return { success: false, message: 'No se encontraron los cuatro jugadores en la base de datos.' };
+        }
+        const winnerBalancesAfter = {};
+        const loserBalancesAfter = {};
+        for (let i = 0; i < winners.length; i++) {
+            const prize = payout.winnerPrizes[i];
+            const credit = await client.query('UPDATE users SET chips = chips + $1 WHERE LOWER(username) = $2 RETURNING chips', [prize, winners[i]]);
+            if (!credit.rows.length) {
+                await client.query('ROLLBACK');
+                return { success: false, message: 'No se pudo acreditar el premio 2v2.' };
+            }
+            winnerBalancesAfter[winners[i]] = Number(credit.rows[0].chips) || 0;
+        }
+        for (const loser of losers) {
+            const row = locked.rows.find((r) => cleanUsername(r.username) === loser);
+            loserBalancesAfter[loser] = Number(row?.chips) || 0;
+        }
+        const finalRes = await client.query(`UPDATE team_match_settlements
+       SET winner1_balance_after=$1, winner2_balance_after=$2,
+           loser1_balance_after=$3, loser2_balance_after=$4
+       WHERE room_id=$5
+       RETURNING *`, [winnerBalancesAfter[winners[0]], winnerBalancesAfter[winners[1]],
+            loserBalancesAfter[losers[0]], loserBalancesAfter[losers[1]], params.roomId]);
+        await client.query('COMMIT');
+        const settlement = teamSettlementFromRow(finalRes.rows[0]);
+        for (const [u, b] of Object.entries(settlement.winnerBalancesAfter))
+            syncUserCacheBalance(u, b);
+        for (const [u, b] of Object.entries(settlement.loserBalancesAfter))
+            syncUserCacheBalance(u, b);
+        console.log(`[TEAM SETTLEMENT OK] Mesa ${params.roomId} | Equipo ${params.winnerTeam} | Pozo ${settlement.grossPot} | Rake ${settlement.rakeAmount} | Premio equipo ${settlement.winnerPrizeTotal}`);
+        return { success: true, settlement };
+    }
+    catch (err) {
+        try {
+            await client.query('ROLLBACK');
+        }
+        catch { }
+        console.error(`[TEAM SETTLEMENT ERROR] ${params.roomId}:`, err);
+        return { success: false, message: 'No se pudo liquidar la partida 2v2. No se acreditó un segundo premio.' };
     }
     finally {
         client.release();
@@ -1021,6 +1347,9 @@ function getAdminMetrics() {
     const settledRake = settlementsCache
         .filter(s => afterRakeReset(s.createdAt))
         .reduce((sum, s) => sum + (s.rakeAmount || 0), 0);
+    const teamSettledRake = Array.from(localTeamSettlements.values())
+        .filter(s => afterRakeReset(s.createdAt))
+        .reduce((sum, s) => sum + (s.rakeAmount || 0), 0);
     const totalDepositsApproved = transactionsCache
         .filter(t => t.type === 'DEPOSIT')
         .reduce((sum, t) => sum + (t.amount || 0), 0);
@@ -1032,7 +1361,7 @@ function getAdminMetrics() {
         totalChipsInCirculation,
         pendingDepositsCount,
         pendingDepositsAmount,
-        totalRakeEarned: legacyRake + settledRake,
+        totalRakeEarned: legacyRake + settledRake + teamSettledRake,
         totalDepositsApproved,
         totalWithdrawals
     };
@@ -1059,6 +1388,7 @@ async function getAdminMetricsFresh() {
       (SELECT COALESCE(SUM(amount), 0)::bigint FROM deposits WHERE status = 'PENDING') AS pending_amount,
       (SELECT COALESCE(SUM(amount), 0)::bigint FROM transactions WHERE type = 'COMMISSION_RAKE' ${rakeDateFilter}) AS legacy_rake,
       (SELECT COALESCE(SUM(rake_amount), 0)::bigint FROM match_settlements WHERE 1=1 ${rakeDateFilter}) AS settled_rake,
+      (SELECT COALESCE(SUM(rake_amount), 0)::bigint FROM team_match_settlements WHERE 1=1 ${rakeDateFilter}) AS team_settled_rake,
       (SELECT COALESCE(SUM(amount), 0)::bigint FROM transactions WHERE type = 'DEPOSIT') AS total_deposits,
       (SELECT COALESCE(SUM(amount), 0)::bigint FROM transactions WHERE type = 'WITHDRAW') AS total_withdrawals
   `, params);
@@ -1068,7 +1398,7 @@ async function getAdminMetricsFresh() {
         totalChipsInCirculation: Number(r.total_chips) || 0,
         pendingDepositsCount: Number(r.pending_count) || 0,
         pendingDepositsAmount: Number(r.pending_amount) || 0,
-        totalRakeEarned: (Number(r.legacy_rake) || 0) + (Number(r.settled_rake) || 0),
+        totalRakeEarned: (Number(r.legacy_rake) || 0) + (Number(r.settled_rake) || 0) + (Number(r.team_settled_rake) || 0),
         totalDepositsApproved: Number(r.total_deposits) || 0,
         totalWithdrawals: Number(r.total_withdrawals) || 0,
         rakeCounterResetAt: hasValidReset ? resetAt.toISOString() : null

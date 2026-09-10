@@ -41,7 +41,7 @@ class TrucoRound {
             if (lastCall === 'CONTRAFLOR')
                 return 4;
             if (lastCall === 'CONTRAFLOR_AL_JUEGO')
-                return 7;
+                return 6;
             return 3;
         }
         else {
@@ -51,7 +51,7 @@ class TrucoRound {
             }
             if (lastCall === 'CONTRAFLOR')
                 return 6;
-            return 3;
+            return 4;
         }
     }
     playCard(userId, cardId) {

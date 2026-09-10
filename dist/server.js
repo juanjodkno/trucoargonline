@@ -10,6 +10,7 @@ const path_1 = __importDefault(require("path"));
 const socket_io_1 = require("socket.io");
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const gameSocket_1 = require("./sockets/gameSocket");
+const teamGameSocket_1 = require("./sockets/teamGameSocket");
 const userService_1 = require("./auth/userService");
 const app = (0, express_1.default)();
 const server = http_1.default.createServer(app);
@@ -28,6 +29,10 @@ app.use(express_1.default.static(path_1.default.join(__dirname, '../public')));
 // Servir la vista de administración
 app.get('/admin', (req, res) => {
     res.sendFile(path_1.default.join(__dirname, '../public/admin.html'));
+});
+// Modo 2 vs 2 integrado. La interfaz y la lógica 2v2 se mantienen en archivos separados.
+app.get('/2v2', (_req, res) => {
+    res.sendFile(path_1.default.join(__dirname, '../public/team.html'));
 });
 // Limitador de tasa contra ataques de fuerza bruta en Login y Registro
 const authLimiter = (0, express_rate_limit_1.default)({
@@ -71,6 +76,18 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
     const { usernameOrEmail, password } = req.body;
     const result = await (0, userService_1.loginUser)(usernameOrEmail, password);
     return res.status(result.success ? 200 : 401).json(result);
+});
+// Valida sesiones guardadas en el navegador contra la fuente autoritativa.
+app.get('/api/auth/session/:username', async (req, res) => {
+    try {
+        const exists = await (0, userService_1.userExistsFresh)(req.params.username);
+        if (!exists)
+            return res.status(404).json({ success: false, valid: false, message: 'La cuenta ya no existe.' });
+        return res.json({ success: true, valid: true });
+    }
+    catch {
+        return res.status(503).json({ success: false, valid: false, message: 'No se pudo validar la sesión.' });
+    }
 });
 // Gestión de Avatares
 app.get('/api/user/avatars-list', (req, res) => {
@@ -236,6 +253,7 @@ app.post('/api/admin/reject-deposit', requireAdminAuth, async (req, res) => {
     return res.status(result.success ? 200 : 400).json(result);
 });
 (0, gameSocket_1.setupSocketEvents)(io);
+(0, teamGameSocket_1.setupTeamSocketEvents)(io);
 const PORT = process.env.PORT || 3000;
 async function startServer() {
     // Una sola inicialización. userService.ts ya no se auto-inicializa al importarse.

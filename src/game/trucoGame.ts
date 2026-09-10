@@ -62,7 +62,7 @@ export class TrucoRound {
 
     if (!accepted) {
       if (lastCall === 'CONTRAFLOR') return 4;
-      if (lastCall === 'CONTRAFLOR_AL_JUEGO') return 7;
+      if (lastCall === 'CONTRAFLOR_AL_JUEGO') return 6;
       return 3;
     } else {
       if (lastCall === 'CONTRAFLOR_AL_JUEGO') {
@@ -70,7 +70,7 @@ export class TrucoRound {
         return this.targetPoints - leaderScore;
       }
       if (lastCall === 'CONTRAFLOR') return 6;
-      return 3;
+      return 4;
     }
   }
 
