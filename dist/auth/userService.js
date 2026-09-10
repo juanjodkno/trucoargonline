@@ -1383,18 +1383,6 @@ async function getAllTransactionsFresh(limit = 60) {
         new Date(a.createdAt).getTime())
         .slice(0, safeLimit);
 }
-const normalTx = txRes.rows.map(r => ({
-    id: r.id,
-    type: r.type,
-    username: r.username,
-    amount: Number(r.amount) || 0,
-    details: r.details || '',
-    createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
-}));
-const matchTx = settlementRes.rows.map(r => settlementAsTransaction(settlementFromRow(r)));
-return [...normalTx, ...matchTx]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, safeLimit);
 function getAdminMetrics() {
     // Compatibilidad local/legacy. El panel de producción usa getAdminMetricsFresh().
     const totalUsers = usersCache.length;

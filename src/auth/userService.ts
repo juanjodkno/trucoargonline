@@ -1737,54 +1737,39 @@ export async function getAllTransactionsFresh(
   ]);
 
   const normalTx: Transaction[] = txRes.rows.map(r => ({
-    id: r.id,
-    type: r.type,
-    username: r.username,
-    amount: Number(r.amount) || 0,
-    details: r.details || '',
-    createdAt: r.created_at
-      ? new Date(r.created_at).toISOString()
-      : new Date().toISOString()
-  }));
+  id: r.id,
+  type: r.type,
+  username: r.username,
+  amount: Number(r.amount) || 0,
+  details: r.details || '',
+  createdAt: r.created_at
+    ? new Date(r.created_at).toISOString()
+    : new Date().toISOString()
+}));
 
-  const matchTx = settlementRes.rows.map(r =>
-    settlementAsTransaction(
-      settlementFromRow(r)
-    )
-  );
+const matchTx = settlementRes.rows.map(r =>
+  settlementAsTransaction(
+    settlementFromRow(r)
+  )
+);
 
-  const teamMatchTx = teamSettlementRes.rows.map(r =>
-    teamSettlementAsTransaction(
-      teamSettlementFromRow(r)
-    )
-  );
+const teamMatchTx = teamSettlementRes.rows.map(r =>
+  teamSettlementAsTransaction(
+    teamSettlementFromRow(r)
+  )
+);
 
-  return [
-    ...normalTx,
-    ...matchTx,
-    ...teamMatchTx
-  ]
-    .sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() -
-        new Date(a.createdAt).getTime()
-    )
-    .slice(0, safeLimit);
-}
-  const normalTx: Transaction[] = txRes.rows.map(r => ({
-    id: r.id,
-    type: r.type,
-    username: r.username,
-    amount: Number(r.amount) || 0,
-    details: r.details || '',
-    createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
-  }));
-
-  const matchTx = settlementRes.rows.map(r => settlementAsTransaction(settlementFromRow(r)));
-
-  return [...normalTx, ...matchTx]
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .slice(0, safeLimit);
+return [
+  ...normalTx,
+  ...matchTx,
+  ...teamMatchTx
+]
+  .sort(
+    (a, b) =>
+      new Date(b.createdAt).getTime() -
+      new Date(a.createdAt).getTime()
+  )
+  .slice(0, safeLimit);
 }
 
 export function getAdminMetrics() {
