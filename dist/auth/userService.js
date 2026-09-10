@@ -1281,6 +1281,38 @@ async function rejectDeposit(depositId) {
         return { success: false, message: 'No se pudo rechazar el depósito.' };
     }
 }
+function teamSettlementDetails(s) {
+    const loserTeam = s.winnerTeam === 'A' ? 'B' : 'A';
+    const [winner1 = '', winner2 = ''] = s.winnerUsernames;
+    const [loser1 = '', loser2 = ''] = s.loserUsernames;
+    return `Mesa ${s.roomId}: Gana Equipo ${s.winnerTeam} (@${winner1}) saldo restante: $${Math.round(s.winnerBalancesAfter[winner1] || 0)} y (@${winner2}) saldo restante: $${Math.round(s.winnerBalancesAfter[winner2] || 0)} | Pierde Equipo ${loserTeam} (@${loser1}) saldo restante: $${Math.round(s.loserBalancesAfter[loser1] || 0)} y (@${loser2}) saldo restante: $${Math.round(s.loserBalancesAfter[loser2] || 0)} | Pozo: $${Math.round(s.grossPot)} | Rake ${s.rakePercentage}%: $${Math.round(s.rakeAmount)}`;
+}
+function teamSettlementAsTransaction(s) {
+    return {
+        id: `team_match_${s.roomId}`,
+        type: 'TEAM_MATCH_SETTLEMENT',
+        username: s.winnerUsernames.join(' / '),
+        amount: Math.round(s.rakeAmount),
+        details: teamSettlementDetails(s),
+        createdAt: s.createdAt,
+        roomId: s.roomId,
+        winnerTeam: s.winnerTeam,
+        winnerUsernames: [...s.winnerUsernames],
+        loserUsernames: [...s.loserUsernames],
+        winnerBalancesAfter: {
+            ...s.winnerBalancesAfter
+        },
+        loserBalancesAfter: {
+            ...s.loserBalancesAfter
+        },
+        rakePercentage: s.rakePercentage,
+        rakeAmount: Math.round(s.rakeAmount),
+        winnerPrizeTotal: Math.round(s.winnerPrizeTotal),
+        grossPot: Math.round(s.grossPot),
+        betPerPlayer: Math.round(s.betPerPlayer),
+        finishReason: s.finishReason
+    };
+}
 function settlementAsTransaction(s) {
     return {
         id: `match_${s.roomId}`,
@@ -1302,21 +1334,31 @@ function settlementAsTransaction(s) {
 }
 function getAllTransactions(limit = 60) {
     // Compatibilidad local/legacy. El panel de producción usa getAllTransactionsFresh().
-    return [...transactionsCache, ...settlementsCache.map(settlementAsTransaction)]
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    return [
+        ...transactionsCache,
+        ...settlementsCache.map(settlementAsTransaction),
+        ...Array.from(localTeamSettlements.values()).map(teamSettlementAsTransaction)
+    ]
+        .sort((a, b) => new Date(b.createdAt).getTime() -
+        new Date(a.createdAt).getTime())
         .slice(0, limit);
 }
 async function getAllTransactionsFresh(limit = 60) {
     const safeLimit = Math.max(1, Math.min(500, Math.floor(Number(limit) || 60)));
-    if (!DATABASE_URL)
+    if (!DATABASE_URL) {
         return getAllTransactions(safeLimit);
-    const [txRes, settlementRes] = await Promise.all([
+    }
+    const [txRes, settlementRes, teamSettlementRes] = await Promise.all([
         exports.pool.query(`SELECT id, type, username, amount, details, created_at
        FROM transactions
        ORDER BY created_at DESC
        LIMIT $1`, [safeLimit]),
         exports.pool.query(`SELECT *
        FROM match_settlements
+       ORDER BY created_at DESC
+       LIMIT $1`, [safeLimit]),
+        exports.pool.query(`SELECT *
+       FROM team_match_settlements
        ORDER BY created_at DESC
        LIMIT $1`, [safeLimit])
     ]);
@@ -1326,13 +1368,33 @@ async function getAllTransactionsFresh(limit = 60) {
         username: r.username,
         amount: Number(r.amount) || 0,
         details: r.details || '',
-        createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
+        createdAt: r.created_at
+            ? new Date(r.created_at).toISOString()
+            : new Date().toISOString()
     }));
     const matchTx = settlementRes.rows.map(r => settlementAsTransaction(settlementFromRow(r)));
-    return [...normalTx, ...matchTx]
-        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    const teamMatchTx = teamSettlementRes.rows.map(r => teamSettlementAsTransaction(teamSettlementFromRow(r)));
+    return [
+        ...normalTx,
+        ...matchTx,
+        ...teamMatchTx
+    ]
+        .sort((a, b) => new Date(b.createdAt).getTime() -
+        new Date(a.createdAt).getTime())
         .slice(0, safeLimit);
 }
+const normalTx = txRes.rows.map(r => ({
+    id: r.id,
+    type: r.type,
+    username: r.username,
+    amount: Number(r.amount) || 0,
+    details: r.details || '',
+    createdAt: r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
+}));
+const matchTx = settlementRes.rows.map(r => settlementAsTransaction(settlementFromRow(r)));
+return [...normalTx, ...matchTx]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .slice(0, safeLimit);
 function getAdminMetrics() {
     // Compatibilidad local/legacy. El panel de producción usa getAdminMetricsFresh().
     const totalUsers = usersCache.length;

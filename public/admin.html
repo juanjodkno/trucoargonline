@@ -503,13 +503,26 @@
           let typeLabel = 'DEPÓSITO';
           if (t.type === 'WITHDRAW') { badgeClass = 'badge-withdraw'; typeLabel = 'RETIRO'; }
           else if (t.type === 'COMMISSION_RAKE') { badgeClass = 'badge-rake'; typeLabel = 'RAKE 7%'; }
-          else if (t.type === 'MATCH_SETTLEMENT') { badgeClass = 'badge-rake'; typeLabel = 'PARTIDA / RAKE 7%'; }
-
+          else if (t.type === 'MATCH_SETTLEMENT') {
+  badgeClass = 'badge-rake';
+  typeLabel = 'PARTIDA 1VS1 / RAKE 7%';
+}
+else if (t.type === 'TEAM_MATCH_SETTLEMENT') {
+  badgeClass = 'badge-rake';
+  typeLabel = 'PARTIDA 2VS2 / RAKE 7%';
+}
+const userLabel =
+  t.type === 'TEAM_MATCH_SETTLEMENT' &&
+  Array.isArray(t.winnerUsernames)
+    ? t.winnerUsernames
+        .map(u => `@${escapeHtml(u)}`)
+        .join(' + ')
+    : `@${escapeHtml(t.username)}`;
           const tr = document.createElement('tr');
           tr.innerHTML = `
             <td>${formatDate(t.createdAt)}</td>
             <td><span class="badge ${badgeClass}">${typeLabel}</span></td>
-            <td><strong>@${escapeHtml(t.username)}</strong></td>
+            <td><strong>${userLabel}</strong></td>
             <td><strong>${formatARS(t.amount)}</strong></td>
             <td style="color:#cbd5e1;">${escapeHtml(t.details || '-')}</td>
           `;
