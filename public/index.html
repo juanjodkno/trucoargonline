@@ -733,15 +733,21 @@
 
 @media (min-width: 769px) {
 
-  /* Cartas de mi mano y rival */
-  /* Mis cartas visibles */
+ /* Mis cartas visibles */
 .my-cards .card-img {
   width: 79px !important;
   height: 125px !important;
-
   max-width: 79px !important;
   max-height: 125px !important;
+  object-fit: cover;
+}
 
+/* SOLO cartas dadas vuelta del rival */
+.opponent-cards .card-img {
+  width: 60px !important;
+  height: 95px !important;
+  max-width: 60px !important;
+  max-height: 95px !important;
   object-fit: cover;
 }
 
@@ -783,16 +789,14 @@
 
   /* Cartas que se tiran a la mesa */
   .table-tricks .card-img,
-  .trick-slot .card-img,
-  .card-in-trick {
-    width: 72px !important;
-    height: 114px !important;
-
-    max-width: 72px !important;
-    max-height: 114px !important;
-
-    object-fit: cover;
-  }
+.trick-slot .card-img,
+.card-in-trick {
+  width: 79px !important;
+  height: 125px !important;
+  max-width: 79px !important;
+  max-height: 125px !important;
+  object-fit: cover;
+}
 
 
   /* Cartas mostradas en Envido / Flor */
