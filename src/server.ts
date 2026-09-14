@@ -130,10 +130,32 @@ app.get('/api/user/avatar/:username', (req, res) => {
 
 app.post('/api/user/avatar', (req, res) => {
   const { username, avatarId } = req.body;
+
   if (!username || !avatarId) {
-    return res.status(400).json({ success: false, message: 'Datos incompletos.' });
+    return res.status(400).json({
+      success: false,
+      message: 'Datos incompletos.'
+    });
   }
-  /* =========================================================
+
+  const ok = updateUserAvatar(username, avatarId);
+
+  if (!ok) {
+    return res.status(400).json({
+      success: false,
+      message: 'Avatar no válido o usuario inexistente.'
+    });
+  }
+
+  return res.json({
+    success: true,
+    message: 'Avatar actualizado correctamente.',
+    avatar: avatarId
+  });
+});
+
+
+/* =========================================================
    HISTORIAL PERSONAL DEL USUARIO
    SOLO LECTURA - NO MODIFICA FICHAS
    ========================================================= */
@@ -166,13 +188,8 @@ app.get('/api/user/history/:username', async (req, res) => {
   }
 });
 
-  const ok = updateUserAvatar(username, avatarId);
-  if (!ok) {
-    return res.status(400).json({ success: false, message: 'Avatar no válido o usuario inexistente.' });
-  }
 
-  return res.json({ success: true, message: 'Avatar actualizado correctamente.', avatar: avatarId });
-});
+// Billetera
 
 // Billetera
 app.get('/api/wallet/balance/:username', async (req, res) => {
