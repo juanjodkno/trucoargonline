@@ -680,6 +680,39 @@
 
     .winner-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.88); backdrop-filter: blur(10px); display: none; justify-content: center; align-items: center; z-index: 100; }
     .winner-card { background: #1c2541; padding: 35px 45px; border-radius: 20px; text-align: center; border: 3px solid #ffd166; }
+  /* AJUSTE SOLO PARA PC / NOTEBOOK */
+@media (min-width: 769px) {
+
+  .my-cards .card-img,
+  .opponent-cards .card-img {
+    width: 72px;
+    height: 114px;
+  }
+
+  .my-cards,
+  .opponent-cards {
+    min-height: 120px;
+  }
+
+  .my-cards .card-img + .card-img {
+    margin-left: -25px;
+  }
+
+  .opponent-cards .card-img + .card-img {
+    margin-left: -38px;
+  }
+
+  .my-cards .card-img:hover {
+    transform:
+      translateY(calc(var(--fan-y) - 10px))
+      rotate(var(--fan-r))
+      scale(1.05);
+
+    z-index: 20;
+  }
+}
+
+</style>
   </style>
 </head>
 <body>
