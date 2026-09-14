@@ -1192,10 +1192,64 @@
   <!-- Modal Perfil y Selector de Avatar -->
   <div class="modal-overlay" id="avatarModal">
     <div class="modal-card">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-        <h3 style="color:#ffd166;">👤 Mi Perfil</h3>
-        <button type="button" onclick="closeAvatarModal()" style="background:transparent; border:none; color:#94a3b8; font-size:1.3rem; cursor:pointer;">✕</button>
-      </div>
+      <div style="
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:8px;
+  margin-bottom:6px;
+">
+
+  <h3 style="
+    color:#ffd166;
+    margin:0;
+    white-space:nowrap;
+  ">
+    👤 Mi Perfil
+  </h3>
+
+  <div style="
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-left:auto;
+  ">
+
+    <button
+      type="button"
+      onclick="openMatchHistory()"
+      style="
+        background:#25d366;
+        color:white;
+        border:none;
+        border-radius:8px;
+        padding:8px 11px;
+        font-size:0.78rem;
+        font-weight:800;
+        cursor:pointer;
+        white-space:nowrap;
+      "
+    >
+      📊 Historial de partidos
+    </button>
+
+    <button
+      type="button"
+      onclick="closeAvatarModal()"
+      style="
+        background:transparent;
+        border:none;
+        color:#94a3b8;
+        font-size:1.3rem;
+        cursor:pointer;
+      "
+    >
+      ✕
+    </button>
+
+  </div>
+
+</div>  
       <p style="font-size:0.85rem; color:#94a3b8; margin-bottom:10px;">Elegí tu avatar temático:</p>
       
       <div class="avatar-grid" id="avatarPickerGrid"></div>
@@ -1219,7 +1273,91 @@
       </div>
     </div>
   </div>
+<!-- ======================================================
+     HISTORIAL PERSONAL
+     ====================================================== -->
 
+<div class="modal-overlay" id="matchHistoryModal">
+
+  <div
+    class="modal-card"
+    style="
+      max-width:520px;
+      width:calc(100% - 20px);
+      max-height:82vh;
+      display:flex;
+      flex-direction:column;
+    "
+  >
+
+    <div style="
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:14px;
+    ">
+
+      <div>
+        <h3 style="
+          color:#ffd166;
+          margin:0 0 3px 0;
+        ">
+          📊 Historial de partidos
+        </h3>
+
+        <div
+          id="historyUsername"
+          style="
+            font-size:0.78rem;
+            color:#94a3b8;
+          "
+        ></div>
+      </div>
+
+      <button
+        type="button"
+        onclick="closeMatchHistory()"
+        style="
+          background:transparent;
+          border:none;
+          color:#94a3b8;
+          font-size:1.3rem;
+          cursor:pointer;
+        "
+      >
+        ✕
+      </button>
+
+    </div>
+
+
+    <div
+      id="matchHistoryLoading"
+      style="
+        text-align:center;
+        padding:28px 10px;
+        color:#94a3b8;
+      "
+    >
+      Cargando historial...
+    </div>
+
+
+    <div
+      id="matchHistoryList"
+      style="
+        display:none;
+        flex-direction:column;
+        gap:7px;
+        overflow-y:auto;
+        padding-right:3px;
+      "
+    ></div>
+
+  </div>
+
+</div>
   <!-- Modal Cargar Fichas -->
   <div class="modal-overlay" id="depositModal">
     <div class="modal-card">
@@ -1948,6 +2086,303 @@
         console.error('Error actualizando avatar:', err);
       }
     }
+    /* =========================================================
+   HISTORIAL PERSONAL
+   ========================================================= */
+
+function closeMatchHistory() {
+  triggerHaptic(15);
+
+  const modal =
+    document.getElementById('matchHistoryModal');
+
+  if (modal) {
+    modal.style.display = 'none';
+  }
+}
+
+
+function formatHistoryAmount(amount) {
+
+  const value =
+    Number(amount) || 0;
+
+  const formatted =
+    new Intl.NumberFormat('es-AR').format(Math.abs(value));
+
+  if (value > 0) {
+    return `+$${formatted}`;
+  }
+
+  if (value < 0) {
+    return `-$${formatted}`;
+  }
+
+  return '$0';
+}
+
+
+function formatHistoryDate(dateValue) {
+
+  if (!dateValue) return '';
+
+  const date =
+    new Date(dateValue);
+
+  return date.toLocaleString(
+    'es-AR',
+    {
+      day: '2-digit',
+      month: '2-digit',
+      year: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit'
+    }
+  );
+}
+
+
+async function openMatchHistory() {
+
+  triggerHaptic(15);
+
+  if (!currentUser?.username) {
+    return;
+  }
+
+
+  const modal =
+    document.getElementById('matchHistoryModal');
+
+  const loading =
+    document.getElementById('matchHistoryLoading');
+
+  const list =
+    document.getElementById('matchHistoryList');
+
+  const usernameLabel =
+    document.getElementById('historyUsername');
+
+
+  /*
+    Cerramos perfil y abrimos historial
+    dentro de la misma página.
+  */
+
+  document.getElementById('avatarModal').style.display =
+    'none';
+
+  modal.style.display =
+    'flex';
+
+  loading.style.display =
+    'block';
+
+  loading.innerText =
+    'Cargando historial...';
+
+  list.style.display =
+    'none';
+
+  list.innerHTML =
+    '';
+
+  usernameLabel.innerText =
+    `@${currentUser.username}`;
+
+
+  try {
+
+    const res =
+      await fetch(
+        `/api/user/history/${encodeURIComponent(currentUser.username)}`
+      );
+
+
+    const data =
+      await res.json();
+
+
+    if (!res.ok || !data.success) {
+
+      loading.innerText =
+        data.message ||
+        'No se pudo cargar el historial.';
+
+      return;
+    }
+
+
+    const history =
+      Array.isArray(data.history)
+        ? data.history
+        : [];
+
+
+    loading.style.display =
+      'none';
+
+    list.style.display =
+      'flex';
+
+
+    if (!history.length) {
+
+      list.innerHTML = `
+        <div style="
+          text-align:center;
+          color:#94a3b8;
+          padding:30px 10px;
+        ">
+          Todavía no tenés movimientos registrados.
+        </div>
+      `;
+
+      return;
+    }
+
+
+    history.forEach(item => {
+
+      const row =
+        document.createElement('div');
+
+
+      const amount =
+        Number(item.amount) || 0;
+
+
+      let icon =
+        '🎮';
+
+      let amountColor =
+        '#cbd5e1';
+
+
+      if (item.type === 'DEPOSIT') {
+
+        icon = '💰';
+        amountColor = '#2ecc71';
+
+      } else if (item.type === 'WITHDRAW') {
+
+        icon = '💸';
+        amountColor = '#f87171';
+
+      } else if (item.type === 'WIN') {
+
+        icon = '🏆';
+        amountColor = '#2ecc71';
+
+      } else if (item.type === 'LOSS') {
+
+        icon = '❌';
+        amountColor = '#f87171';
+
+      }
+
+
+      let extra =
+        '';
+
+      if (item.mode) {
+
+        extra +=
+          item.mode === '2VS2'
+            ? ' · 2 vs 2'
+            : ' · 1 vs 1';
+
+      }
+
+
+      row.style.cssText = `
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:12px;
+        background:#0b1320;
+        border:1px solid #334155;
+        border-radius:9px;
+        padding:11px 12px;
+      `;
+
+
+      row.innerHTML = `
+
+        <div style="
+          display:flex;
+          align-items:center;
+          gap:10px;
+          min-width:0;
+        ">
+
+          <div style="
+            font-size:1.2rem;
+            width:24px;
+            text-align:center;
+            flex-shrink:0;
+          ">
+            ${icon}
+          </div>
+
+
+          <div style="
+            min-width:0;
+          ">
+
+            <div style="
+              color:#e2e8f0;
+              font-weight:800;
+              font-size:0.88rem;
+            ">
+              ${item.label || 'Movimiento'}${extra}
+            </div>
+
+            <div style="
+              color:#64748b;
+              font-size:0.70rem;
+              margin-top:2px;
+            ">
+              ${formatHistoryDate(item.createdAt)}
+            </div>
+
+          </div>
+
+        </div>
+
+
+        <div style="
+          color:${amountColor};
+          font-weight:900;
+          font-size:0.95rem;
+          white-space:nowrap;
+        ">
+          ${formatHistoryAmount(amount)}
+        </div>
+
+      `;
+
+
+      list.appendChild(row);
+
+    });
+
+
+  } catch (err) {
+
+    console.error(
+      'Error cargando historial:',
+      err
+    );
+
+    loading.style.display =
+      'block';
+
+    loading.innerText =
+      'Error de conexión al cargar el historial.';
+
+  }
+}
 
     function updateAvatarDisplay() {
       const currentAvatar = currentUser?.avatar || 'gaucho';

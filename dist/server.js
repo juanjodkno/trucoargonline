@@ -102,6 +102,33 @@ app.post('/api/user/avatar', (req, res) => {
     if (!username || !avatarId) {
         return res.status(400).json({ success: false, message: 'Datos incompletos.' });
     }
+    /* =========================================================
+     HISTORIAL PERSONAL DEL USUARIO
+     SOLO LECTURA - NO MODIFICA FICHAS
+     ========================================================= */
+    app.get('/api/user/history/:username', async (req, res) => {
+        try {
+            const username = String(req.params.username || '').trim();
+            if (!username) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Usuario inválido.'
+                });
+            }
+            const history = await (0, userService_1.getUserHistoryFresh)(username, 100);
+            return res.json({
+                success: true,
+                history
+            });
+        }
+        catch (err) {
+            console.error('Error cargando historial del usuario:', err);
+            return res.status(503).json({
+                success: false,
+                message: 'No se pudo cargar el historial.'
+            });
+        }
+    });
     const ok = (0, userService_1.updateUserAvatar)(username, avatarId);
     if (!ok) {
         return res.status(400).json({ success: false, message: 'Avatar no válido o usuario inexistente.' });

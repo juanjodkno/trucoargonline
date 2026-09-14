@@ -1899,3 +1899,231 @@ export async function deleteUser(username: string): Promise<boolean> {
   usersCache.splice(index, 1);
   return true;
 }
+export async function getUserHistoryFresh(username: string, limit: number = 100) {
+  const clean = cleanUsername(username);
+  const safeLimit = Math.max(1, Math.min(200, Math.floor(Number(limit) || 100)));
+
+  if (!clean) return [];
+
+  /*
+    Fallback local.
+    En producción Render/Supabase se usa la rama PostgreSQL de abajo.
+  */
+  if (!DATABASE_URL) {
+    const normalItems = transactionsCache
+      .filter(t => cleanUsername(t.username) === clean)
+      .filter(t => t.type === 'DEPOSIT' || t.type === 'WITHDRAW')
+      .map(t => ({
+        id: t.id,
+        type: t.type === 'DEPOSIT' ? 'DEPOSIT' : 'WITHDRAW',
+        label: t.type === 'DEPOSIT' ? 'Carga' : 'Retiro',
+        amount: t.type === 'DEPOSIT'
+          ? Math.abs(Number(t.amount) || 0)
+          : -Math.abs(Number(t.amount) || 0),
+        createdAt: t.createdAt,
+        roomId: null,
+        mode: null
+      }));
+
+    const matchItems = settlementsCache
+      .filter(s =>
+        cleanUsername(s.winnerUsername) === clean ||
+        cleanUsername(s.loserUsername) === clean
+      )
+      .map(s => {
+        const won = cleanUsername(s.winnerUsername) === clean;
+        const bet = Number(s.betPerPlayer) || 0;
+        const prize = Number(s.winnerPrize) || 0;
+
+        return {
+          id: `match_${s.roomId}_${clean}`,
+          type: won ? 'WIN' : 'LOSS',
+          label: won ? 'Victoria' : 'Derrota',
+          amount: won ? (prize - bet) : -bet,
+          createdAt: s.createdAt,
+          roomId: s.roomId,
+          mode: '1VS1'
+        };
+      });
+
+    return [...normalItems, ...matchItems]
+      .sort((a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      )
+      .slice(0, safeLimit);
+  }
+
+  /*
+    Producción:
+    leemos directamente PostgreSQL/Supabase.
+
+    No modifica balances.
+    No crea transacciones.
+    No toca liquidaciones.
+  */
+
+  const [txRes, matchRes, teamRes] = await Promise.all([
+
+    pool.query(
+      `
+      SELECT id, type, amount, created_at
+      FROM transactions
+      WHERE LOWER(username) = $1
+        AND type IN ('DEPOSIT', 'WITHDRAW')
+      ORDER BY created_at DESC
+      LIMIT $2
+      `,
+      [clean, safeLimit]
+    ),
+
+    pool.query(
+      `
+      SELECT
+        room_id,
+        winner_username,
+        loser_username,
+        bet_per_player,
+        winner_prize,
+        created_at
+      FROM match_settlements
+      WHERE LOWER(winner_username) = $1
+         OR LOWER(loser_username) = $1
+      ORDER BY created_at DESC
+      LIMIT $2
+      `,
+      [clean, safeLimit]
+    ),
+
+    pool.query(
+      `
+      SELECT
+        room_id,
+        winner1_username,
+        winner2_username,
+        loser1_username,
+        loser2_username,
+        bet_per_player,
+        winner1_prize,
+        winner2_prize,
+        created_at
+      FROM team_match_settlements
+      WHERE LOWER(winner1_username) = $1
+         OR LOWER(winner2_username) = $1
+         OR LOWER(loser1_username) = $1
+         OR LOWER(loser2_username) = $1
+      ORDER BY created_at DESC
+      LIMIT $2
+      `,
+      [clean, safeLimit]
+    )
+
+  ]);
+
+  const items: any[] = [];
+
+  /*
+    CARGAS / RETIROS
+  */
+  for (const row of txRes.rows) {
+    const amount = Math.abs(Number(row.amount) || 0);
+    const isDeposit = row.type === 'DEPOSIT';
+
+    items.push({
+      id: row.id,
+      type: isDeposit ? 'DEPOSIT' : 'WITHDRAW',
+      label: isDeposit ? 'Carga' : 'Retiro',
+      amount: isDeposit ? amount : -amount,
+      createdAt: row.created_at
+        ? new Date(row.created_at).toISOString()
+        : new Date().toISOString(),
+      roomId: null,
+      mode: null
+    });
+  }
+
+  /*
+    PARTIDAS 1 VS 1
+
+    Ganador:
+    premio recibido - apuesta pagada
+
+    Ejemplo:
+    apuesta 500
+    premio 930
+    neto +430
+  */
+  for (const row of matchRes.rows) {
+
+    const won =
+      cleanUsername(row.winner_username) === clean;
+
+    const bet =
+      Number(row.bet_per_player) || 0;
+
+    const prize =
+      Number(row.winner_prize) || 0;
+
+    items.push({
+      id: `match_${row.room_id}_${clean}`,
+      type: won ? 'WIN' : 'LOSS',
+      label: won ? 'Victoria' : 'Derrota',
+      amount: won
+        ? prize - bet
+        : -bet,
+      createdAt: row.created_at
+        ? new Date(row.created_at).toISOString()
+        : new Date().toISOString(),
+      roomId: row.room_id,
+      mode: '1VS1'
+    });
+  }
+
+  /*
+    PARTIDAS 2 VS 2
+  */
+  for (const row of teamRes.rows) {
+
+    const winner1 =
+      cleanUsername(row.winner1_username);
+
+    const winner2 =
+      cleanUsername(row.winner2_username);
+
+    const won =
+      winner1 === clean ||
+      winner2 === clean;
+
+    const bet =
+      Number(row.bet_per_player) || 0;
+
+    let prize = 0;
+
+    if (winner1 === clean) {
+      prize = Number(row.winner1_prize) || 0;
+    }
+
+    if (winner2 === clean) {
+      prize = Number(row.winner2_prize) || 0;
+    }
+
+    items.push({
+      id: `team_match_${row.room_id}_${clean}`,
+      type: won ? 'WIN' : 'LOSS',
+      label: won ? 'Victoria' : 'Derrota',
+      amount: won
+        ? prize - bet
+        : -bet,
+      createdAt: row.created_at
+        ? new Date(row.created_at).toISOString()
+        : new Date().toISOString(),
+      roomId: row.room_id,
+      mode: '2VS2'
+    });
+  }
+
+  return items
+    .sort((a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+    .slice(0, safeLimit);
+}
