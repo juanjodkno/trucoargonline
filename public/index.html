@@ -680,13 +680,20 @@
 
     .winner-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.88); backdrop-filter: blur(10px); display: none; justify-content: center; align-items: center; z-index: 100; }
     .winner-card { background: #1c2541; padding: 35px 45px; border-radius: 20px; text-align: center; border: 3px solid #ffd166; }
-  /* AJUSTE SOLO PARA PC / NOTEBOOK */
+  /* =========================================================
+   AJUSTE DE CARTAS PARA PC / NOTEBOOK
+   Solo visual - no modifica lógica
+   ========================================================= */
 @media (min-width: 769px) {
 
+  /* Cartas de la mano */
   .my-cards .card-img,
   .opponent-cards .card-img {
-    width: 72px;
-    height: 114px;
+    width: 72px !important;
+    height: 114px !important;
+    max-width: 72px !important;
+    max-height: 114px !important;
+    object-fit: cover;
   }
 
   .my-cards,
@@ -694,6 +701,7 @@
     min-height: 120px;
   }
 
+  /* Abanico */
   .my-cards .card-img + .card-img {
     margin-left: -25px;
   }
@@ -702,6 +710,32 @@
     margin-left: -38px;
   }
 
+  /* Cartas tiradas a la mesa */
+  .table-tricks .card-img,
+  .trick-slot .card-img,
+  .card-in-trick {
+    width: 72px !important;
+    height: 114px !important;
+    max-width: 72px !important;
+    max-height: 114px !important;
+    object-fit: cover;
+  }
+
+  .trick-slot {
+    width: 90px;
+    height: 130px;
+  }
+
+  /* Cartas mostradas en Envido / Flor */
+  .envido-cards-row .card-img {
+    width: 72px !important;
+    height: 114px !important;
+    max-width: 72px !important;
+    max-height: 114px !important;
+    object-fit: cover;
+  }
+
+  /* Hover en PC */
   .my-cards .card-img:hover {
     transform:
       translateY(calc(var(--fan-y) - 10px))
@@ -712,8 +746,79 @@
   }
 }
 
+
+/* =========================================================
+   AJUSTE DE CARTAS PARA CELULAR
+   Solo visual - no modifica lógica
+   ========================================================= */
+@media (max-width: 768px) {
+
+  /* Cartas de mi mano y del rival */
+  .my-cards .card-img,
+  .opponent-cards .card-img {
+    width: 64px !important;
+    height: 102px !important;
+    max-width: 64px !important;
+    max-height: 102px !important;
+    object-fit: cover;
+  }
+
+  .my-cards,
+  .opponent-cards {
+    min-height: 110px;
+  }
+
+  /* Abanico de mis cartas */
+  .my-cards .card-img + .card-img {
+    margin-left: -23px;
+  }
+
+  /* Abanico del rival */
+  .opponent-cards .card-img + .card-img {
+    margin-left: -36px;
+  }
+
+  /* Cartas tiradas a la mesa */
+  .table-tricks .card-img,
+  .trick-slot .card-img,
+  .card-in-trick {
+    width: 58px !important;
+    height: 92px !important;
+    max-width: 58px !important;
+    max-height: 92px !important;
+    object-fit: cover;
+  }
+
+  .trick-slot {
+    width: 68px;
+    height: 105px;
+  }
+
+  /* Cartas mostradas al resolver Envido / Flor */
+  .envido-cards-row .card-img {
+    width: 58px !important;
+    height: 92px !important;
+    max-width: 58px !important;
+    max-height: 92px !important;
+    object-fit: cover;
+  }
+
+  .envido-cards-row {
+    gap: 6px;
+  }
+
+  /* En celular no agrandar al tocar */
+  .my-cards .card-img:hover {
+    transform:
+      translateY(var(--fan-y))
+      rotate(var(--fan-r))
+      scale(1);
+
+    z-index: 20;
+  }
+}
+
 </style>
-  </style>
 </head>
 <body>
 
