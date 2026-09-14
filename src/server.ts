@@ -289,9 +289,36 @@ app.post('/api/auth/register', authLimiter, async (req, res) => {
 });
 
 app.post('/api/auth/login', authLimiter, async (req, res) => {
-  const { usernameOrEmail, password } = req.body;
-  const result = await loginUser(usernameOrEmail, password);
-  return res.status(result.success ? 200 : 401).json(result);
+
+  const {
+    usernameOrEmail,
+    password,
+    remember
+  } = req.body;
+
+  const result = await loginUser(
+    usernameOrEmail,
+    password
+  );
+
+  if (!result.success || !result.user) {
+
+    return res
+      .status(401)
+      .json(result);
+  }
+
+  // Crear cookie segura de sesión
+  setUserSession(
+    res,
+    result.user.username,
+    !!remember
+  );
+
+  return res.json({
+    ...result,
+    user: safeUserForClient(result.user)
+  });
 });
 
 // Valida sesiones guardadas en el navegador contra la fuente autoritativa.
