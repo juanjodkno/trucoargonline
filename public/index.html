@@ -734,16 +734,27 @@
 @media (min-width: 769px) {
 
   /* Cartas de mi mano y rival */
-  .my-cards .card-img,
-  .opponent-cards .card-img {
-    width: 79px !important;
-    height: 125px !important;
+  /* Mis cartas visibles */
+.my-cards .card-img {
+  width: 79px !important;
+  height: 125px !important;
 
-    max-width: 72px !important;
-    max-height: 114px !important;
+  max-width: 79px !important;
+  max-height: 125px !important;
 
-    object-fit: cover;
-  }
+  object-fit: cover;
+}
+
+/* Cartas dadas vuelta del rival */
+.opponent-cards .card-img {
+  width: 72px !important;
+  height: 114px !important;
+
+  max-width: 72px !important;
+  max-height: 114px !important;
+
+  object-fit: cover;
+}
 
 
   .my-cards,
