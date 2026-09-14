@@ -681,61 +681,122 @@
     .winner-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.88); backdrop-filter: blur(10px); display: none; justify-content: center; align-items: center; z-index: 100; }
     .winner-card { background: #1c2541; padding: 35px 45px; border-radius: 20px; text-align: center; border: 3px solid #ffd166; }
   /* =========================================================
-   AJUSTE DE CARTAS PARA PC / NOTEBOOK
-   Solo visual - no modifica lógica
+  /* =========================================================
+   AJUSTE VISUAL FINAL 1VS1
+   NO modifica lógica, turnos ni fichas
    ========================================================= */
+
+
+/* =========================================================
+   CARTAS JUGADAS EN LA MESA
+   Cada baza ocupa su lugar:
+   1ra izquierda - 2da centro - 3ra derecha
+   ========================================================= */
+
+.table-tricks {
+  display: flex !important;
+  flex-direction: row !important;
+  flex-wrap: nowrap !important;
+
+  width: 100% !important;
+
+  justify-content: center !important;
+  align-items: center !important;
+
+  gap: 40px;
+
+  padding: 10px;
+
+  position: relative;
+  z-index: 3;
+}
+
+
+/* Restauramos los 3 lugares originales de las bazas */
+.trick-slot {
+  width: 110px !important;
+  height: 185px !important;
+
+  flex: 0 0 110px !important;
+
+  position: relative !important;
+
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+}
+
+
+/* =========================================================
+   PC / NOTEBOOK
+   ========================================================= */
+
 @media (min-width: 769px) {
 
-  /* Cartas de la mano */
+  /* Cartas de mi mano y rival */
   .my-cards .card-img,
   .opponent-cards .card-img {
     width: 72px !important;
     height: 114px !important;
+
     max-width: 72px !important;
     max-height: 114px !important;
+
     object-fit: cover;
   }
+
 
   .my-cards,
   .opponent-cards {
     min-height: 120px;
   }
 
-  /* Abanico */
+
+  /* Levanta mi mano para que no toque los botones */
+  .my-cards {
+    transform: translateY(-16px);
+  }
+
+
+  /* Abanico de mis cartas */
   .my-cards .card-img + .card-img {
     margin-left: -25px;
   }
 
+
+  /* Abanico rival */
   .opponent-cards .card-img + .card-img {
     margin-left: -38px;
   }
 
-  /* Cartas tiradas a la mesa */
+
+  /* Cartas que se tiran a la mesa */
   .table-tricks .card-img,
   .trick-slot .card-img,
   .card-in-trick {
     width: 72px !important;
     height: 114px !important;
+
     max-width: 72px !important;
     max-height: 114px !important;
+
     object-fit: cover;
   }
 
-  .trick-slot {
-    width: 90px;
-    height: 130px;
-  }
 
   /* Cartas mostradas en Envido / Flor */
   .envido-cards-row .card-img {
     width: 72px !important;
     height: 114px !important;
+
     max-width: 72px !important;
     max-height: 114px !important;
+
     object-fit: cover;
   }
 
-  /* Hover en PC */
+
+  /* Hover */
   .my-cards .card-img:hover {
     transform:
       translateY(calc(var(--fan-y) - 10px))
@@ -744,76 +805,141 @@
 
     z-index: 20;
   }
+
+
+  /* Más separación entre mesa y botones */
+  .actions-bar {
+    margin-top: 14px !important;
+
+    position: relative;
+    z-index: 20;
+  }
 }
 
 
+
 /* =========================================================
-   AJUSTE DE CARTAS PARA CELULAR
-   Solo visual - no modifica lógica
+   CELULAR / TABLET
    ========================================================= */
+
 @media (max-width: 768px) {
 
-  /* Cartas de mi mano y del rival */
+  /* Las 3 bazas siguen SIEMPRE de izquierda a derecha */
+  .table-tricks {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+
+    justify-content: center !important;
+    align-items: center !important;
+
+    gap: 12px !important;
+
+    width: 100% !important;
+
+    padding: 4px !important;
+  }
+
+
+  /* 1ra baza / 2da baza / 3ra baza */
+  .trick-slot {
+    width: 72px !important;
+    height: 130px !important;
+
+    flex: 0 0 72px !important;
+
+    position: relative !important;
+
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+  }
+
+
+  /* Cartas de mi mano y rival */
   .my-cards .card-img,
   .opponent-cards .card-img {
     width: 64px !important;
     height: 102px !important;
+
     max-width: 64px !important;
     max-height: 102px !important;
+
     object-fit: cover;
   }
+
 
   .my-cards,
   .opponent-cards {
     min-height: 110px;
   }
 
-  /* Abanico de mis cartas */
+
+  /* Levantamos mi mano para dejar libre los botones */
+  .my-cards {
+    transform: translateY(-14px);
+  }
+
+
+  /* Abanico propio */
   .my-cards .card-img + .card-img {
     margin-left: -23px;
   }
 
-  /* Abanico del rival */
+
+  /* Abanico rival */
   .opponent-cards .card-img + .card-img {
     margin-left: -36px;
   }
 
-  /* Cartas tiradas a la mesa */
+
+  /* Cartas que ya fueron jugadas */
   .table-tricks .card-img,
   .trick-slot .card-img,
   .card-in-trick {
     width: 58px !important;
     height: 92px !important;
+
     max-width: 58px !important;
     max-height: 92px !important;
+
     object-fit: cover;
   }
 
-  .trick-slot {
-    width: 68px;
-    height: 105px;
-  }
 
   /* Cartas mostradas al resolver Envido / Flor */
   .envido-cards-row .card-img {
     width: 58px !important;
     height: 92px !important;
+
     max-width: 58px !important;
     max-height: 92px !important;
+
     object-fit: cover;
   }
+
 
   .envido-cards-row {
     gap: 6px;
   }
 
-  /* En celular no agrandar al tocar */
+
+  /* No agrandar cartas al tocar desde celular */
   .my-cards .card-img:hover {
     transform:
       translateY(var(--fan-y))
       rotate(var(--fan-r))
       scale(1);
 
+    z-index: 20;
+  }
+
+
+  /* Los botones quedan claramente debajo de la mesa */
+  .actions-bar {
+    margin-top: 14px !important;
+
+    position: relative;
     z-index: 20;
   }
 }
