@@ -1134,6 +1134,29 @@
 </style>  
 </head>
 <body>
+  <!-- PANTALLA DE RESTAURACION -->
+<div id="restoreScreen">
+
+  <img
+    src="/icon-192.png"
+    class="restore-logo"
+    alt="Truco Argentino Online"
+  >
+
+  <div class="restore-title">
+    Truco Argentino Online
+  </div>
+
+  <div
+    class="restore-text"
+    id="restoreText"
+  >
+    Cargando...
+  </div>
+
+  <div class="restore-spinner"></div>
+
+</div>
   
 
   <!-- Portada + Registro / Login -->
@@ -2058,8 +2081,8 @@ function hideRestoreScreen() {
       if (err) err.style.display = 'none';
       const btn = document.getElementById('btnStartGuestBot');
       if (btn) { btn.disabled = false; btn.innerText = '🤖 JUGAR GRATIS CONTRA LA MÁQUINA';
-        hideRestoreScreen();
        }
+       hideRestoreScreen();
     }
 
     function openAuthPanel(tab = 'register') {
