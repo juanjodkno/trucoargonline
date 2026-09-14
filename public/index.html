@@ -977,6 +977,23 @@
   max-width: 50px !important;
   max-height: 79px !important;
 }
+/* =========================================================
+   ANIMACION VISUAL DE REPARTO 1VS1
+   SOLO VISUAL - NO MODIFICA LOGICA DEL JUEGO
+   ========================================================= */
+
+.deal-flying-card {
+  position: fixed;
+  pointer-events: none;
+  z-index: 99999;
+
+  border-radius: 7px;
+  object-fit: cover;
+
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.55);
+
+  will-change: transform, opacity;
+}
 </style>  
 </head>
 <body>
@@ -2816,6 +2833,327 @@
         document.getElementById('lblTimer').innerText = data.secondsLeft;
       });
 
+      /* =========================================================
+   ANIMACION VISUAL DE REPARTO
+   La primera carta SIEMPRE va al jugador MANO.
+   SOLO VISUAL - NO TOCA LOGICA DEL JUEGO.
+   ========================================================= */
+
+let dealAnimationToken = 0;
+
+function animateDealToHands() {
+
+  const token = ++dealAnimationToken;
+
+  const table = document.querySelector('.truco-table');
+
+  const opponentCards = Array.from(
+    document.querySelectorAll('#opponentCards .card-img')
+  );
+
+  const myCards = Array.from(
+    document.querySelectorAll('#myCards .card-img')
+  );
+
+  if (!table || !currentUser) {
+
+    opponentCards.forEach(card => {
+      card.style.visibility = 'visible';
+    });
+
+    myCards.forEach(card => {
+      card.style.visibility = 'visible';
+    });
+
+    return;
+  }
+
+
+  /* =====================================================
+     SABER QUIEN ES MANO
+     currentTurnPlayer ya viene del servidor.
+     ===================================================== */
+
+  const iAmHand =
+    (currentTurnPlayer || '').toLowerCase() ===
+    (currentUser.username || '').toLowerCase();
+
+
+  const sequence = [];
+
+
+  /* =====================================================
+     REPARTO CORRECTO:
+
+     Si YO soy mano:
+     yo - rival - yo - rival - yo - rival
+
+     Si RIVAL es mano:
+     rival - yo - rival - yo - rival - yo
+     ===================================================== */
+
+  for (let i = 0; i < 3; i++) {
+
+    if (iAmHand) {
+
+      if (myCards[i]) {
+        sequence.push(myCards[i]);
+      }
+
+      if (opponentCards[i]) {
+        sequence.push(opponentCards[i]);
+      }
+
+    } else {
+
+      if (opponentCards[i]) {
+        sequence.push(opponentCards[i]);
+      }
+
+      if (myCards[i]) {
+        sequence.push(myCards[i]);
+      }
+
+    }
+  }
+
+
+  if (!sequence.length) {
+    return;
+  }
+
+
+  /* Las cartas reales quedan ocupando su lugar
+     pero invisibles durante el vuelo */
+
+  sequence.forEach(card => {
+    card.style.visibility = 'hidden';
+  });
+
+
+  /* Accesibilidad / celulares configurados
+     para reducir animaciones */
+
+  if (
+    window.matchMedia &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  ) {
+
+    sequence.forEach(card => {
+      card.style.visibility = 'visible';
+    });
+
+    return;
+  }
+
+
+  const tableRect = table.getBoundingClientRect();
+
+
+  /* =====================================================
+     PUNTO DE DONDE SALEN LAS CARTAS
+     Centro aproximado de la mesa
+     ===================================================== */
+
+  const startX =
+    tableRect.left + (tableRect.width / 2);
+
+  const startY =
+    tableRect.top + (tableRect.height / 2);
+
+
+  /* Cada cuánto sale una carta */
+  const interval = 115;
+
+  /* Cuánto tarda cada carta en llegar */
+  const duration = 380;
+
+
+  sequence.forEach((target, order) => {
+
+    setTimeout(() => {
+
+      if (token !== dealAnimationToken) {
+        return;
+      }
+
+      if (!target || !target.isConnected) {
+        return;
+      }
+
+
+      const targetRect =
+        target.getBoundingClientRect();
+
+
+      /*
+        Usamos el tamaño REAL configurado actualmente
+        para esa carta.
+
+        Esto respeta que:
+        - tus cartas sean más grandes
+        - las cartas dadas vuelta del rival sean más chicas
+      */
+
+      const targetWidth =
+        target.offsetWidth || targetRect.width;
+
+      const targetHeight =
+        target.offsetHeight || targetRect.height;
+
+
+      const targetCenterX =
+        targetRect.left + (targetRect.width / 2);
+
+      const targetCenterY =
+        targetRect.top + (targetRect.height / 2);
+
+
+      const startLeft =
+        startX - (targetWidth / 2);
+
+      const startTop =
+        startY - (targetHeight / 2);
+
+
+      const moveX =
+        targetCenterX - startX;
+
+      const moveY =
+        targetCenterY - startY;
+
+
+      const flyingCard =
+        document.createElement('img');
+
+
+      flyingCard.className =
+        'deal-flying-card';
+
+
+      /*
+        Durante el reparto todas viajan dadas vuelta.
+        Al llegar a tu mano aparece tu carta real.
+      */
+
+      flyingCard.src =
+        getCardSrc('BACK');
+
+
+      flyingCard.style.left =
+        `${startLeft}px`;
+
+      flyingCard.style.top =
+        `${startTop}px`;
+
+      flyingCard.style.width =
+        `${targetWidth}px`;
+
+      flyingCard.style.height =
+        `${targetHeight}px`;
+
+
+      document.body.appendChild(flyingCard);
+
+
+      /*
+        Tomamos el mismo ángulo que ya tiene
+        tu abanico actual.
+      */
+
+      const styles =
+        window.getComputedStyle(target);
+
+      const targetRotation =
+        styles.getPropertyValue('--fan-r').trim()
+        || '0deg';
+
+
+      const animation =
+        flyingCard.animate(
+
+          [
+            {
+              transform:
+                'translate(0px, 0px) rotate(0deg) scale(0.72)',
+
+              opacity: 0.65
+            },
+
+            {
+              transform:
+                `translate(${moveX}px, ${moveY}px) rotate(${targetRotation}) scale(1)`,
+
+              opacity: 1
+            }
+          ],
+
+          {
+            duration: duration,
+
+            easing:
+              'cubic-bezier(0.20, 0.85, 0.25, 1)',
+
+            fill: 'forwards'
+          }
+
+        );
+
+
+      animation.onfinish = () => {
+
+        if (
+          token === dealAnimationToken &&
+          target.isConnected
+        ) {
+
+          target.style.visibility =
+            'visible';
+        }
+
+
+        flyingCard.remove();
+
+      };
+
+
+    }, order * interval);
+
+  });
+
+
+  /* =====================================================
+     SEGURIDAD:
+     nunca deja una carta accidentalmente invisible
+     ===================================================== */
+
+  const totalTime =
+    ((sequence.length - 1) * interval)
+    + duration
+    + 150;
+
+
+  setTimeout(() => {
+
+    if (token !== dealAnimationToken) {
+      return;
+    }
+
+
+    sequence.forEach(card => {
+
+      if (card && card.isConnected) {
+
+        card.style.visibility =
+          'visible';
+
+      }
+
+    });
+
+  }, totalTime);
+
+}
       socket.on('hand_started', (data) => {
         document.getElementById('envidoOverlay').style.display = 'none';
         document.getElementById('gameActions').style.display = 'flex';
@@ -2837,11 +3175,29 @@
           document.getElementById(`trick-${i}`).innerHTML = '';
         }
         const opp = document.getElementById('opponentCards');
-        opp.innerHTML = `
-          <img class="card-img card-deal-anim" style="animation-delay:0s;" src="${getCardSrc('BACK')}" alt="Dorso" />
-          <img class="card-img card-deal-anim" style="animation-delay:0.08s;" src="${getCardSrc('BACK')}" alt="Dorso" />
-          <img class="card-img card-deal-anim" style="animation-delay:0.16s;" src="${getCardSrc('BACK')}" alt="Dorso" />
-        `;
+
+opp.innerHTML = `
+  <img
+    class="card-img"
+    style="visibility:hidden;"
+    src="${getCardSrc('BACK')}"
+    alt="Dorso"
+  />
+
+  <img
+    class="card-img"
+    style="visibility:hidden;"
+    src="${getCardSrc('BACK')}"
+    alt="Dorso"
+  />
+
+  <img
+    class="card-img"
+    style="visibility:hidden;"
+    src="${getCardSrc('BACK')}"
+    alt="Dorso"
+  />
+`;
 
         updateTurnControls(currentTurnPlayer);
       });
@@ -2858,20 +3214,79 @@
         }
 
         const container = document.getElementById('myCards');
-        container.innerHTML = '';
 
-        myCards.forEach((c, index) => {
-          const img = document.createElement('img');
-          img.id = `card-${c.id}`;
-          img.className = 'card-img card-deal-anim';
-          img.style.animationDelay = `${index * 0.08}s`;
-          img.src = getCardSrc(c.id);
-          img.alt = c.id;
-          img.onclick = () => playCard(c.id);
-          container.appendChild(img);
-        });
+container.innerHTML = '';
 
-        updateTurnControls(currentTurnPlayer);
+
+myCards.forEach((c) => {
+
+  const img =
+    document.createElement('img');
+
+
+  img.id =
+    `card-${c.id}`;
+
+
+  img.className =
+    'card-img';
+
+
+  /*
+    Queda invisible solamente hasta que
+    la animación llegue a su posición.
+  */
+
+  img.style.visibility =
+    'hidden';
+
+
+  img.src =
+    getCardSrc(c.id);
+
+
+  img.alt =
+    c.id;
+
+
+  img.onclick =
+    () => playCard(c.id);
+
+
+  container.appendChild(img);
+
+});
+
+
+/*
+  Conservamos exactamente el sistema actual
+  de turnos y botones.
+*/
+
+updateTurnControls(currentTurnPlayer);
+
+
+/*
+  Esperamos dos frames para que el navegador
+  haya calculado correctamente:
+
+  - tamaños
+  - abanicos
+  - posiciones PC
+  - posiciones celular
+*/
+
+requestAnimationFrame(() => {
+
+  requestAnimationFrame(() => {
+
+    animateDealToHands();
+
+  });
+
+});
+
+/* Cierra socket.on('cards_dealt') */
       });
 
       socket.on('card_played', (data) => {
