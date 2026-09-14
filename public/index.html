@@ -4537,18 +4537,8 @@ async function installTrucoApp() {
 
 window.addEventListener('DOMContentLoaded', () => {
 
-  const isIOS =
-    /iphone|ipad|ipod/i.test(
-      navigator.userAgent
-    );
-
-  if (
-    isIOS &&
-    !isTrucoAppInstalled()
-  ) {
-
+  if (!isTrucoAppInstalled()) {
     showInstallButton();
-
   }
 
 });
