@@ -60,6 +60,28 @@ function setupSocketEvents(io) {
             return room.guestId || null;
         return null;
     }
+    function isDuplicateClientAction(room, userId, action, windowMs = 700) {
+        const now = Date.now();
+        if (!room.recentClientActions) {
+            room.recentClientActions = new Map();
+        }
+        const key = `${userId.toLowerCase()}::${action}`;
+        const previous = room.recentClientActions.get(key);
+        if (previous !== undefined && (now - previous) < windowMs) {
+            console.warn(`[DUPLICATE ACTION BLOCKED] room=${room.roomId} user=${userId} action=${action}`);
+            return true;
+        }
+        room.recentClientActions.set(key, now);
+        // Limpieza para que el Map nunca crezca indefinidamente.
+        if (room.recentClientActions.size > 40) {
+            for (const [storedKey, timestamp] of room.recentClientActions.entries()) {
+                if ((now - timestamp) > 5000) {
+                    room.recentClientActions.delete(storedKey);
+                }
+            }
+        }
+        return false;
+    }
     function releaseRoomPresence(room) {
         if (room.isBotGame)
             return;
@@ -666,6 +688,11 @@ function setupSocketEvents(io) {
         if (!room.guestId || room.disconnectedUser)
             return;
         clearTurnTimer(room);
+        // Nueva mano = todos los candados de la mano anterior se liberan.
+        room.roundEnding = false;
+        if (room.recentClientActions) {
+            room.recentClientActions.clear();
+        }
         const round = new trucoGame_1.TrucoRound(room.creatorId, room.guestId, room.manoId, room.targetPoints, room.withFlor);
         room.gameRound = round;
         room.gameRound.envidoResolved = false;
@@ -940,6 +967,13 @@ function setupSocketEvents(io) {
     function resolveTrucoFold(room, folderUserId, reason = 'NO_QUIERO_TRUCO') {
         if (!room.gameRound)
             return;
+        // Una mano que ya fue cerrada NO puede volver a sumar puntos.
+        if (room.roundEnding) {
+            console.warn(`[ROUND ALREADY ENDING] ${room.roomId}: acción duplicada ignorada (${reason})`);
+            return;
+        }
+        // Se activa ANTES de calcular o sumar cualquier punto.
+        room.roundEnding = true;
         clearTurnTimer(room);
         const winnerId = folderUserId.toLowerCase() === room.creatorId.toLowerCase() ? room.guestId : room.creatorId;
         // Caso especial validado para este proyecto:
@@ -1088,6 +1122,11 @@ function setupSocketEvents(io) {
             currentTrick: room.gameRound.currentTrickIndex,
         });
         if (result.roundOver && result.winnerId) {
+            // Desde este momento la mano está cerrada.
+            // Ningún evento atrasado puede volver a modificarla.
+            if (room.roundEnding)
+                return;
+            room.roundEnding = true;
             // Cálculo de puntos
             const finalTrucoPoints = room.trucoLevel > 1 ? room.trucoLevel : (result.points || 1);
             if (result.winnerId.toLowerCase() === room.creatorId.toLowerCase()) {
@@ -1854,6 +1893,15 @@ function setupSocketEvents(io) {
                     if (room.gameRound.currentTurn.toLowerCase() !== authUser.toLowerCase()) {
                         return socket.emit('error_action', { message: 'No es tu turno para cantar o jugar.' });
                     }
+                }
+                // Si la mano ya terminó, ignoramos cualquier paquete atrasado.
+                if (room.roundEnding) {
+                    return;
+                }
+                // Misma acción enviada dos veces casi simultáneamente:
+                // solo la primera llega a la lógica del juego.
+                if (isDuplicateClientAction(room, authUser, `send_call:${String(callType || '')}`, 700)) {
+                    return;
                 }
                 const isFirstTrick = room.gameRound && room.gameRound.currentTrickIndex === 0;
                 const envidoActive = room.envidoPendingCaller && !room.gameRound.envidoResolved;

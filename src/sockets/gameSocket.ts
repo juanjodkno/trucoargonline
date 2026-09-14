@@ -64,6 +64,13 @@ interface ActiveRoom {
   trucoLevel: number;
   trucoOwner: string | null;
 
+   // Candados anti-duplicados del juego.
+  // No modifican reglas ni puntuaciones: solo evitan procesar dos veces
+  // la misma acción recibida por doble clic, lag o paquetes repetidos.
+  roundEnding?: boolean;
+  recentClientActions?: Map<string, number>;
+  isProcessingPlay?: boolean;
+  
   // Candados financieros: no modifican reglas del juego.
   settlementInProgress?: boolean;
   joiningUser?: string | null;
@@ -138,6 +145,42 @@ export function setupSocketEvents(io: Server) {
     if (room.creatorSocketId === socketId) return room.creatorId;
     if (room.guestSocketId === socketId) return room.guestId || null;
     return null;
+  }
+    function isDuplicateClientAction(
+    room: ActiveRoom,
+    userId: string,
+    action: string,
+    windowMs: number = 700
+  ): boolean {
+
+    const now = Date.now();
+
+    if (!room.recentClientActions) {
+      room.recentClientActions = new Map<string, number>();
+    }
+
+    const key = `${userId.toLowerCase()}::${action}`;
+    const previous = room.recentClientActions.get(key);
+
+    if (previous !== undefined && (now - previous) < windowMs) {
+      console.warn(
+        `[DUPLICATE ACTION BLOCKED] room=${room.roomId} user=${userId} action=${action}`
+      );
+      return true;
+    }
+
+    room.recentClientActions.set(key, now);
+
+    // Limpieza para que el Map nunca crezca indefinidamente.
+    if (room.recentClientActions.size > 40) {
+      for (const [storedKey, timestamp] of room.recentClientActions.entries()) {
+        if ((now - timestamp) > 5000) {
+          room.recentClientActions.delete(storedKey);
+        }
+      }
+    }
+
+    return false;
   }
 
   function releaseRoomPresence(room: ActiveRoom) {
@@ -773,10 +816,18 @@ export function setupSocketEvents(io: Server) {
   }
 
   function dealAutoHand(room: ActiveRoom) {
-    if (!room.guestId || room.disconnectedUser) return;
-    clearTurnTimer(room);
+  if (!room.guestId || room.disconnectedUser) return;
 
-    const round = new TrucoRound(
+  clearTurnTimer(room);
+
+  // Nueva mano = todos los candados de la mano anterior se liberan.
+  room.roundEnding = false;
+
+  if (room.recentClientActions) {
+    room.recentClientActions.clear();
+  }
+
+  const round = new TrucoRound(
       room.creatorId, room.guestId, room.manoId, room.targetPoints, room.withFlor
     );
     room.gameRound = round;
@@ -1073,9 +1124,26 @@ export function setupSocketEvents(io: Server) {
     startTurnTimer(room, 30);
   }
 
-  function resolveTrucoFold(room: ActiveRoom, folderUserId: string, reason: string = 'NO_QUIERO_TRUCO') {
-    if (!room.gameRound) return;
-    clearTurnTimer(room);
+  function resolveTrucoFold(
+  room: ActiveRoom,
+  folderUserId: string,
+  reason: string = 'NO_QUIERO_TRUCO'
+) {
+
+  if (!room.gameRound) return;
+
+  // Una mano que ya fue cerrada NO puede volver a sumar puntos.
+  if (room.roundEnding) {
+    console.warn(
+      `[ROUND ALREADY ENDING] ${room.roomId}: acción duplicada ignorada (${reason})`
+    );
+    return;
+  }
+
+  // Se activa ANTES de calcular o sumar cualquier punto.
+  room.roundEnding = true;
+
+  clearTurnTimer(room);
 
     const winnerId = folderUserId.toLowerCase() === room.creatorId.toLowerCase() ? room.guestId! : room.creatorId;
 
@@ -1239,8 +1307,13 @@ export function setupSocketEvents(io: Server) {
       trickWinnerId: result.trickWinnerId || null, nextTurn: result.nextTurn,
       currentTrick: room.gameRound.currentTrickIndex,
     });
-
+    
     if (result.roundOver && result.winnerId) {
+      // Desde este momento la mano está cerrada.
+  // Ningún evento atrasado puede volver a modificarla.
+  if (room.roundEnding) return;
+  room.roundEnding = true;
+
       // Cálculo de puntos
       const finalTrucoPoints = room.trucoLevel > 1 ? room.trucoLevel : (result.points || 1);
       
@@ -2074,6 +2147,23 @@ export function setupSocketEvents(io: Server) {
           }
         }
 
+                // Si la mano ya terminó, ignoramos cualquier paquete atrasado.
+        if (room.roundEnding) {
+          return;
+        }
+
+        // Misma acción enviada dos veces casi simultáneamente:
+        // solo la primera llega a la lógica del juego.
+        if (
+          isDuplicateClientAction(
+            room,
+            authUser,
+            `send_call:${String(callType || '')}`,
+            700
+          )
+        ) {
+          return;
+        }
         const isFirstTrick = room.gameRound && room.gameRound.currentTrickIndex === 0;
         const envidoActive = room.envidoPendingCaller && !room.gameRound.envidoResolved;
         const florActive = room.florPendingCaller && !room.gameRound.florResolved;
