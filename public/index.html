@@ -2011,12 +2011,28 @@
     }
 
     function logoutUser() {
-      triggerHaptic(20);
-      sessionStorage.removeItem('truco_active_room');
-      localStorage.removeItem('truco_saved_user');
-      sessionStorage.removeItem('truco_saved_user');
-      window.location.reload();
-    }
+
+  triggerHaptic(20);
+
+  fetch('/api/auth/logout', {
+    method: 'POST'
+  }).finally(() => {
+
+    sessionStorage.removeItem(
+      'truco_active_room'
+    );
+
+    localStorage.removeItem(
+      'truco_saved_user'
+    );
+
+    sessionStorage.removeItem(
+      'truco_saved_user'
+    );
+
+    window.location.reload();
+  });
+}
 
     function openSupportWhatsApp() {
       triggerHaptic(20);
@@ -2194,9 +2210,7 @@ async function openMatchHistory() {
   try {
 
     const res =
-      await fetch(
-        `/api/user/history/${encodeURIComponent(currentUser.username)}`
-      );
+      await fetch('/api/user/history');
 
 
     const data =
@@ -2407,7 +2421,13 @@ async function openMatchHistory() {
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fullName, email, username, password })
+          body: JSON.stringify({
+  fullName,
+  email,
+  username,
+  password,
+  remember
+})
         });
         const data = await res.json();
         if (!res.ok) { err.innerText = data.message; err.style.display = 'block'; return; }
@@ -2429,7 +2449,11 @@ async function openMatchHistory() {
         const res = await fetch('/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ usernameOrEmail, password })
+          body: JSON.stringify({
+  usernameOrEmail,
+  password,
+  remember
+})
         });
         const data = await res.json();
         if (!res.ok) { err.innerText = data.message; err.style.display = 'block'; return; }

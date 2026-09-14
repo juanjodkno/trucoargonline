@@ -2,6 +2,7 @@
 import express from 'express';
 import http from 'http';
 import path from 'path';
+import crypto from 'crypto';
 import { Server } from 'socket.io';
 import rateLimit from 'express-rate-limit';
 import { setupSocketEvents } from './sockets/gameSocket';
@@ -31,6 +32,192 @@ import {
 
 const app = express();
 const server = http.createServer(app);
+/* =========================================================
+   SESIONES SEGURAS DE USUARIO
+   ========================================================= */
+
+const SESSION_SECRET = process.env.SESSION_SECRET || '';
+
+if (!SESSION_SECRET) {
+  throw new Error('SESSION_SECRET no está configurado.');
+}
+
+const SESSION_COOKIE = 'truco_session';
+
+function createSessionToken(username: string): string {
+
+  const payload = Buffer.from(
+    JSON.stringify({
+      username: String(username || '').trim().toLowerCase(),
+      exp: Date.now() + (30 * 24 * 60 * 60 * 1000)
+    })
+  ).toString('base64url');
+
+  const signature = crypto
+    .createHmac('sha256', SESSION_SECRET)
+    .update(payload)
+    .digest('base64url');
+
+  return `${payload}.${signature}`;
+}
+
+
+function verifySessionToken(token: string | undefined): string | null {
+
+  if (!token) return null;
+
+  const parts = token.split('.');
+
+  if (parts.length !== 2) return null;
+
+  const [payload, receivedSignature] = parts;
+
+  const expectedSignature = crypto
+    .createHmac('sha256', SESSION_SECRET)
+    .update(payload)
+    .digest('base64url');
+
+  try {
+
+    const receivedBuffer =
+      Buffer.from(receivedSignature, 'base64url');
+
+    const expectedBuffer =
+      Buffer.from(expectedSignature, 'base64url');
+
+    if (
+      receivedBuffer.length !== expectedBuffer.length ||
+      !crypto.timingSafeEqual(receivedBuffer, expectedBuffer)
+    ) {
+      return null;
+    }
+
+    const decoded = JSON.parse(
+      Buffer.from(payload, 'base64url').toString('utf8')
+    );
+
+    if (!decoded.username || !decoded.exp) {
+      return null;
+    }
+
+    if (Date.now() > Number(decoded.exp)) {
+      return null;
+    }
+
+    return String(decoded.username).trim().toLowerCase();
+
+  } catch {
+    return null;
+  }
+}
+
+
+function getCookie(
+  req: express.Request,
+  cookieName: string
+): string | undefined {
+
+  const cookies = String(req.headers.cookie || '')
+    .split(';')
+    .map(v => v.trim());
+
+  for (const cookie of cookies) {
+
+    const separator = cookie.indexOf('=');
+
+    if (separator === -1) continue;
+
+    const name = cookie.slice(0, separator);
+    const value = cookie.slice(separator + 1);
+
+    if (name === cookieName) {
+      return decodeURIComponent(value);
+    }
+  }
+
+  return undefined;
+}
+
+
+function setUserSession(
+  res: express.Response,
+  username: string,
+  remember: boolean
+) {
+
+  const token = createSessionToken(username);
+
+  const secure =
+    process.env.RENDER
+      ? '; Secure'
+      : '';
+
+  const persistent =
+    remember
+      ? '; Max-Age=2592000'
+      : '';
+
+  res.setHeader(
+    'Set-Cookie',
+    `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/${secure}${persistent}`
+  );
+}
+
+
+function clearUserSession(res: express.Response) {
+
+  const secure =
+    process.env.RENDER
+      ? '; Secure'
+      : '';
+
+  res.setHeader(
+    'Set-Cookie',
+    `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`
+  );
+}
+
+
+function requireUserSession(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) {
+
+  const token =
+    getCookie(req, SESSION_COOKIE);
+
+  const username =
+    verifySessionToken(token);
+
+  if (!username) {
+
+    return res.status(401).json({
+      success: false,
+      message: 'Sesión no válida o vencida.'
+    });
+  }
+
+  res.locals.authUsername =
+    username;
+
+  next();
+}
+
+
+function safeUserForClient(user: any) {
+
+  if (!user) return user;
+
+  const {
+    passwordHash,
+    salt,
+    password,
+    ...safeUser
+  } = user;
+
+  return safeUser;
+} 
 
 // Habilitar trust proxy para reconocer la IP real del cliente detrás del proxy de Render
 app.set('trust proxy', 1);
@@ -160,36 +347,55 @@ app.post('/api/user/avatar', (req, res) => {
    SOLO LECTURA - NO MODIFICA FICHAS
    ========================================================= */
 
-app.get('/api/user/history/:username', async (req, res) => {
-  try {
-    const username = String(req.params.username || '').trim();
+/* =========================================================
+   HISTORIAL PRIVADO DEL USUARIO
+   ========================================================= */
 
-    if (!username) {
-      return res.status(400).json({
+app.get(
+  '/api/user/history',
+  requireUserSession,
+  async (req, res) => {
+
+    try {
+
+      /*
+        NO usamos username enviado por el navegador.
+
+        El usuario sale exclusivamente de
+        la sesión firmada por el servidor.
+      */
+
+      const username =
+        String(res.locals.authUsername || '');
+
+      const history =
+        await getUserHistoryFresh(
+          username,
+          100
+        );
+
+      return res.json({
+        success: true,
+        history
+      });
+
+    } catch (err) {
+
+      console.error(
+        'Error cargando historial del usuario:',
+        err
+      );
+
+      return res.status(503).json({
         success: false,
-        message: 'Usuario inválido.'
+        message:
+          'No se pudo cargar el historial.'
       });
     }
-
-    const history = await getUserHistoryFresh(username, 100);
-
-    return res.json({
-      success: true,
-      history
-    });
-
-  } catch (err) {
-    console.error('Error cargando historial del usuario:', err);
-
-    return res.status(503).json({
-      success: false,
-      message: 'No se pudo cargar el historial.'
-    });
   }
-});
+);
 
 
-// Billetera
 
 // Billetera
 app.get('/api/wallet/balance/:username', async (req, res) => {

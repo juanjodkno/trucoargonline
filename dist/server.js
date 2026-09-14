@@ -7,6 +7,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const http_1 = __importDefault(require("http"));
 const path_1 = __importDefault(require("path"));
+const crypto_1 = __importDefault(require("crypto"));
 const socket_io_1 = require("socket.io");
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const gameSocket_1 = require("./sockets/gameSocket");
@@ -14,6 +15,107 @@ const teamGameSocket_1 = require("./sockets/teamGameSocket");
 const userService_1 = require("./auth/userService");
 const app = (0, express_1.default)();
 const server = http_1.default.createServer(app);
+/* =========================================================
+   SESIONES SEGURAS DE USUARIO
+   ========================================================= */
+const SESSION_SECRET = process.env.SESSION_SECRET || '';
+if (!SESSION_SECRET) {
+    throw new Error('SESSION_SECRET no está configurado.');
+}
+const SESSION_COOKIE = 'truco_session';
+function createSessionToken(username) {
+    const payload = Buffer.from(JSON.stringify({
+        username: String(username || '').trim().toLowerCase(),
+        exp: Date.now() + (30 * 24 * 60 * 60 * 1000)
+    })).toString('base64url');
+    const signature = crypto_1.default
+        .createHmac('sha256', SESSION_SECRET)
+        .update(payload)
+        .digest('base64url');
+    return `${payload}.${signature}`;
+}
+function verifySessionToken(token) {
+    if (!token)
+        return null;
+    const parts = token.split('.');
+    if (parts.length !== 2)
+        return null;
+    const [payload, receivedSignature] = parts;
+    const expectedSignature = crypto_1.default
+        .createHmac('sha256', SESSION_SECRET)
+        .update(payload)
+        .digest('base64url');
+    try {
+        const receivedBuffer = Buffer.from(receivedSignature, 'base64url');
+        const expectedBuffer = Buffer.from(expectedSignature, 'base64url');
+        if (receivedBuffer.length !== expectedBuffer.length ||
+            !crypto_1.default.timingSafeEqual(receivedBuffer, expectedBuffer)) {
+            return null;
+        }
+        const decoded = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+        if (!decoded.username || !decoded.exp) {
+            return null;
+        }
+        if (Date.now() > Number(decoded.exp)) {
+            return null;
+        }
+        return String(decoded.username).trim().toLowerCase();
+    }
+    catch {
+        return null;
+    }
+}
+function getCookie(req, cookieName) {
+    const cookies = String(req.headers.cookie || '')
+        .split(';')
+        .map(v => v.trim());
+    for (const cookie of cookies) {
+        const separator = cookie.indexOf('=');
+        if (separator === -1)
+            continue;
+        const name = cookie.slice(0, separator);
+        const value = cookie.slice(separator + 1);
+        if (name === cookieName) {
+            return decodeURIComponent(value);
+        }
+    }
+    return undefined;
+}
+function setUserSession(res, username, remember) {
+    const token = createSessionToken(username);
+    const secure = process.env.RENDER
+        ? '; Secure'
+        : '';
+    const persistent = remember
+        ? '; Max-Age=2592000'
+        : '';
+    res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${encodeURIComponent(token)}; HttpOnly; SameSite=Lax; Path=/${secure}${persistent}`);
+}
+function clearUserSession(res) {
+    const secure = process.env.RENDER
+        ? '; Secure'
+        : '';
+    res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0${secure}`);
+}
+function requireUserSession(req, res, next) {
+    const token = getCookie(req, SESSION_COOKIE);
+    const username = verifySessionToken(token);
+    if (!username) {
+        return res.status(401).json({
+            success: false,
+            message: 'Sesión no válida o vencida.'
+        });
+    }
+    res.locals.authUsername =
+        username;
+    next();
+}
+function safeUserForClient(user) {
+    if (!user)
+        return user;
+    const { passwordHash, salt, password, ...safeUser } = user;
+    return safeUser;
+}
 // Habilitar trust proxy para reconocer la IP real del cliente detrás del proxy de Render
 app.set('trust proxy', 1);
 const ADMIN_PIN = process.env.ADMIN_PIN || '36049655Dk,';
@@ -122,15 +224,18 @@ app.post('/api/user/avatar', (req, res) => {
    HISTORIAL PERSONAL DEL USUARIO
    SOLO LECTURA - NO MODIFICA FICHAS
    ========================================================= */
-app.get('/api/user/history/:username', async (req, res) => {
+/* =========================================================
+   HISTORIAL PRIVADO DEL USUARIO
+   ========================================================= */
+app.get('/api/user/history', requireUserSession, async (req, res) => {
     try {
-        const username = String(req.params.username || '').trim();
-        if (!username) {
-            return res.status(400).json({
-                success: false,
-                message: 'Usuario inválido.'
-            });
-        }
+        /*
+          NO usamos username enviado por el navegador.
+  
+          El usuario sale exclusivamente de
+          la sesión firmada por el servidor.
+        */
+        const username = String(res.locals.authUsername || '');
         const history = await (0, userService_1.getUserHistoryFresh)(username, 100);
         return res.json({
             success: true,
@@ -145,7 +250,6 @@ app.get('/api/user/history/:username', async (req, res) => {
         });
     }
 });
-// Billetera
 // Billetera
 app.get('/api/wallet/balance/:username', async (req, res) => {
     try {
