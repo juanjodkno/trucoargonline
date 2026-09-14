@@ -2,7 +2,7 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-  <link rel="manifest" href="/manifest.json" />
+  <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#0077b6" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -14,8 +14,36 @@
   <script src="/socket.io/socket.io.js"></script>
   <script>
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW error:', err));
-    }
+
+    window.addEventListener('load', async () => {
+
+      try {
+
+        const registration =
+          await navigator.serviceWorker.register(
+            '/sw.js',
+            {
+              updateViaCache: 'none'
+            }
+          );
+
+        // Busca una nueva versión cada vez que se abre la web
+        registration.update().catch(() => {});
+
+        console.log('✅ App PWA activa');
+
+      } catch (err) {
+
+        console.log(
+          'SW error:',
+          err
+        );
+
+      }
+
+    });
+
+  }
   </script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
@@ -994,9 +1022,53 @@
 
   will-change: transform, opacity;
 }
+/* =========================================================
+   BOTON INSTALAR APP
+   ========================================================= */
+
+#installAppBox {
+  display: none;
+  position: fixed;
+  top: max(12px, env(safe-area-inset-top));
+  right: 12px;
+  z-index: 99999;
+}
+
+#btnInstallApp {
+  background: #25d366;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 10px 15px;
+  font-size: 14px;
+  font-weight: 900;
+  cursor: pointer;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.45);
+}
+
+#btnInstallApp:active {
+  transform: scale(0.96);
+}
+
+/* Si ya está instalada como app, ocultamos el botón */
+@media (display-mode: standalone) {
+  #installAppBox {
+    display: none !important;
+  }
+}
 </style>  
 </head>
 <body>
+  <!-- BOTON INSTALAR APP -->
+<div id="installAppBox">
+  <button
+    type="button"
+    id="btnInstallApp"
+    onclick="installTrucoApp()"
+  >
+    📲 Instalar App
+  </button>
+</div>
 
   <!-- Portada + Registro / Login -->
   <div class="auth-overlay" id="authOverlay">
@@ -4313,6 +4385,173 @@ requestAnimationFrame(() => {
       if (!activeRoomId) sessionStorage.removeItem('truco_guest_user');
       showWelcomePanel();
     });
+    /* =========================================================
+   INSTALACION DE TRUCO ARGENTINO ONLINE COMO APP
+   ========================================================= */
+
+let deferredInstallPrompt = null;
+
+
+function isTrucoAppInstalled() {
+
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true
+  );
+
+}
+
+
+function showInstallButton() {
+
+  if (isTrucoAppInstalled()) return;
+
+  const box = document.getElementById('installAppBox');
+
+  if (box) {
+    box.style.display = 'block';
+  }
+
+}
+
+
+function hideInstallButton() {
+
+  const box = document.getElementById('installAppBox');
+
+  if (box) {
+    box.style.display = 'none';
+  }
+
+}
+
+
+/*
+  Android / Chrome / Samsung Internet
+*/
+
+window.addEventListener('beforeinstallprompt', (event) => {
+
+  event.preventDefault();
+
+  deferredInstallPrompt = event;
+
+  showInstallButton();
+
+});
+
+
+/*
+  Cuando termina de instalarse
+*/
+
+window.addEventListener('appinstalled', () => {
+
+  deferredInstallPrompt = null;
+
+  hideInstallButton();
+
+  console.log('✅ Truco Argentino Online instalado.');
+
+});
+
+
+async function installTrucoApp() {
+
+  if (typeof triggerHaptic === 'function') {
+    triggerHaptic(20);
+  }
+
+
+  if (isTrucoAppInstalled()) {
+
+    hideInstallButton();
+
+    return;
+
+  }
+
+
+  /*
+    Android
+  */
+
+  if (deferredInstallPrompt) {
+
+    deferredInstallPrompt.prompt();
+
+    const choice =
+      await deferredInstallPrompt.userChoice;
+
+    if (choice.outcome === 'accepted') {
+
+      hideInstallButton();
+
+    }
+
+    deferredInstallPrompt = null;
+
+    return;
+
+  }
+
+
+  /*
+    iPhone / iPad
+  */
+
+  const isIOS =
+    /iphone|ipad|ipod/i.test(
+      navigator.userAgent
+    );
+
+  if (isIOS) {
+
+    alert(
+      'Para instalar Truco Argentino Online:\n\n' +
+      '1. Tocá Compartir en Safari.\n' +
+      '2. Elegí "Agregar a pantalla de inicio".\n' +
+      '3. Tocá "Agregar".'
+    );
+
+    return;
+
+  }
+
+
+  /*
+    Navegador compatible pero sin aviso automático
+  */
+
+  alert(
+    'Abrí el menú del navegador (⋮) y elegí "Instalar aplicación" o "Agregar a pantalla de inicio".'
+  );
+
+}
+
+
+/*
+  En iPhone mostramos igualmente el botón,
+  porque Safari no genera beforeinstallprompt.
+*/
+
+window.addEventListener('DOMContentLoaded', () => {
+
+  const isIOS =
+    /iphone|ipad|ipod/i.test(
+      navigator.userAgent
+    );
+
+  if (
+    isIOS &&
+    !isTrucoAppInstalled()
+  ) {
+
+    showInstallButton();
+
+  }
+
+});
   </script>
 </body>
 </html> 
