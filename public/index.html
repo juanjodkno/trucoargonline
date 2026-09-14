@@ -23,9 +23,22 @@
 
     /* Animaciones Generales */
     @keyframes dealIn {
-      0% { transform: translateY(80px) scale(0.6); opacity: 0; }
-      100% { transform: translateY(0) scale(1); opacity: 1; }
-    }
+  0% {
+    transform:
+      translateY(80px)
+      rotate(var(--fan-r, 0deg))
+      scale(0.6);
+    opacity: 0;
+  }
+
+  100% {
+    transform:
+      translateY(var(--fan-y, 0px))
+      rotate(var(--fan-r, 0deg))
+      scale(1);
+    opacity: 1;
+  }
+}
 
     @keyframes dropOppCard {
       0% { transform: translateY(-48px) scale(1.2); opacity: 0.7; }
@@ -299,28 +312,175 @@
       font-size:clamp(1rem, 2vw, 1.55rem); white-space:nowrap;
       text-shadow:0 3px 8px rgba(0,0,0,.28); z-index:1; pointer-events:none;
     }
-    .opponent-cards, .my-cards { display: flex; gap: 15px; min-height: 135px; align-items: center; position:relative; z-index:3; }
-    
-    .table-tricks { display: flex; gap: 40px; width: 100%; justify-content: center; align-items: center; padding: 10px; position:relative; z-index:3; }
-    @media (max-width: 480px) {
-      .truco-table::after { font-size:.82rem; letter-spacing:0; }
-    }
-    .trick-slot { width: 110px; height: 185px; position: relative; display: flex; justify-content: center; align-items: center; }
-    .trick-label { display:none !important; }
+    /* =========================================================
+   MANOS DE CARTAS EN ABANICO
+   Solo interfaz visual - NO modifica lógica del juego
+   ========================================================= */
 
-    .card-img { 
-      width: 88px; height: 140px; border-radius: 8px; box-shadow: 0 6px 12px rgba(0,0,0,0.45); 
-      cursor: pointer; user-select: none; object-fit: cover; 
-      transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s, filter 0.2s; 
-    }
-    
-    .card-deal-anim {
-      animation: dealIn 0.38s cubic-bezier(0.18, 0.89, 0.32, 1.28) backwards;
-    }
+.opponent-cards,
+.my-cards {
+  display: flex;
+  gap: 0;
+  min-height: 145px;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: 3;
+}
 
-    .my-cards .card-img:hover { transform: translateY(-16px) scale(1.08); box-shadow: 0 14px 26px rgba(0,0,0,0.75); }
-    .my-cards.disabled .card-img { cursor: not-allowed; filter: brightness(0.65); transform: none !important; box-shadow: 0 4px 6px rgba(0,0,0,0.3) !important; }
-    .opponent-cards .card-img { cursor: default; }
+/* Posición base */
+.opponent-cards .card-img,
+.my-cards .card-img {
+  position: relative;
+  flex-shrink: 0;
+
+  --fan-r: 0deg;
+  --fan-y: 0px;
+
+  transform:
+    translateY(var(--fan-y))
+    rotate(var(--fan-r));
+
+  transition:
+    transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.2s,
+    filter 0.2s;
+}
+
+
+/* =========================================================
+   MIS CARTAS
+   ========================================================= */
+
+.my-cards .card-img {
+  transform-origin: 50% 100%;
+}
+
+/* Superposición */
+.my-cards .card-img + .card-img {
+  margin-left: -34px;
+}
+
+/* Tres cartas */
+.my-cards .card-img:first-child:nth-last-child(3) {
+  --fan-r: -8deg;
+  --fan-y: 7px;
+  z-index: 1;
+}
+
+.my-cards .card-img:nth-child(2):nth-last-child(2) {
+  --fan-r: 0deg;
+  --fan-y: 0px;
+  z-index: 3;
+}
+
+.my-cards .card-img:nth-child(3):last-child {
+  --fan-r: 8deg;
+  --fan-y: 7px;
+  z-index: 2;
+}
+
+/* Dos cartas */
+.my-cards .card-img:first-child:nth-last-child(2) {
+  --fan-r: -5deg;
+  --fan-y: 3px;
+  z-index: 1;
+}
+
+.my-cards .card-img:nth-child(2):last-child {
+  --fan-r: 5deg;
+  --fan-y: 3px;
+  z-index: 2;
+}
+
+/* Una sola carta */
+.my-cards .card-img:only-child {
+  --fan-r: 0deg;
+  --fan-y: 0px;
+}
+
+
+/* =========================================================
+   CARTAS DEL RIVAL
+   ========================================================= */
+
+.opponent-cards .card-img {
+  cursor: default;
+  transform-origin: 50% 0%;
+}
+
+/* Más juntas que las cartas propias */
+.opponent-cards .card-img + .card-img {
+  margin-left: -48px;
+}
+
+/* Tres cartas */
+.opponent-cards .card-img:first-child:nth-last-child(3) {
+  --fan-r: -9deg;
+  --fan-y: 6px;
+  z-index: 1;
+}
+
+.opponent-cards .card-img:nth-child(2):nth-last-child(2) {
+  --fan-r: 0deg;
+  --fan-y: 0px;
+  z-index: 3;
+}
+
+.opponent-cards .card-img:nth-child(3):last-child {
+  --fan-r: 9deg;
+  --fan-y: 6px;
+  z-index: 2;
+}
+
+/* Dos cartas */
+.opponent-cards .card-img:first-child:nth-last-child(2) {
+  --fan-r: -5deg;
+  --fan-y: 3px;
+}
+
+.opponent-cards .card-img:nth-child(2):last-child {
+  --fan-r: 5deg;
+  --fan-y: 3px;
+}
+
+/* Una carta */
+.opponent-cards .card-img:only-child {
+  --fan-r: 0deg;
+  --fan-y: 0px;
+}
+
+
+/* =========================================================
+   HOVER DE MIS CARTAS
+   Conserva la inclinación del abanico
+   ========================================================= */
+
+.my-cards .card-img:hover {
+  transform:
+    translateY(calc(var(--fan-y) - 16px))
+    rotate(var(--fan-r))
+    scale(1.08);
+
+  z-index: 20;
+
+  box-shadow:
+    0 14px 26px rgba(0,0,0,0.75);
+}
+
+
+/* Cuando NO es mi turno conserva el abanico */
+.my-cards.disabled .card-img {
+  cursor: not-allowed;
+  filter: brightness(0.65);
+
+  transform:
+    translateY(var(--fan-y))
+    rotate(var(--fan-r)) !important;
+
+  box-shadow:
+    0 4px 6px rgba(0,0,0,0.3) !important;
+}
 
     /* CARTAS EN MESA: Desplazamiento y jerarquía z-index exacta */
     .card-in-trick { 
