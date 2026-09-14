@@ -1525,6 +1525,7 @@
     let currentTrucoLevel = 1;
     let currentTrucoOwner = null;
     let currentTurnPlayer = '';
+    let mazoClickLocked = false;
     let currentRivalAvatar = 'gaucho';
 
     let currentRivalUsername = '';
@@ -3155,6 +3156,15 @@ function animateDealToHands() {
 
 }
       socket.on('hand_started', (data) => {
+        mazoClickLocked = false;
+
+const btnMazo = document.getElementById('btnMazo');
+
+if (btnMazo) {
+  btnMazo.disabled = false;
+  btnMazo.style.pointerEvents = '';
+  btnMazo.style.opacity = '';
+}
         document.getElementById('envidoOverlay').style.display = 'none';
         document.getElementById('gameActions').style.display = 'flex';
         currentTurnPlayer = data.currentTurn;
@@ -3734,10 +3744,34 @@ requestAnimationFrame(() => {
       socket.emit('play_card', { roomId: activeRoomId, userId: currentUser.username, cardId });  
     }
 
-    function sendCall(callType) { 
-      triggerHaptic(20);
-      socket.emit('send_call', { roomId: activeRoomId, userId: currentUser.username, callType }); 
+    function sendCall(callType) {
+
+  /* Evita doble clic / doble toque en "Al Mazo" */
+  if (callType === 'ME_VOY_AL_MAZO') {
+
+    if (mazoClickLocked) {
+      return;
     }
+
+    mazoClickLocked = true;
+
+    const btnMazo = document.getElementById('btnMazo');
+
+    if (btnMazo) {
+      btnMazo.disabled = true;
+      btnMazo.style.pointerEvents = 'none';
+      btnMazo.style.opacity = '0.55';
+    }
+  }
+
+  triggerHaptic(20);
+
+  socket.emit('send_call', {
+    roomId: activeRoomId,
+    userId: currentUser.username,
+    callType
+  });
+}
     
     function acceptCall() { 
       triggerHaptic(20);
