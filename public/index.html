@@ -1056,6 +1056,81 @@
     display: none !important;
   }
 }
+/* =========================================================
+   PANTALLA DE RESTAURACION
+   Solo visual - no modifica lógica del juego
+   ========================================================= */
+
+#restoreScreen {
+  position: fixed;
+  inset: 0;
+  z-index: 999999;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+
+  background:
+    radial-gradient(
+      circle at center,
+      #1b2838 0%,
+      #080c10 100%
+    );
+
+  color: white;
+
+  transition: opacity 0.18s ease;
+}
+
+#restoreScreen.restore-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.restore-logo {
+  width: 90px;
+  height: 90px;
+  object-fit: contain;
+
+  margin-bottom: 18px;
+
+  border-radius: 18px;
+}
+
+.restore-title {
+  color: #48cae4;
+
+  font-weight: 900;
+  font-size: 1.15rem;
+
+  margin-bottom: 8px;
+}
+
+.restore-text {
+  color: #94a3b8;
+  font-size: 0.88rem;
+}
+
+.restore-spinner {
+  width: 34px;
+  height: 34px;
+
+  margin-top: 20px;
+
+  border: 4px solid rgba(255,255,255,0.15);
+  border-top-color: #48cae4;
+
+  border-radius: 50%;
+
+  animation: restoreSpin 0.7s linear infinite;
+}
+
+@keyframes restoreSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 </style>  
 </head>
 <body>
@@ -1690,6 +1765,43 @@
       } catch (e) {}
     }
 
+    /* =========================================================
+   CONTROL VISUAL DE RESTAURACION
+   ========================================================= */
+
+function setRestoreText(text) {
+
+  const el =
+    document.getElementById('restoreText');
+
+  if (el) {
+    el.innerText = text;
+  }
+
+}
+
+
+function hideRestoreScreen() {
+
+  const screen =
+    document.getElementById('restoreScreen');
+
+  if (!screen) return;
+
+
+  screen.classList.add(
+    'restore-hidden'
+  );
+
+
+  setTimeout(() => {
+
+    screen.style.display =
+      'none';
+
+  }, 200);
+
+}
     function playDealSound() {
       try {
         const ctx = getAudioContext();
@@ -1945,7 +2057,9 @@
       const err = document.getElementById('authError');
       if (err) err.style.display = 'none';
       const btn = document.getElementById('btnStartGuestBot');
-      if (btn) { btn.disabled = false; btn.innerText = '🤖 JUGAR GRATIS CONTRA LA MÁQUINA'; }
+      if (btn) { btn.disabled = false; btn.innerText = '🤖 JUGAR GRATIS CONTRA LA MÁQUINA';
+        hideRestoreScreen();
+       }
     }
 
     function openAuthPanel(tab = 'register') {
@@ -2590,38 +2704,132 @@ async function openMatchHistory() {
     });
 
     function initLobby() {
-      document.getElementById('authOverlay').style.display = 'none';
-      const teamModeContainer = document.getElementById('teamModeContainer');
-      if (teamModeContainer) teamModeContainer.style.display = 'none';
-      document.getElementById('lobbyContainer').style.display = 'flex';
-      document.getElementById('lobbyUsername').innerText = currentUser.username;
-      updateAvatarDisplay();
-      updateChipsDisplay(currentUser.chips || 0);
 
-      currentGameIsBot = false;
-      ensureSocket();
-      socket.emit('request_tables');
+  document.getElementById('authOverlay').style.display = 'none';
 
-      if (!window.tablesInterval) {
-        window.tablesInterval = setInterval(() => {
-          if (socket && document.getElementById('lobbyContainer').style.display !== 'none') {
-            socket.emit('request_tables');
-          }
-        }, 2000);
+  const teamModeContainer =
+    document.getElementById('teamModeContainer');
+
+  if (teamModeContainer) {
+    teamModeContainer.style.display = 'none';
+  }
+
+  document.getElementById(
+    'lobbyContainer'
+  ).style.display = 'flex';
+
+  document.getElementById(
+    'lobbyUsername'
+  ).innerText = currentUser.username;
+
+  updateAvatarDisplay();
+  updateChipsDisplay(currentUser.chips || 0);
+
+  currentGameIsBot = false;
+
+  ensureSocket();
+
+  socket.emit('request_tables');
+
+
+  if (!window.tablesInterval) {
+
+    window.tablesInterval = setInterval(() => {
+
+      if (
+        socket &&
+        document.getElementById(
+          'lobbyContainer'
+        ).style.display !== 'none'
+      ) {
+
+        socket.emit('request_tables');
+
       }
 
-      if (activeRoomId) {
-        socket.emit('reconnect_game', { roomId: activeRoomId, userId: currentUser.username });
-      }
+    }, 2000);
 
-      // Si el usuario actualizó la página mientras estaba dentro del 2v2,
-      // reabrimos automáticamente el iframe. La sala real se recupera luego
-      // desde el servidor por team_reconnect_room, sin tocar turnos ni fichas.
-      if (sessionStorage.getItem('team2v2_mode_open') === '1' && !currentUser.isGuest) {
-        setTimeout(() => openTeam2v2(), 0);
-      }
-    }
+  }
 
+
+  /*
+    Si estaba en una partida 1vs1,
+    recuperamos la sala.
+  */
+
+  if (activeRoomId) {
+
+    socket.emit(
+      'reconnect_game',
+      {
+        roomId: activeRoomId,
+        userId: currentUser.username
+      }
+    );
+
+  }
+
+
+  /*
+    Si estaba dentro del modo 2vs2,
+    reabrimos su interfaz como ya lo hacía.
+  */
+
+  const restoring2v2 =
+    sessionStorage.getItem(
+      'team2v2_mode_open'
+    ) === '1' &&
+    !currentUser.isGuest;
+
+
+  if (restoring2v2) {
+
+    setRestoreText(
+      'Recuperando tu partida...'
+    );
+
+    setTimeout(() => {
+
+      openTeam2v2();
+
+      /*
+        Solo ocultamos la pantalla después
+        de abrir nuevamente la interfaz 2vs2.
+      */
+      hideRestoreScreen();
+
+    }, 0);
+
+    return;
+
+  }
+
+
+  /*
+    1vs1:
+    dejamos la pantalla de restauración
+    hasta recibir sync_game_state.
+  */
+
+  if (activeRoomId) {
+
+    setRestoreText(
+      'Recuperando tu partida...'
+    );
+
+    return;
+
+  }
+
+
+  /*
+    No había ninguna partida:
+    ya podemos mostrar directamente el lobby.
+  */
+
+  hideRestoreScreen();
+
+}
     function updateChipsDisplay(chips) {
       currentUser.chips = chips;
       document.getElementById('lobbyChips').innerText = new Intl.NumberFormat('es-AR').format(chips);
@@ -3187,6 +3395,7 @@ async function openMatchHistory() {
       socket.on('sync_game_state', (data) => {
         currentGameIsBot = !!data.isBotGame;
         enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, true);
+        hideRestoreScreen();
 
         // Al reconectar, el servidor reemplaza el log local con el historial completo de la sala.
         if (Array.isArray(data.logs)) {
