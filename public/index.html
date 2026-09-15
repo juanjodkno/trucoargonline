@@ -3549,6 +3549,44 @@ async function openMatchHistory() {
         log(`🟢 <strong>@${data.reconnectedUser}</strong> se reconectó a la mesa. ¡Partida reanudada!`);
       });
 
+      socket.on('waiting_room_restored', (data) => {
+
+  /*
+    La mesa sigue existiendo y está esperando rival.
+    Volvemos al lobby sin tocar la mesa ni las fichas.
+  */
+
+  activeRoomId = data.roomId;
+
+  sessionStorage.setItem(
+    'truco_active_room',
+    data.roomId
+  );
+
+  isGameStarted = false;
+
+
+  const gameContainer =
+    document.getElementById('gameContainer');
+
+  if (gameContainer) {
+    gameContainer.style.display = 'none';
+  }
+
+
+  const lobbyContainer =
+    document.getElementById('lobbyContainer');
+
+  if (lobbyContainer) {
+    lobbyContainer.style.display = 'flex';
+  }
+
+
+  hideRestoreScreen();
+
+  socket.emit('request_tables');
+
+});
       socket.on('reconnect_failed', () => {
         returnToLobbyAfterMatch();
       });

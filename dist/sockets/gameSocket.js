@@ -1311,36 +1311,96 @@ function setupSocketEvents(io) {
         socket.on('reconnect_game', async ({ roomId, userId }) => {
             const room = rooms.get(roomId);
             const cleanUser = (userId || '').trim().toLowerCase();
-            if (!cleanUser)
+            if (!cleanUser) {
                 return socket.emit('reconnect_failed');
+            }
+            /*
+              Conservamos exactamente la validación
+              actual de usuarios reales.
+            */
             if (!room?.isBotGame) {
                 try {
                     if (!(await (0, userService_1.userExistsFresh)(cleanUser))) {
-                        socket.emit('session_invalid', { message: 'Tu cuenta ya no existe. Volvé a iniciar sesión.' });
+                        socket.emit('session_invalid', {
+                            message: 'Tu cuenta ya no existe. Volvé a iniciar sesión.'
+                        });
                         return;
                     }
                 }
                 catch {
-                    return socket.emit('error_action', { message: 'No se pudo validar tu cuenta. Intentá nuevamente.' });
+                    return socket.emit('error_action', {
+                        message: 'No se pudo validar tu cuenta. Intentá nuevamente.'
+                    });
                 }
             }
             const canReconnect = !!room && (room.creatorId.toLowerCase() === cleanUser ||
-                (!room.isBotGame && !!room.guestId && room.guestId.toLowerCase() === cleanUser));
+                (!room.isBotGame &&
+                    !!room.guestId &&
+                    room.guestId.toLowerCase() === cleanUser));
             if (room && canReconnect) {
                 socket.join(roomId);
-                if (room.creatorId.toLowerCase() === userId.toLowerCase()) {
+                if (room.creatorId.toLowerCase() === cleanUser) {
                     room.creatorSocketId = socket.id;
                 }
-                else if (room.guestId && room.guestId.toLowerCase() === userId.toLowerCase()) {
+                else if (room.guestId &&
+                    room.guestId.toLowerCase() === cleanUser) {
                     room.guestSocketId = socket.id;
                 }
-                if (room.disconnectedUser && room.disconnectedUser.toLowerCase() === userId.toLowerCase()) {
-                    const resumeSeconds = room.pausedTurnSeconds && room.pausedTurnSeconds > 0
+                /* =====================================================
+                   MESA 1VS1 CREADA PERO TODAVIA SIN RIVAL
+            
+                   El usuario actualizó la app mientras esperaba.
+            
+                   - Conservamos la misma mesa.
+                   - NO creamos otra.
+                   - NO descontamos fichas.
+                   - NO devolvemos fichas.
+                   - Volvemos al lobby.
+                   ===================================================== */
+                if (!room.isBotGame &&
+                    !room.guestId &&
+                    !room.gameRound) {
+                    /*
+                      Ya volvió a conectarse.
+                      Cancelamos solamente el temporizador
+                      que había quedado por la desconexión.
+                    */
+                    if (room.waitingTimeout) {
+                        clearTimeout(room.waitingTimeout);
+                        room.waitingTimeout =
+                            undefined;
+                    }
+                    /*
+                      Avisamos al navegador/app que
+                      esta sala sigue esperando rival.
+                    */
+                    socket.emit('waiting_room_restored', {
+                        roomId: room.roomId
+                    });
+                    /*
+                      Mandamos nuevamente la lista para
+                      que vea su mesa creada en el lobby.
+                    */
+                    socket.emit('update_tables', getAvailableRooms());
+                    return;
+                }
+                /* =====================================================
+                   PARTIDA YA INICIADA
+            
+                   TODO lo de abajo queda igual que ahora.
+                   ===================================================== */
+                if (room.disconnectedUser &&
+                    room.disconnectedUser.toLowerCase() === cleanUser) {
+                    const resumeSeconds = room.pausedTurnSeconds &&
+                        room.pausedTurnSeconds > 0
                         ? room.pausedTurnSeconds
                         : 30;
                     clearDisconnectTimer(room);
-                    room.pausedTurnSeconds = undefined;
-                    io.to(roomId).emit('player_reconnected', { reconnectedUser: userId });
+                    room.pausedTurnSeconds =
+                        undefined;
+                    io.to(roomId).emit('player_reconnected', {
+                        reconnectedUser: userId
+                    });
                     startTurnTimer(room, resumeSeconds);
                 }
                 sendCompleteGameSync(socket, room, userId);
