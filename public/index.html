@@ -4290,7 +4290,7 @@ requestAnimationFrame(() => {
           if (isForMe) {
             document.getElementById('responseGroup').style.display = 'inline-block';
 
-            if (userHasFlor) {
+            if (userHasFlor && !hasPlayedAnyCard) {
               document.getElementById('florGroup').style.display = 'inline-block';
               document.getElementById('envidoGroup').style.display = 'none';
             } else {
