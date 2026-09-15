@@ -1974,6 +1974,18 @@ function setupSocketEvents(io) {
                         return socket.emit('error_action', { message: 'Partida SIN FLOR.' });
                     if (currentTrick > 0 || room.gameRound.florResolved)
                         return socket.emit('error_action', { message: 'El tiempo para cantar Flor ya cerró.' });
+                    /*
+                       Si el jugador ya tiró su primera carta,
+                              perdió su oportunidad de cantar FLOR.
+          
+                             Esto también se aplica aunque el rival
+                          todavía tenga derecho a cantar Envido.
+          */
+                    if (callType === 'FLOR' && callerCardsPlayed > 0) {
+                        return socket.emit('error_action', {
+                            message: 'Ya jugaste tu primera carta, no podés cantar Flor.'
+                        });
+                    }
                     // Validación estricta: No se puede cantar Contraflor ni Contraflor al juego ante un Envido
                     if (['CONTRAFLOR', 'CONTRAFLOR_AL_JUEGO'].includes(callType) && room.envidoPendingCaller) {
                         return socket.emit('error_action', { message: 'No se puede cantar Contraflor a un Envido.' });
