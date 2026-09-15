@@ -4939,6 +4939,269 @@ window.addEventListener('DOMContentLoaded', () => {
   }
 
 });
+  /* =========================================================
+   ACTUALIZACIONES DE LA APP
+
+   - Detecta un nuevo deploy.
+   - NUNCA recarga automáticamente.
+   - El aviso está dentro del lobby.
+   - Si está jugando, permanece invisible.
+   ========================================================= */
+
+let trucoLoadedAppVersion = null;
+let trucoPendingAppVersion = null;
+let trucoVersionCheckRunning = false;
+let trucoVersionInterval = null;
+
+
+/*
+  Consulta qué versión está actualmente
+  publicada en Render.
+*/
+async function getTrucoPublishedVersion() {
+
+  try {
+
+    const response = await fetch(
+      `/api/app-version?t=${Date.now()}`,
+      {
+        cache: 'no-store'
+      }
+    );
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data =
+      await response.json();
+
+    return data?.version
+      ? String(data.version)
+      : null;
+
+  } catch {
+
+    return null;
+
+  }
+
+}
+
+
+/*
+  Comprueba si apareció una versión nueva.
+*/
+async function checkForTrucoAppUpdate() {
+
+  if (trucoVersionCheckRunning) {
+    return;
+  }
+
+  /*
+    Primero necesitamos conocer la versión
+    con la que esta página comenzó.
+  */
+  if (!trucoLoadedAppVersion) {
+
+    trucoLoadedAppVersion =
+      await getTrucoPublishedVersion();
+
+    return;
+
+  }
+
+
+  trucoVersionCheckRunning = true;
+
+  try {
+
+    const publishedVersion =
+      await getTrucoPublishedVersion();
+
+
+    if (!publishedVersion) {
+      return;
+    }
+
+
+    if (
+      publishedVersion !==
+      trucoLoadedAppVersion
+    ) {
+
+      trucoPendingAppVersion =
+        publishedVersion;
+
+
+      const banner =
+        document.getElementById(
+          'appUpdateBanner'
+        );
+
+
+      if (banner) {
+
+        /*
+          El cartel está físicamente dentro
+          de lobbyContainer.
+
+          Si el jugador está en una partida,
+          lobbyContainer está oculto y por eso
+          NO verá absolutamente nada.
+
+          Cuando vuelva al lobby,
+          aparecerá automáticamente.
+        */
+
+        banner.style.display =
+          'flex';
+
+      }
+
+    }
+
+  } finally {
+
+    trucoVersionCheckRunning = false;
+
+  }
+
+}
+
+
+/*
+  ESTA FUNCIÓN ES LA ÚNICA QUE ACTUALIZA.
+
+  Solo se ejecuta cuando el usuario
+  presiona "Actualizar app".
+*/
+async function updateTrucoApp() {
+
+  if (!trucoPendingAppVersion) {
+    return;
+  }
+
+
+  const button =
+    document.getElementById(
+      'btnUpdateApp'
+    );
+
+
+  if (button) {
+
+    button.disabled = true;
+
+    button.innerText =
+      'Actualizando...';
+
+  }
+
+
+  /*
+    Le pedimos al Service Worker que también
+    compruebe archivos nuevos.
+
+    Esto NO recarga automáticamente.
+  */
+  try {
+
+    if ('serviceWorker' in navigator) {
+
+      const registration =
+        await navigator.serviceWorker
+          .getRegistration();
+
+
+      if (registration) {
+
+        await registration
+          .update()
+          .catch(() => {});
+
+      }
+
+    }
+
+  } catch {}
+
+
+  /*
+    ÚNICA RECARGA DE TODO EL SISTEMA.
+
+    Ocurre exclusivamente porque el usuario
+    tocó "Actualizar app".
+  */
+
+  window.location.reload();
+
+}
+
+
+/*
+  Al abrir la web/app guardamos la versión
+  con la que comenzó esta sesión.
+*/
+window.addEventListener(
+  'DOMContentLoaded',
+  async () => {
+
+    trucoLoadedAppVersion =
+      await getTrucoPublishedVersion();
+
+
+    /*
+      Comprobamos una vez por minuto.
+      SOLO comprobamos.
+      Nunca recargamos automáticamente.
+    */
+
+    if (!trucoVersionInterval) {
+
+      trucoVersionInterval =
+        setInterval(
+          checkForTrucoAppUpdate,
+          60000
+        );
+
+    }
+
+  }
+);
+
+
+/*
+  Muy importante para celulares:
+
+  si la app estuvo en segundo plano y
+  el usuario vuelve, comprobamos inmediatamente.
+*/
+document.addEventListener(
+  'visibilitychange',
+  () => {
+
+    if (!document.hidden) {
+
+      checkForTrucoAppUpdate();
+
+    }
+
+  }
+);
+
+
+/*
+  También sirve para navegador PC.
+*/
+window.addEventListener(
+  'focus',
+  () => {
+
+    checkForTrucoAppUpdate();
+
+  }
+);
   </script>
 </body>
 </html> 
