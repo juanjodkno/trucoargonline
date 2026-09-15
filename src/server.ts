@@ -233,6 +233,37 @@ const io = new Server(server, {
 });
 
 app.use(express.json());
+app.use(express.json());
+
+/* =========================================================
+   VERSION PUBLICADA DE LA APP
+   Solo informa qué deploy está activo.
+   NO modifica partidas, fichas ni lógica del juego.
+   ========================================================= */
+
+const APP_VERSION = String(
+  process.env.RENDER_GIT_COMMIT ||
+  `local-${Date.now()}`
+);
+
+app.get('/api/app-version', (_req, res) => {
+
+  res.setHeader(
+    'Cache-Control',
+    'no-store, no-cache, must-revalidate, proxy-revalidate'
+  );
+
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
+  return res.json({
+    success: true,
+    version: APP_VERSION
+  });
+
+});
+
+app.use(express.static(path.join(__dirname, '../public')));
 app.use(express.static(path.join(__dirname, '../public')));
 
 // Servir la vista de administración

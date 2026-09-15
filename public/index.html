@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0077b6" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <link rel="apple-touch-icon" href="/logo.png" />
+  <link rel="apple-touch-icon" href="/icon-192.png?v=2" />
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Truco Argentino Online - Fichas ARS</title>
@@ -1057,6 +1057,100 @@
   }
 }
 /* =========================================================
+   AVISO DE NUEVA VERSION
+   SOLO SE VE DENTRO DEL LOBBY
+   ========================================================= */
+
+#appUpdateBanner {
+  display: none;
+  width: 100%;
+  margin-bottom: 14px;
+  padding: 12px 14px;
+
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+
+  background: linear-gradient(
+    135deg,
+    rgba(0, 119, 182, 0.28),
+    rgba(42, 157, 143, 0.22)
+  );
+
+  border: 1px solid rgba(72, 202, 228, 0.5);
+  border-radius: 12px;
+
+  box-shadow: 0 5px 18px rgba(0, 0, 0, 0.28);
+}
+
+
+.app-update-message {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+
+.app-update-icon {
+  font-size: 1.5rem;
+}
+
+
+.app-update-message strong {
+  display: block;
+  color: #48cae4;
+  font-size: 0.92rem;
+}
+
+
+.app-update-message div span {
+  display: block;
+  color: #cbd5e1;
+  font-size: 0.76rem;
+  margin-top: 2px;
+}
+
+
+#btnUpdateApp {
+  flex-shrink: 0;
+
+  border: none;
+  border-radius: 9px;
+
+  padding: 9px 14px;
+
+  background: #25d366;
+  color: white;
+
+  font-weight: 900;
+  cursor: pointer;
+}
+
+
+#btnUpdateApp:disabled {
+  opacity: 0.65;
+  cursor: default;
+}
+
+
+#btnUpdateApp:active {
+  transform: scale(0.96);
+}
+
+
+@media (max-width: 520px) {
+
+  #appUpdateBanner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #btnUpdateApp {
+    width: 100%;
+  }
+
+}
+/* =========================================================
    PANTALLA DE RESTAURACION
    Solo visual - no modifica lógica del juego
    ========================================================= */
@@ -1265,6 +1359,27 @@
   >
     📲 Instalar App
   </button>
+</div>
+<!-- AVISO DE NUEVA VERSION -->
+<div id="appUpdateBanner">
+
+  <div class="app-update-message">
+    <span class="app-update-icon">🔄</span>
+
+    <div>
+      <strong>Nueva versión de la app disponible</strong>
+      <span>Actualizá para obtener las últimas mejoras.</span>
+    </div>
+  </div>
+
+  <button
+    type="button"
+    id="btnUpdateApp"
+    onclick="updateTrucoApp()"
+  >
+    Actualizar app
+  </button>
+
 </div>
     <div class="lobby-header">
       <div style="display:flex; flex-direction:column; gap:6px;">
@@ -4779,11 +4894,22 @@ async function installTrucoApp() {
   if (isIOS) {
 
     alert(
-      'Para instalar Truco Argentino Online:\n\n' +
-      '1. Tocá Compartir en Safari.\n' +
-      '2. Elegí "Agregar a pantalla de inicio".\n' +
-      '3. Tocá "Agregar".'
-    );
+      '📱 INSTALAR TRUCO ARGENTINO ONLINE\n\n' +
+
+    'Si abriste la página desde WhatsApp:\n\n' +
+
+    '1. Tocá los tres puntos (...) abajo a la derecha.\n' +
+    '2. Elegí "Abrir en Safari".\n\n' +
+
+    'Una vez en Safari:\n\n' +
+
+    '3. Tocá el botón Compartir.\n' +
+    '4. Elegí "Agregar a pantalla de inicio".\n' +
+    '5. Activá "Abrir como app web".\n' +
+    '6. Tocá "Agregar".\n\n' +
+
+    'Después aparecerá Truco Argentino Online como una app en la pantalla de inicio.'
+  );
 
     return;
 
