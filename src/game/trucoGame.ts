@@ -58,21 +58,36 @@ export class TrucoRound {
   }
 
   public calculateFlorPoints(callChain: string[], accepted: boolean, p1TotalScore: number, p2TotalScore: number): number {
-    const lastCall = callChain[callChain.length - 1];
+  const lastCall = callChain[callChain.length - 1];
 
-    if (!accepted) {
-      if (lastCall === 'CONTRAFLOR') return 4;
-      if (lastCall === 'CONTRAFLOR_AL_JUEGO') return 6;
-      return 3;
-    } else {
-      if (lastCall === 'CONTRAFLOR_AL_JUEGO') {
-        const leaderScore = Math.max(p1TotalScore, p2TotalScore);
-        return this.targetPoints - leaderScore;
-      }
-      if (lastCall === 'CONTRAFLOR') return 6;
-      return 4;
+  // FLOR -> Con Flor me Achico = 4
+  // FLOR -> CONTRAFLOR -> No Quiero = 4
+  // FLOR -> CONTRAFLOR AL JUEGO -> No Quiero = 4
+  // FLOR -> CONTRAFLOR -> CONTRAFLOR AL JUEGO -> No Quiero = 6
+  // CONTRAFLOR querida = 6
+  // CONTRAFLOR AL JUEGO querida = puntos restantes para terminar.
+  if (!accepted) {
+    if (lastCall === 'CONTRAFLOR') return 4;
+
+    if (lastCall === 'CONTRAFLOR_AL_JUEGO') {
+      return callChain.includes('CONTRAFLOR') ? 6 : 4;
     }
+
+    if (lastCall === 'FLOR') return 4;
+    return 3;
   }
+
+  if (lastCall === 'CONTRAFLOR_AL_JUEGO') {
+    const leaderScore = Math.max(p1TotalScore, p2TotalScore);
+    return this.targetPoints - leaderScore;
+  }
+
+  if (lastCall === 'CONTRAFLOR') return 6;
+
+  // FLOR -> QUIERO directo ya no existe.
+  // El servidor lo bloquea; esto queda solo como resguardo interno.
+  return 6;
+}
 
   public playCard(userId: string, cardId: string): PlayCardResult {
     if (this.isFinished) {

@@ -318,12 +318,18 @@ export function setupSocketEvents(io: Server) {
     const lastCall = room.florChain[room.florChain.length - 1] || 'FLOR';
 
     if (lastCall === 'FLOR') {
-      if (florScore >= 35 && Math.random() < 0.35) return botRaiseFlor(room, 'CONTRAFLOR_AL_JUEGO');
-      if (florScore >= 30 && Math.random() < 0.55) return botRaiseFlor(room, 'CONTRAFLOR');
-      room.gameRound.awaitingResponseFrom = null;
-      room.florPendingCaller = null;
-      return startEnvidoDeclarationPhase(room, true);
-    }
+  if (florScore >= 35 && Math.random() < 0.35) {
+    return botRaiseFlor(room, 'CONTRAFLOR_AL_JUEGO');
+  }
+
+  if (florScore >= 30 && Math.random() < 0.55) {
+    return botRaiseFlor(room, 'CONTRAFLOR');
+  }
+
+  // Ya no existe FLOR -> QUIERO directo.
+  // Si la máquina no sube, se achica.
+  return resolveFlorDeclined(room, room.botId);
+}
 
     if (lastCall === 'CONTRAFLOR') {
       if (florScore >= 34 && Math.random() < 0.40) return botRaiseFlor(room, 'CONTRAFLOR_AL_JUEGO');
@@ -415,15 +421,16 @@ export function setupSocketEvents(io: Server) {
       const florPoints = calculateFlor(botCards);
       room.envidoWinnerRecord = { winnerId: room.botId, score: florPoints, cards: botCards, pointsAwarded: 3 };
       io.to(room.roomId).emit('flor_declared', {
-        winnerId: room.botId,
-        score: florPoints,
-        cards: botCards,
-        pointsAwarded: 3,
-        scores: getScoreMap(room),
-        trucoLevel: room.trucoLevel,
-        trucoOwner: room.trucoOwner,
-        currentTurn: room.gameRound.currentTurn
-      });
+  winnerId: room.botId,
+  score: florPoints,
+  cards: botCards,
+  pointsAwarded: 3,
+  scores: getScoreMap(room),
+  trucoLevel: room.trucoLevel,
+  trucoOwner: room.trucoOwner,
+  currentTurn: room.gameRound.currentTurn,
+  resolutionAudio: 'flor'
+});
       if (room.scoreP2 >= room.targetPoints) {
         io.to(room.roomId).emit('show_envido_winner', {
           winnerId: room.botId, score: florPoints, cards: botCards, durationMs: 3500
@@ -922,6 +929,12 @@ export function setupSocketEvents(io: Server) {
     room.envidoDeclarer = room.manoId;
     room.highestEnvidoScore = 0;
     room.highestEnvidoUser = null;
+    // Al aceptar una Contraflor / Contraflor al Juego
+// termina la fase de respuesta.
+if (isFlor && room.gameRound) {
+  room.gameRound.awaitingResponseFrom = null;
+  room.florPendingCaller = null;
+}
 
     io.to(room.roomId).emit('start_envido_declaration', {
       firstDeclarer: room.manoId,
@@ -1105,11 +1118,26 @@ export function setupSocketEvents(io: Server) {
 
     room.envidoWinnerRecord = { winnerId: callerId, score, cards: callerCards, pointsAwarded };
 
-    io.to(room.roomId).emit('flor_declared', {
-      winnerId: callerId, score, cards: callerCards,
-      pointsAwarded, scores: getScoreMap(room), trucoLevel: room.trucoLevel, trucoOwner: room.trucoOwner,
-      currentTurn: room.gameRound.currentTurn
-    });
+    const lastFlorCall = room.florChain[room.florChain.length - 1] || 'FLOR';
+const isFlorMeAchico = lastFlorCall === 'FLOR';
+
+io.to(room.roomId).emit('flor_declared', {
+  winnerId: callerId,
+  score,
+  cards: callerCards,
+  pointsAwarded,
+  scores: getScoreMap(room),
+  trucoLevel: room.trucoLevel,
+  trucoOwner: room.trucoOwner,
+  currentTurn: room.gameRound.currentTurn,
+  declined: true,
+  resolutionType: isFlorMeAchico
+    ? 'CON_FLOR_ME_ACHICO'
+    : 'NO_QUIERO_FLOR',
+  resolutionAudio: isFlorMeAchico
+    ? 'con_flor_me_achico'
+    : 'no quiero'
+});
 
     if (room.scoreP1 >= room.targetPoints || room.scoreP2 >= room.targetPoints) {
       io.to(room.roomId).emit('show_envido_winner', {
@@ -2287,6 +2315,17 @@ export function setupSocketEvents(io: Server) {
 
         const callerHand = authUser.toLowerCase() === room.creatorId.toLowerCase() ? room.gameRound.p1 : room.gameRound.p2;
         const callerCardsPlayed = callerHand.cardsPlayed.filter(Boolean).length;
+        // Durante la declaración de tantos de FLOR, la apuesta ya fue aceptada.
+// No se puede abandonar con "Al Mazo" en esta fase.
+if (
+  callType === 'ME_VOY_AL_MAZO' &&
+  room.isDeclaringEnvido &&
+  room.isFlorDeclaration
+) {
+  return socket.emit('error_action', {
+    message: 'Primero hay que terminar la declaración de Flor.'
+  });
+}
 
         // En una partida contra la máquina, una declaración de tantos ya iniciada
         // debe resolverse por declare_envido_points / say_son_buenas. No dejamos
@@ -2372,10 +2411,11 @@ export function setupSocketEvents(io: Server) {
             room.envidoWinnerRecord = { winnerId: authUser, score: florPoints, cards: callerCards, pointsAwarded: 3 };
             
             io.to(roomId).emit('flor_declared', {
-              winnerId: authUser, score: florPoints, cards: callerCards,
-              pointsAwarded: 3, scores: getScoreMap(room), trucoLevel: room.trucoLevel, trucoOwner: room.trucoOwner,
-              currentTurn: room.gameRound.currentTurn
-            });
+  winnerId: authUser, score: florPoints, cards: callerCards,
+  pointsAwarded: 3, scores: getScoreMap(room), trucoLevel: room.trucoLevel, trucoOwner: room.trucoOwner,
+  currentTurn: room.gameRound.currentTurn,
+  resolutionAudio: 'flor'
+});
 
             if (room.scoreP1 >= room.targetPoints || room.scoreP2 >= room.targetPoints) {
               io.to(room.roomId).emit('show_envido_winner', {
@@ -2405,9 +2445,33 @@ export function setupSocketEvents(io: Server) {
           return startTurnTimer(room, 30);
         }
 
-        if (callType === 'QUIERO_FLOR') return startEnvidoDeclarationPhase(room, true);
-        if (callType === 'NO_QUIERO_FLOR') return resolveFlorDeclined(room, authUser);
+        if (callType === 'CON_FLOR_ME_ACHICO') {
+  const lastFlorCall = room.florChain[room.florChain.length - 1] || '';
 
+  if (lastFlorCall !== 'FLOR' || !room.florPendingCaller) {
+    return socket.emit('error_action', {
+      message: 'Con Flor me Achico solo corresponde como respuesta a Flor.'
+    });
+  }
+
+  return resolveFlorDeclined(room, authUser);
+}
+
+if (callType === 'QUIERO_FLOR') {
+  const lastFlorCall = room.florChain[room.florChain.length - 1] || '';
+
+  if (lastFlorCall === 'FLOR') {
+    return socket.emit('error_action', {
+      message: 'Ante Flor no corresponde Quiero: podés cantar Contraflor, Contraflor al Juego o Con Flor me Achico.'
+    });
+  }
+
+  return startEnvidoDeclarationPhase(room, true);
+}
+
+if (callType === 'NO_QUIERO_FLOR') {
+  return resolveFlorDeclined(room, authUser);
+}
         if (['ENVIDO', 'ENVIDO_ENVIDO', 'REAL_ENVIDO', 'FALTA_ENVIDO'].includes(callType)) {
           if (currentTrick > 0 || room.gameRound.envidoResolved || room.gameRound.florResolved) {
             return socket.emit('error_action', { message: 'El tiempo de los tantos ya cerró.' });

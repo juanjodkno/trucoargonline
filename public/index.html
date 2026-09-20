@@ -1977,6 +1977,7 @@ function hideRestoreScreen() {
     let isGameStarted = false;
     let currentGameIsBot = false;
     let pendingCategory = null;
+    let currentFlorLastCall = null;
     let currentMyCards = [];
     let currentOriginalMyCards = [];
     let roomTargetPoints = 30;
@@ -4283,7 +4284,19 @@ requestAnimationFrame(() => {
         const userHasFlor = checkIfIHaveFlor();
         const hasPlayedAnyCard = currentMyCards.length < 3;
         const isForMe = (data.awaitingResponseFrom || '').toLowerCase() === currentUser.username.toLowerCase();
+// Restablecer los botones por si una respuesta anterior
+// de Flor cambió el texto o la visibilidad.
+const btnQuiero = document.getElementById('btnQuiero');
+const btnNoQuiero = document.getElementById('btnNoQuiero');
 
+if (btnQuiero) {
+  btnQuiero.style.display = 'inline-block';
+}
+
+if (btnNoQuiero) {
+  btnNoQuiero.style.display = 'inline-block';
+  btnNoQuiero.innerText = 'No Quiero';
+}
         if (data.category === 'ENVIDO') {
           document.getElementById('trucoGroup').style.display = 'none';
 
@@ -4336,17 +4349,33 @@ requestAnimationFrame(() => {
               document.getElementById('btnFlor').style.display = 'none';
               
               const chain = data.chain || [data.callType];
-              const lastCall = chain[chain.length - 1];
+const lastCall = chain[chain.length - 1];
+currentFlorLastCall = lastCall;
 
-              if (lastCall === 'FLOR') {
-                document.getElementById('btnContraflor').style.display = 'inline-block';
-                document.getElementById('btnContraflorJuego').style.display = 'inline-block';
-              } else if (lastCall === 'CONTRAFLOR') {
-                document.getElementById('btnContraflor').style.display = 'none';
-                document.getElementById('btnContraflorJuego').style.display = 'inline-block';
-              } else if (lastCall === 'CONTRAFLOR_AL_JUEGO') {
-                document.getElementById('florGroup').style.display = 'none';
-              }
+if (lastCall === 'FLOR') {
+  // Flor inicial: no existe Quiero directo.
+  if (btnQuiero) btnQuiero.style.display = 'none';
+
+  if (btnNoQuiero) {
+    btnNoQuiero.innerText = 'Con Flor me Achico';
+  }
+
+  document.getElementById('btnContraflor').style.display = 'inline-block';
+  document.getElementById('btnContraflorJuego').style.display = 'inline-block';
+
+} else if (lastCall === 'CONTRAFLOR') {
+  if (btnQuiero) btnQuiero.style.display = 'inline-block';
+  if (btnNoQuiero) btnNoQuiero.innerText = 'No Quiero';
+
+  document.getElementById('btnContraflor').style.display = 'none';
+  document.getElementById('btnContraflorJuego').style.display = 'inline-block';
+
+} else if (lastCall === 'CONTRAFLOR_AL_JUEGO') {
+  if (btnQuiero) btnQuiero.style.display = 'inline-block';
+  if (btnNoQuiero) btnNoQuiero.innerText = 'No Quiero';
+
+  document.getElementById('florGroup').style.display = 'none';
+}
             } else {
               document.getElementById('florGroup').style.display = 'none';
             }
@@ -4424,9 +4453,11 @@ requestAnimationFrame(() => {
         document.getElementById('myCards').classList.add('disabled');
 
         if (data.isFlor) {
-          document.getElementById('envidoTitle').innerText = '🌸 FLOR';
-          pendingCategory = 'FLOR';
-        } else {
+  // Una vez querida la Flor, primero se deben declarar los tantos.
+  document.getElementById('btnMazo').style.display = 'none';
+  document.getElementById('envidoTitle').innerText = '🌸 FLOR';
+  pendingCategory = 'FLOR';
+} else {
           document.getElementById('envidoTitle').innerText = '🃏 TANTOS';
         }
 
@@ -4499,15 +4530,27 @@ requestAnimationFrame(() => {
       });
 
       socket.on('flor_declared', (data) => {
-        envidoDone = true;
-        currentTrucoLevel = data.trucoLevel;
-        currentTrucoOwner = data.trucoOwner;
+  envidoDone = true;
+  currentTrucoLevel = data.trucoLevel;
+  currentTrucoOwner = data.trucoOwner;
+  currentFlorLastCall = null;
 
-        playAudio('flor');
-        log(`🌸 <strong>${data.winnerId}</strong> tiene FLOR y gana +${data.pointsAwarded} pts`);
-        setScores(data.scores);
-        updateTurnControls(data.currentTurn || currentTurnPlayer);
-      });
+  // No repetir "Flor" al final.
+  if (data.resolutionAudio) {
+    playAudio(data.resolutionAudio);
+  }
+
+  if (data.resolutionType === 'CON_FLOR_ME_ACHICO') {
+    log(`🌸 Con Flor me Achico. Puntos para <strong>${data.winnerId}</strong> (+${data.pointsAwarded} pts)`);
+  } else if (data.declined) {
+    log(`✋ No se quiso la Flor. Puntos para <strong>${data.winnerId}</strong> (+${data.pointsAwarded} pts)`);
+  } else {
+    log(`🌸 <strong>${data.winnerId}</strong> gana la Flor (+${data.pointsAwarded} pts)`);
+  }
+
+  setScores(data.scores);
+  updateTurnControls(data.currentTurn || currentTurnPlayer);
+});
 
       socket.on('show_envido_winner', (data) => {
         const overlay = document.getElementById('envidoOverlay');
@@ -4691,20 +4734,38 @@ requestAnimationFrame(() => {
 }
     
     function acceptCall() { 
-      triggerHaptic(20);
-      if (pendingCategory === 'ENVIDO') sendCall('QUIERO_ENVIDO');
-      else if (pendingCategory === 'FLOR') sendCall('QUIERO_FLOR');
-      else sendCall('QUIERO_TRUCO'); 
-      document.getElementById('responseGroup').style.display = 'none'; 
-    }
+  triggerHaptic(20);
+
+  if (pendingCategory === 'ENVIDO') {
+    sendCall('QUIERO_ENVIDO');
+  } else if (pendingCategory === 'FLOR') {
+    // Quiero solo existe después de Contraflor o Contraflor al Juego.
+    if (currentFlorLastCall === 'FLOR') return;
+    sendCall('QUIERO_FLOR');
+  } else {
+    sendCall('QUIERO_TRUCO');
+  }
+
+  document.getElementById('responseGroup').style.display = 'none'; 
+}
     
     function declineCall() { 
-      triggerHaptic(20);
-      if (pendingCategory === 'ENVIDO') sendCall('NO_QUIERO_ENVIDO');
-      else if (pendingCategory === 'FLOR') sendCall('NO_QUIERO_FLOR');
-      else sendCall('NO_QUIERO_TRUCO'); 
-      document.getElementById('responseGroup').style.display = 'none'; 
+  triggerHaptic(20);
+
+  if (pendingCategory === 'ENVIDO') {
+    sendCall('NO_QUIERO_ENVIDO');
+  } else if (pendingCategory === 'FLOR') {
+    if (currentFlorLastCall === 'FLOR') {
+      sendCall('CON_FLOR_ME_ACHICO');
+    } else {
+      sendCall('NO_QUIERO_FLOR');
     }
+  } else {
+    sendCall('NO_QUIERO_TRUCO');
+  }
+
+  document.getElementById('responseGroup').style.display = 'none'; 
+}
     
     function cantarMisPuntos() { 
       triggerHaptic(20);
