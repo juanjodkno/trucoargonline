@@ -1737,21 +1737,11 @@
 
       <div class="my-cards" id="myCards"></div>
 
-      <div id="florGroup" style="display:none;">
-  <button id="btnFlor" class="action-btn btn-flor" onclick="sendCall('FLOR')">🌸 ¡Flor!</button>
-
-  <button
-    id="btnFlorMeAchico"
-    class="action-btn"
-    onclick="sendCall('CON_FLOR_ME_ACHICO')"
-    style="display:none; background:#e71d36;"
-  >
-    Con Flor me Achico
-  </button>
-
-  <button id="btnContraflor" class="action-btn btn-flor" onclick="sendCall('CONTRAFLOR')" style="display:none;">🌸 Contraflor</button>
-  <button id="btnContraflorJuego" class="action-btn btn-flor" onclick="sendCall('CONTRAFLOR_AL_JUEGO')" style="display:none;">🌸 Contraflor al Juego</button>
-</div>
+      <div class="envido-overlay" id="envidoOverlay">
+        <div style="text-align:center;">
+          <div class="envido-title" id="envidoTitle">🃏 TANTOS</div>
+          <div style="font-size:1.05rem; color:#e0e1dd; margin-bottom:18px;" id="envidoSubtitle">...</div>
+          <div class="envido-cards-row" id="envidoCardsRow"></div>
         </div>
       </div>
     </div>
@@ -4348,86 +4338,53 @@ if (btnNoQuiero) {
             document.getElementById('responseGroup').style.display = 'none';
           }
         } else if (data.category === 'FLOR') {
-  document.getElementById('trucoGroup').style.display = 'none';
-  document.getElementById('envidoGroup').style.display = 'none';
+          document.getElementById('trucoGroup').style.display = 'none';
+          document.getElementById('envidoGroup').style.display = 'none';
 
-  if (isForMe) {
-    if (userHasFlor) {
-      const chain = data.chain || [data.callType];
-      const lastCall = chain[chain.length - 1];
+          if (isForMe) {
+            document.getElementById('responseGroup').style.display = 'inline-block';
 
-      currentFlorLastCall = lastCall;
+            if (userHasFlor) {
+              document.getElementById('florGroup').style.display = 'inline-block';
+              document.getElementById('btnFlor').style.display = 'none';
+              
+              const chain = data.chain || [data.callType];
+const lastCall = chain[chain.length - 1];
+currentFlorLastCall = lastCall;
 
-      const btnFlorMeAchico = document.getElementById('btnFlorMeAchico');
+if (lastCall === 'FLOR') {
+  // Flor inicial: no existe Quiero directo.
+  if (btnQuiero) btnQuiero.style.display = 'none';
 
-      document.getElementById('btnFlor').style.display = 'none';
-
-      if (lastCall === 'FLOR') {
-        // FLOR inicial:
-        // SOLO Con Flor me Achico / Contraflor / Contraflor al Juego.
-        document.getElementById('responseGroup').style.display = 'none';
-        document.getElementById('florGroup').style.display = 'inline-block';
-
-        if (btnFlorMeAchico) {
-          btnFlorMeAchico.style.display = 'inline-block';
-        }
-
-        document.getElementById('btnContraflor').style.display = 'inline-block';
-        document.getElementById('btnContraflorJuego').style.display = 'inline-block';
-
-      } else if (lastCall === 'CONTRAFLOR') {
-        // CONTRAFLOR:
-        // Quiero / No Quiero / Contraflor al Juego.
-        if (btnFlorMeAchico) {
-          btnFlorMeAchico.style.display = 'none';
-        }
-
-        document.getElementById('responseGroup').style.display = 'inline-block';
-
-        if (btnQuiero) {
-          btnQuiero.style.display = 'inline-block';
-        }
-
-        if (btnNoQuiero) {
-          btnNoQuiero.style.display = 'inline-block';
-          btnNoQuiero.innerText = 'No Quiero';
-        }
-
-        document.getElementById('florGroup').style.display = 'inline-block';
-        document.getElementById('btnContraflor').style.display = 'none';
-        document.getElementById('btnContraflorJuego').style.display = 'inline-block';
-
-      } else if (lastCall === 'CONTRAFLOR_AL_JUEGO') {
-        // CONTRAFLOR AL JUEGO:
-        // SOLO Quiero / No Quiero.
-        if (btnFlorMeAchico) {
-          btnFlorMeAchico.style.display = 'none';
-        }
-
-        document.getElementById('florGroup').style.display = 'none';
-        document.getElementById('responseGroup').style.display = 'inline-block';
-
-        if (btnQuiero) {
-          btnQuiero.style.display = 'inline-block';
-        }
-
-        if (btnNoQuiero) {
-          btnNoQuiero.style.display = 'inline-block';
-          btnNoQuiero.innerText = 'No Quiero';
-        }
-      }
-
-    } else {
-      document.getElementById('florGroup').style.display = 'none';
-      document.getElementById('responseGroup').style.display = 'none';
-    }
-
-  } else {
-    document.getElementById('envidoGroup').style.display = 'none';
-    document.getElementById('florGroup').style.display = 'none';
-    document.getElementById('trucoGroup').style.display = 'none';
-    document.getElementById('responseGroup').style.display = 'none';
+  if (btnNoQuiero) {
+    btnNoQuiero.innerText = 'Con Flor me Achico';
   }
+
+  document.getElementById('btnContraflor').style.display = 'inline-block';
+  document.getElementById('btnContraflorJuego').style.display = 'inline-block';
+
+} else if (lastCall === 'CONTRAFLOR') {
+  if (btnQuiero) btnQuiero.style.display = 'inline-block';
+  if (btnNoQuiero) btnNoQuiero.innerText = 'No Quiero';
+
+  document.getElementById('btnContraflor').style.display = 'none';
+  document.getElementById('btnContraflorJuego').style.display = 'inline-block';
+
+} else if (lastCall === 'CONTRAFLOR_AL_JUEGO') {
+  if (btnQuiero) btnQuiero.style.display = 'inline-block';
+  if (btnNoQuiero) btnNoQuiero.innerText = 'No Quiero';
+
+  document.getElementById('florGroup').style.display = 'none';
+}
+            } else {
+              document.getElementById('florGroup').style.display = 'none';
+            }
+          } else {
+            document.getElementById('envidoGroup').style.display = 'none';
+            document.getElementById('florGroup').style.display = 'none';
+            document.getElementById('trucoGroup').style.display = 'none';
+            document.getElementById('responseGroup').style.display = 'none';
+          }
         } else if (data.category === 'TRUCO') {
           if (isForMe) {
             document.getElementById('responseGroup').style.display = 'inline-block';
