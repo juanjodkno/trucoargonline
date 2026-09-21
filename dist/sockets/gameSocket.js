@@ -655,7 +655,7 @@ function setupSocketEvents(io) {
         clearTurnTimer(room);
         clearDisconnectTimer(room);
         room.disconnectedUser = disconnectedUser;
-        let graceLeft = 45;
+        let graceLeft = 140;
         room.disconnectDeadline = Date.now() + (graceLeft * 1000);
         io.to(room.roomId).emit('player_disconnected_grace', {
             disconnectedUser,

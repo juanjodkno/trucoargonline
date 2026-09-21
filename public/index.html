@@ -3625,7 +3625,7 @@ async function openMatchHistory() {
           document.getElementById('disconnectText').innerText = `El jugador @${disconnectedUser} se desconectó. Esperando reconexión...`;
           const left = Number.isFinite(Number(data.disconnectSecondsLeft))
             ? Math.max(0, Math.ceil(Number(data.disconnectSecondsLeft)))
-            : 45;
+            : 140;
           document.getElementById('disconnectTimer').innerText = `${left}s`;
         } else {
           document.getElementById('disconnectModal').style.display = 'none';
