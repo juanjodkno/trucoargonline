@@ -3129,8 +3129,7 @@ async function openMatchHistory() {
 
     function cancelTableFromLobby(roomId) {
   triggerHaptic(20);
-  const confirmar = confirm('¿Estás seguro de que querés cancelar tu mesa? Si apostaste fichas, se te devolverán al instante.');
-  if (confirmar) {
+   {
     socket.emit('cancel_waiting_table', { roomId: roomId, userId: currentUser.username });
   }
 }
