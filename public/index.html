@@ -2461,37 +2461,52 @@ setInterval(() => {
   }
 }, 30000);
     function openAvatarModal() {
-      triggerHaptic(15);
-      const grid = document.getElementById('avatarPickerGrid');
-      grid.innerHTML = '';
-      
-      const myCurrentAvatar = currentUser?.avatar || 'gaucho';
+  triggerHaptic(15);
 
-      Object.keys(AVATAR_MAP).forEach(id => {
-        const item = AVATAR_MAP[id];
-        const btn = document.createElement('div');
-        btn.className = `avatar-card-btn ${id === myCurrentAvatar ? 'active' : ''}`;
-        btn.innerHTML = `
-          <span class="avatar-emoji">${item.emoji}</span>
-          <span class="avatar-name">${item.name}</span>
-        `;
-        btn.onclick = () => selectAvatar(id);
-        grid.appendChild(btn);
-      });
+  const grid = document.getElementById('avatarPickerGrid');
+  grid.innerHTML = '';
 
-      const uField = document.getElementById('profUsername');
-      const eField = document.getElementById('profEmail');
-      if (uField) uField.value = currentUser?.username ? `@${currentUser.username}` : '';
-      if (eField) eField.value = currentUser?.email || 'Sin correo asociado';
+  const myCurrentAvatar = currentUser?.avatar || 'gaucho';
 
-      document.getElementById('avatarModal').style.display = 'flex';
-    }
-    document.getElementById('profileRankingName').textContent =
-  currentUser?.username || '';
+  Object.keys(AVATAR_MAP).forEach(id => {
+    const item = AVATAR_MAP[id];
+    const btn = document.createElement('div');
 
-document.getElementById('profileWeeklyPoints').textContent = '… pts';
+    btn.className =
+      `avatar-card-btn ${id === myCurrentAvatar ? 'active' : ''}`;
 
-updateProfileWeeklyPoints();
+    btn.innerHTML = `
+      <span class="avatar-emoji">${item.emoji}</span>
+      <span class="avatar-name">${item.name}</span>
+    `;
+
+    btn.onclick = () => selectAvatar(id);
+    grid.appendChild(btn);
+  });
+
+  const uField = document.getElementById('profUsername');
+  const eField = document.getElementById('profEmail');
+
+  if (uField) {
+    uField.value = currentUser?.username
+      ? `@${currentUser.username}`
+      : '';
+  }
+
+  if (eField) {
+    eField.value = currentUser?.email || 'Sin correo asociado';
+  }
+
+  document.getElementById('avatarModal').style.display = 'flex';
+
+  document.getElementById('profileRankingName').textContent =
+    currentUser?.username || '';
+
+  document.getElementById('profileWeeklyPoints').textContent =
+    '… pts';
+
+  updateProfileWeeklyPoints();
+}
 
     function closeAvatarModal() {
       triggerHaptic(15);
