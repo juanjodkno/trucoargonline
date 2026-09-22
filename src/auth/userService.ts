@@ -158,6 +158,21 @@ let usersCache: User[] = [];
 let depositsCache: DepositRequest[] = [];
 let transactionsCache: Transaction[] = [];
 let settlementsCache: MatchSettlement[] = [];
+export function getLocalRankingResults() {
+  return settlementsCache.map(({
+    roomId,
+    winnerUsername,
+    loserUsername,
+    createdAt,
+    betPerPlayer
+  }) => ({
+    roomId,
+    winnerUsername,
+    loserUsername,
+    createdAt,
+    betPerPlayer
+  }));
+}
 // Solo controla desde qué momento se acumula la métrica visible de rake.
 // No borra partidas ni movimientos contables.
 let localRakeCounterResetAt: Date | null = null;

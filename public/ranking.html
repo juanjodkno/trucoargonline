@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ranking semanal · Truco Argentino Online</title>
+  <style>
+    *{box-sizing:border-box}body{margin:0;background:#080f17;color:#edf2f7;font-family:system-ui,sans-serif;min-height:100vh;padding:32px 16px}
+    main{max-width:620px;margin:auto}a{color:#ffd166;text-decoration:none}a:hover{text-decoration:underline}a:focus-visible,button:focus-visible{outline:3px solid #fff;outline-offset:4px}
+    header{margin:30px 0 24px}h1{color:#ffd166;font-size:clamp(1.6rem,6vw,2.2rem);margin:0 0 10px}p{color:#aebccb;line-height:1.6;margin:8px 0}.card{background:#16232f;border:1px solid #334557;border-radius:18px;overflow:hidden}
+    table{width:100%;border-collapse:collapse;text-align:left}th{font-size:.75rem;text-transform:uppercase;letter-spacing:.08em;color:#9eafbf;padding:18px 16px;border-bottom:1px solid #334557}td{padding:16px;border-bottom:1px solid #283847}tr:last-child td{border:0}th:last-child,td:last-child{text-align:right}td:first-child{width:65px;color:#ffd166;font-weight:800}td:nth-child(2){overflow-wrap:anywhere}td:last-child{font-weight:800;font-variant-numeric:tabular-nums}
+    .ranking-title{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.ranking-title span{color:#48cae4;font-size:1rem;font-weight:700}.ranking-title h1{margin:0}.ranking-title{margin-bottom:10px}
+    #status{padding:24px;text-align:center}footer{margin:20px 0;font-size:.85rem}button{border:1px solid #536678;border-radius:8px;padding:10px 16px;background:#16232f;color:#fff;cursor:pointer}#updated{font-size:.8rem} [hidden]{display:none!important}
+  </style>
+  <style>
+    #countdown{color:#48cae4;font-weight:600;font-variant-numeric:tabular-nums}
+    .podium{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:20px 0;align-items:end}.podium article{border:1px solid #334557;background:#16232f;border-radius:14px;padding:18px 8px;text-align:center;overflow-wrap:anywhere}.podium article:first-child{border-color:#ffd166;padding-top:28px;background:linear-gradient(160deg,#353020,#16232f)}.medal{display:block;font-size:2rem}.podium strong{display:block;margin:8px 0;font-size:.95rem}.podium small{color:#ffd166;font-weight:700}
+    #personal{padding:18px;margin-top:16px;border-color:#48cae4}#personal p{margin:0}.self{background:#163a46}#previous-section{margin-top:24px}h2{font-size:1.1rem;color:#ffd166}#previous{list-style:none;padding:0;margin:0}#previous li{padding:12px 16px;border-bottom:1px solid #334557;display:flex;gap:10px;justify-content:space-between}#previous li:last-child{border:0}details{margin:20px 0;background:#111e29;border:1px solid #334557;border-radius:12px;padding:16px}summary{cursor:pointer;color:#48cae4;font-weight:700}details li{margin:9px 0;color:#aebccb;line-height:1.5}summary:focus-visible{outline:2px solid #48cae4}
+  </style>
+</head>
+<body>
+<main>
+  <a href="/">← Volver al juego</a>
+  <header><div class="ranking-title"><h1>🏆 Ranking semanal</h1><span>Truco Argentino Online</span></div><p id="period">De lunes a domingo · Horario de Argentina</p><p id="rules"></p></header>
+  <p id="countdown" aria-live="off"></p>
+  <section id="podium" class="podium" aria-label="Podio de esta semana" hidden></section>
+  <section class="card" aria-label="Los 10 primeros jugadores">
+    <p id="status" role="status">Cargando ranking…</p>
+    <table id="ranking" hidden><thead><tr><th scope="col">Puesto</th><th scope="col">Usuario</th><th scope="col">Puntos</th></tr></thead><tbody id="players"></tbody></table>
+  </section>
+  <section id="personal" class="card" aria-label="Tu posición"><p id="personal-text">Cargando tu posición…</p><a id="login-link" href="/" hidden>Ingresar al juego</a></section>
+  <section id="previous-section"><h2>🏅 Ganadores de la semana anterior</h2><p id="previous-period"></p><ul id="previous" class="card"></ul><p id="previous-empty" hidden>No hay partidas registradas de la semana anterior.</p></section>
+  <details><summary>¿Cómo funciona el ranking?</summary><ul>
+    <li>Participan las partidas 1 vs. 1 finalizadas entre jugadores con fichas. No cuentan las prácticas contra la máquina ni las partidas 2 vs. 2.</li>
+    <li>Cada victoria suma 3 puntos y cada derrota resta 1. Los puntos pueden ser negativos.</li>
+    <li>Los abandonos y desconexiones cuentan como derrota.</li>
+    <li>La semana va del lunes a las 00:00 al domingo a las 23:59, horario argentino. Cuenta la fecha de finalización.</li>
+    <li>En empate, primero cuenta el total de fichas apostadas durante la semana, después la cantidad de victorias y por último la cantidad de derrotas (menos derrotas tiene prioridad).</li>
+    <li>La tabla muestra los 10 primeros. Si iniciaste sesión, podés ver tu puesto aunque estés fuera de esos diez.</li>
+  </ul></details>
+  <footer><p id="updated"></p><button id="refresh" type="button">Actualizar</button></footer>
+</main>
+<script>
+const status = document.getElementById('status');
+const table = document.getElementById('ranking');
+const refresh = document.getElementById('refresh');
+let busy = false;
+let endsAt = 0;
+function updateCountdown() {
+  if (!endsAt) return;
+  const seconds = Math.max(0, Math.floor((endsAt-Date.now())/1000));
+  document.getElementById('countdown').textContent = seconds ? `La semana termina en ${Math.floor(seconds/86400)} días, ${Math.floor(seconds%86400/3600)} horas y ${Math.floor(seconds%3600/60)} minutos` : 'Comenzó una nueva semana. Actualizando…';
+  if (!seconds) loadRanking();
+}
+const medals = ['🥇','🥈','🥉'];
+async function loadRanking() {
+  if (busy) return;
+  busy = true; refresh.disabled = true;
+  try {
+    const response = await fetch('/api/ranking', {cache:'no-store'});
+    if (!response.ok) throw new Error('unavailable');
+    const data = await response.json();
+    endsAt = Date.parse(data.endsAt);
+    updateCountdown();
+    const date = value => new Date(value).toLocaleDateString('es-AR',{timeZone:data.timeZone,day:'numeric',month:'long'});
+    document.getElementById('period').textContent = `${date(data.startsAt)} al ${date(new Date(new Date(data.endsAt).getTime()-1))} · Horario de Argentina`;
+    document.getElementById('rules').textContent = `Victoria: +${data.winPoints} puntos · Derrota: ${data.lossPoints} puntos · ${data.modes}`;
+    const rows = data.players.map((player,index) => {
+      const row = document.createElement('tr');
+      if (player.username === data.personal?.username) row.className='self';
+      for (const value of [index<3 ? `${medals[index]} ${index+1}` : index+1, '@'+player.username, player.points]) {const cell=document.createElement('td');cell.textContent=String(value);row.appendChild(cell);}
+      return row;
+    });
+    document.getElementById('players').replaceChildren(...rows);
+    const podium=document.getElementById('podium');
+    podium.replaceChildren(...data.players.slice(0,3).map((player,index)=>{
+      const item=document.createElement('article');
+      const medal=document.createElement('span');medal.className='medal';medal.textContent=medals[index];
+      const name=document.createElement('strong');name.textContent='@'+player.username;
+      const points=document.createElement('small');points.textContent=player.points+' puntos';
+      item.append(medal,name,points);return item;
+    }));
+    podium.hidden=!data.players.length;
+    const personal=data.personal;
+    document.getElementById('personal-text').textContent=personal ? (personal.position ? `@${personal.username} · Tu puesto: ${personal.position} · ${personal.points} puntos` : `@${personal.username} · Todavía no tenés partidas finalizadas esta semana.`) : 'Iniciá sesión para ver tu posición, incluso fuera del top 10.';
+    document.getElementById('login-link').hidden=!!personal;
+    const previous=data.previous;
+    document.getElementById('previous-period').textContent=previous ? `${date(previous.startsAt)} al ${date(new Date(Date.parse(previous.endsAt)-1))}` : '';
+    document.getElementById('previous').replaceChildren(...(previous?.players || []).map((player,index)=>{
+      const item=document.createElement('li');const name=document.createElement('span');const points=document.createElement('strong');
+      name.textContent=`${medals[index]} @${player.username}`;points.textContent=player.points+' puntos';item.append(name,points);return item;
+    }));
+    document.getElementById('previous-empty').hidden=!!previous?.players.length;
+    document.getElementById('previous-section').hidden=false;
+    table.hidden = !rows.length; status.hidden = !!rows.length;
+    status.textContent = 'Todavía no hay partidas finalizadas esta semana.';
+    document.getElementById('updated').textContent = 'Actualizado a las '+new Date().toLocaleTimeString('es-AR');
+  } catch {
+    endsAt=0;document.getElementById('countdown').textContent='';
+    document.getElementById('podium').hidden=true;
+    document.getElementById('personal-text').textContent='No se pudo actualizar tu posición.';
+    document.getElementById('login-link').hidden=true;
+    document.getElementById('previous-section').hidden=true;
+    table.hidden=true; status.hidden=false;
+    status.textContent='No pudimos cargar el ranking. Volvé a intentar.';
+    document.getElementById('updated').textContent='';
+  } finally {busy=false;refresh.disabled=false;}
+}
+refresh.addEventListener('click',loadRanking);
+loadRanking();
+setInterval(updateCountdown,1000);
+setInterval(() => {if(!document.hidden) loadRanking();},30000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)loadRanking();});
+</script>
+</body>
+</html>

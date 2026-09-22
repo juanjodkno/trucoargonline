@@ -6,6 +6,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { Server } from 'socket.io';
 import rateLimit from 'express-rate-limit';
+import { getWeeklyRanking } from './ranking/weeklyRanking';
 import { setupSocketEvents } from './sockets/gameSocket';
 import { setupTeamSocketEvents } from './sockets/teamGameSocket';
 import {
@@ -267,6 +268,27 @@ app.get('/api/app-version', (_req, res) => {
 app.use(express.static(path.join(__dirname, '../public')));
 app.use(express.static(path.join(__dirname, '../public')));
 
+app.get('/ranking', (_req, res) => {
+  res.sendFile(path.join(__dirname, '../public/ranking.html'));
+});
+
+app.get('/api/ranking', async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+
+  try {
+    const username = verifySessionToken(
+      getCookie(req, SESSION_COOKIE)
+    );
+
+    res.json(await getWeeklyRanking(new Date(), username));
+  } catch (error) {
+    console.error('Error consultando ranking semanal:', error);
+
+    res.status(503).json({
+      message: 'No se pudo cargar el ranking semanal.'
+    });
+  }
+});
 // Servir la vista de administración
 app.get('/admin', (req, res) => {
   res.sendFile(path.join(__dirname, '../public/admin.html'));

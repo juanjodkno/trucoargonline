@@ -1480,6 +1480,30 @@
     <div class="modal-card">
       <div style="
   display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:16px;
+  margin-bottom:18px;
+  padding-bottom:12px;
+  border-bottom:1px solid #334557;
+  font-size:1.15rem;
+  font-weight:700;
+">
+  <span
+    id="profileRankingName"
+    style="color:#edf2f7;min-width:0;overflow-wrap:anywhere;"
+  ></span>
+
+  <span
+    id="profileWeeklyPoints"
+    aria-label="Puntos de esta semana"
+    aria-live="polite"
+    title="Puntos del ranking semanal"
+    style="color:#48cae4;white-space:nowrap;"
+  >… pts</span>
+</div>
+      <div style="
+  display:flex;
   justify-content:space-between;
   align-items:center;
   gap:8px;
@@ -1495,10 +1519,11 @@
   </h3>
 
   <div style="
-    display:flex;
-    align-items:center;
-    gap:8px;
-    margin-left:auto;
+    display:grid;
+grid-template-columns:auto auto;
+align-items:center;
+gap:8px;
+margin-left:auto;
   ">
 
     <button
@@ -1518,6 +1543,19 @@
     >
       📊 Historial de partidos
     </button>
+    <a href="/ranking" style="
+  grid-column:1;
+  grid-row:2;
+  background:#ffd166;
+  color:#14212d;
+  border-radius:8px;
+  padding:8px 11px;
+  font-size:0.78rem;
+  font-weight:800;
+  text-align:center;
+  text-decoration:none;
+  white-space:nowrap;
+">🏆 Ranking semanal</a>
 
     <button
       type="button"
@@ -1528,6 +1566,8 @@
         color:#94a3b8;
         font-size:1.3rem;
         cursor:pointer;
+        grid-column:2;
+        grid-row:1 / 3;
       "
     >
       ✕
@@ -2368,6 +2408,58 @@ function hideRestoreScreen() {
       window.open(`https://wa.me/${phone}?text=${textMsg}`, '_blank');
     }
 
+    let profileRankingRequest = 0;
+
+async function updateProfileWeeklyPoints() {
+  const username = currentUser?.username;
+  if (!username) return;
+
+  const request = ++profileRankingRequest;
+  const points = document.getElementById('profileWeeklyPoints');
+
+  try {
+    const response = await fetch('/api/ranking', {
+      cache: 'no-store'
+    });
+
+    if (!response.ok) {
+      throw new Error('Ranking no disponible');
+    }
+
+    const ranking = await response.json();
+
+    if (
+      request !== profileRankingRequest ||
+      currentUser?.username !== username
+    ) return;
+
+    if (ranking.personal?.username !== username) {
+      points.textContent = '— pts';
+      points.title = 'Volvé a iniciar sesión para consultar tus puntos.';
+      return;
+    }
+
+    points.textContent = `${ranking.personal.points} pts`;
+    points.title = 'Puntos del ranking de esta semana';
+  } catch {
+    if (
+      request !== profileRankingRequest ||
+      currentUser?.username !== username
+    ) return;
+
+    points.textContent = '— pts';
+    points.title = 'No se pudieron consultar los puntos de esta semana.';
+  }
+}
+
+setInterval(() => {
+  if (
+    !document.hidden &&
+    document.getElementById('avatarModal').style.display === 'flex'
+  ) {
+    updateProfileWeeklyPoints();
+  }
+}, 30000);
     function openAvatarModal() {
       triggerHaptic(15);
       const grid = document.getElementById('avatarPickerGrid');
@@ -2394,6 +2486,12 @@ function hideRestoreScreen() {
 
       document.getElementById('avatarModal').style.display = 'flex';
     }
+    document.getElementById('profileRankingName').textContent =
+  currentUser?.username || '';
+
+document.getElementById('profileWeeklyPoints').textContent = '… pts';
+
+updateProfileWeeklyPoints();
 
     function closeAvatarModal() {
       triggerHaptic(15);
