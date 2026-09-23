@@ -3443,9 +3443,26 @@ async function openMatchHistory() {
     }
 
     function getCardSrc(cardId) {
-      if (cardId === 'BACK') return '/cards/back.png';
-      return `/cards/${cardId.toLowerCase()}.png`;
-    }
+
+  /*
+    Cada deploy de Render tiene una versión distinta.
+    La agregamos a la URL de las cartas para impedir
+    que el navegador/PWA reutilice una imagen vieja.
+  */
+  const cardVersion =
+    trucoPendingAppVersion ||
+    trucoLoadedAppVersion ||
+    'cards';
+
+  const version =
+    encodeURIComponent(cardVersion);
+
+  if (cardId === 'BACK') {
+    return `/cards/back.png?v=${version}`;
+  }
+
+  return `/cards/${cardId.toLowerCase()}.png?v=${version}`;
+}
 
     function getGameLogStorageKey(roomId = activeRoomId) {
       return roomId ? `truco_game_log_${roomId}` : '';
