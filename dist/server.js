@@ -11,6 +11,7 @@ const path_1 = __importDefault(require("path"));
 const crypto_1 = __importDefault(require("crypto"));
 const socket_io_1 = require("socket.io");
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
+const weeklyRanking_1 = require("./ranking/weeklyRanking");
 const gameSocket_1 = require("./sockets/gameSocket");
 const teamGameSocket_1 = require("./sockets/teamGameSocket");
 const userService_1 = require("./auth/userService");
@@ -147,6 +148,22 @@ app.get('/api/app-version', (_req, res) => {
 });
 app.use(express_1.default.static(path_1.default.join(__dirname, '../public')));
 app.use(express_1.default.static(path_1.default.join(__dirname, '../public')));
+app.get('/ranking', (_req, res) => {
+    res.sendFile(path_1.default.join(__dirname, '../public/ranking.html'));
+});
+app.get('/api/ranking', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+        const username = verifySessionToken(getCookie(req, SESSION_COOKIE));
+        res.json(await (0, weeklyRanking_1.getWeeklyRanking)(new Date(), username));
+    }
+    catch (error) {
+        console.error('Error consultando ranking semanal:', error);
+        res.status(503).json({
+            message: 'No se pudo cargar el ranking semanal.'
+        });
+    }
+});
 // Servir la vista de administración
 app.get('/admin', (req, res) => {
     res.sendFile(path_1.default.join(__dirname, '../public/admin.html'));

@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.pool = exports.ALLOWED_AVATARS = exports.RAKE_RATE = exports.RAKE_PERCENTAGE = void 0;
 exports.calculateMatchPayout = calculateMatchPayout;
 exports.calculateTeamMatchPayout = calculateTeamMatchPayout;
+exports.getLocalRankingResults = getLocalRankingResults;
 exports.initDatabase = initDatabase;
 exports.registerUser = registerUser;
 exports.loginUser = loginUser;
@@ -92,6 +93,15 @@ let usersCache = [];
 let depositsCache = [];
 let transactionsCache = [];
 let settlementsCache = [];
+function getLocalRankingResults() {
+    return settlementsCache.map(({ roomId, winnerUsername, loserUsername, createdAt, betPerPlayer }) => ({
+        roomId,
+        winnerUsername,
+        loserUsername,
+        createdAt,
+        betPerPlayer
+    }));
+}
 // Solo controla desde qué momento se acumula la métrica visible de rake.
 // No borra partidas ni movimientos contables.
 let localRakeCounterResetAt = null;
