@@ -3640,7 +3640,158 @@ async function openMatchHistory() {
         document.getElementById('trucoGroup').style.display = 'none';
       }
     }
+/* =========================================================
+   RECUPERACION SEGURA DE PARTIDA 1VS1
+   SOLO SINCRONIZACION VISUAL - NO TOCA LOGICA
+   ========================================================= */
 
+let initialGameRecoveryTimer = null;
+let activeGameRecoveryPending = false;
+
+
+/*
+  Comprueba si por lo menos una carta REAL del jugador
+  ya fue dibujada y está visible.
+*/
+function hasVisibleRealPlayerCard() {
+
+  const cards = Array.from(
+    document.querySelectorAll(
+      '#myCards img[id^="card-"]'
+    )
+  );
+
+  return cards.some(card => {
+
+    const style =
+      window.getComputedStyle(card);
+
+    return (
+      style.display !== 'none' &&
+      style.visibility !== 'hidden' &&
+      style.opacity !== '0'
+    );
+
+  });
+
+}
+
+
+/*
+  Si entramos a una partida pero las cartas
+  no aparecen, pedimos nuevamente el estado REAL
+  de esa misma partida al servidor.
+
+  NO reparte otra mano.
+  NO modifica puntos.
+  NO toca fichas.
+*/
+function scheduleInitialGameRecovery(reason = 'inicio') {
+
+  if (initialGameRecoveryTimer) {
+    clearTimeout(initialGameRecoveryTimer);
+  }
+
+  initialGameRecoveryTimer =
+    setTimeout(() => {
+
+      initialGameRecoveryTimer = null;
+
+      if (
+        !socket ||
+        !socket.connected ||
+        !activeRoomId ||
+        !currentUser?.username ||
+        !isGameStarted
+      ) {
+        return;
+      }
+
+      /*
+        Si las cartas ya aparecieron normalmente,
+        no hacemos absolutamente nada.
+      */
+      if (hasVisibleRealPlayerCard()) {
+        return;
+      }
+
+      console.log(
+        '⚠️ Las cartas no aparecieron. Resincronizando partida...'
+      );
+
+      requestLiveGameState(
+        `automatic_recovery_${reason}`
+      );
+
+    }, 4000);
+
+}
+
+
+/*
+  Si por una reconexión la pantalla quedó mostrando
+  el Lobby pero el servidor sigue teniendo una partida,
+  buscamos esa partida y volvemos a ella.
+*/
+function recoverActiveGameViewIfNeeded() {
+
+  if (
+    !socket ||
+    !socket.connected ||
+    !currentUser?.username ||
+    currentUser.isGuest
+  ) {
+    return;
+  }
+
+  const lobby =
+    document.getElementById(
+      'lobbyContainer'
+    );
+
+  const game =
+    document.getElementById(
+      'gameContainer'
+    );
+
+  if (!lobby || !game) {
+    return;
+  }
+
+  const lobbyVisible =
+    window.getComputedStyle(lobby)
+      .display !== 'none';
+
+  const gameHidden =
+    window.getComputedStyle(game)
+      .display === 'none';
+
+  /*
+    Solamente actúa si estamos visualmente
+    en el Lobby y la mesa está oculta.
+  */
+  if (!lobbyVisible || !gameHidden) {
+    return;
+  }
+
+  if (activeGameRecoveryPending) {
+    return;
+  }
+
+  activeGameRecoveryPending = true;
+
+  socket.emit(
+    'check_active_game',
+    {
+      userId: currentUser.username
+    }
+  );
+
+  setTimeout(() => {
+    activeGameRecoveryPending = false;
+  }, 2500);
+
+}
     function setupSocketListeners() {
       socket.on('connect', () => {
         socket.emit('request_tables');
@@ -3655,10 +3806,51 @@ async function openMatchHistory() {
       });
 
       socket.on('active_game_found', (data) => {
-        console.log("Partida recuperada del reposo. Entrando a la mesa...");
-        socket.emit('reconnect_game', data);
-        setTimeout(() => requestLiveGameState('active_game_found'), 80);
-      });
+
+  if (
+    !data?.roomId ||
+    !currentUser?.username
+  ) {
+    return;
+  }
+
+  console.log(
+    'Partida activa encontrada. Recuperando mesa...'
+  );
+
+  activeGameRecoveryPending = false;
+
+  /*
+    Guardamos inmediatamente qué mesa es.
+    Así la interfaz y sessionStorage vuelven
+    a apuntar a la partida correcta.
+  */
+  activeRoomId = data.roomId;
+
+  sessionStorage.setItem(
+    'truco_active_room',
+    data.roomId
+  );
+
+  isGameStarted = true;
+
+  socket.emit(
+    'reconnect_game',
+    {
+      roomId: data.roomId,
+      userId: currentUser.username
+    }
+  );
+
+  setTimeout(() => {
+
+    requestLiveGameState(
+      'active_game_found'
+    );
+
+  }, 250);
+
+});
 
       socket.on('sync_game_state', (data) => {
         currentGameIsBot = !!data.isBotGame;
@@ -3764,6 +3956,7 @@ async function openMatchHistory() {
       });
 
       socket.on('player_disconnected_grace', (data) => {
+        recoverActiveGameViewIfNeeded();
         const isMe = (data.disconnectedUser || '').toLowerCase() === currentUser.username.toLowerCase();
         if (!isMe) {
           document.getElementById('disconnectModal').style.display = 'flex';
@@ -3774,6 +3967,7 @@ async function openMatchHistory() {
       });
 
       socket.on('disconnect_timer_tick', (data) => {
+        recoverActiveGameViewIfNeeded();
         const disconnectedUser = (data.disconnectedUser || '').toString();
         const isMe = disconnectedUser && currentUser?.username &&
           disconnectedUser.toLowerCase() === currentUser.username.toLowerCase();
@@ -3790,6 +3984,7 @@ async function openMatchHistory() {
       });
 
       socket.on('player_reconnected', (data) => {
+        recoverActiveGameViewIfNeeded();
         document.getElementById('disconnectModal').style.display = 'none';
         log(`🟢 <strong>@${data.reconnectedUser}</strong> se reconectó a la mesa. ¡Partida reanudada!`);
       });
@@ -3861,8 +4056,19 @@ async function openMatchHistory() {
         const gameLogBox = document.getElementById('gameLogs');
         if (gameLogBox) gameLogBox.innerHTML = '';
         currentGameIsBot = !!data.isBotGame;
-        enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, true);
-        resetTableVisuals(true);
+        enterGameInterface(
+  data.roomId,
+  data.targetPoints,
+  data.withFlor,
+  data.betAmount,
+  true
+);
+
+resetTableVisuals(true);
+
+scheduleInitialGameRecovery(
+  'game_ready'
+);
         roomWithFlor = parseBoolean(data.withFlor);
 
         const isP1 = (data.creatorId || '').toLowerCase() === currentUser.username.toLowerCase();
@@ -4203,6 +4409,9 @@ function animateDealToHands() {
 
 }
       socket.on('hand_started', (data) => {
+        scheduleInitialGameRecovery(
+  'hand_started'
+);
         mazoClickLocked = false;
 
 const btnMazo = document.getElementById('btnMazo');
