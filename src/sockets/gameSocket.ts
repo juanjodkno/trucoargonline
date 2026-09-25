@@ -1547,7 +1547,7 @@ io.to(room.roomId).emit('flor_declared', {
 
 
   if (!cleanUser) {
-    return socket.emit('reconnect_failed');
+    return socket.emit('reconnect_failed', { roomId: String(roomId || '') });
   }
 
 
@@ -1732,7 +1732,8 @@ io.to(room.roomId).emit('flor_declared', {
   } else {
 
     socket.emit(
-      'reconnect_failed'
+      'reconnect_failed',
+      { roomId: String(roomId || '') }
     );
 
   }
@@ -1789,6 +1790,10 @@ io.to(room.roomId).emit('flor_declared', {
           return;
         }
       }
+
+      // Respuesta explícita para que el cliente no quede indefinidamente
+      // en "Recuperando tu partida..." cuando realmente no hay partida activa.
+      socket.emit('active_game_not_found', { userId: cleanUser });
     });
 
 

@@ -2015,6 +2015,13 @@ function hideRestoreScreen() {
     let currentUser = null;
     let activeRoomId = sessionStorage.getItem('truco_active_room') || null;
     let isGameStarted = false;
+
+    // Recuperación de una entrada a mesa si se pierde un evento inicial.
+    // Es solo estado visual del cliente: no crea, debita ni liquida partidas.
+    let pendingJoinRoomId = null;
+    let pendingJoinRecoveryTimer = null;
+    let reconnectVerificationPending = false;
+
     let currentGameIsBot = false;
     let pendingCategory = null;
     let currentFlorLastCall = null;
@@ -3225,7 +3232,7 @@ async function openMatchHistory() {
 
     function joinTable(roomId, betAmount, creatorId) {
       triggerHaptic(20);
-      
+
       // Nueva validación: Bloqueo de auto-partida
       if (creatorId === currentUser.username) {
         alert("no puedes jugar contra ti mismo");
@@ -3236,6 +3243,40 @@ async function openMatchHistory() {
         alert('No tenés suficientes fichas para entrar a esta mesa.');
         return;
       }
+
+      /*
+        Recordamos temporalmente la mesa que se intentó ocupar.
+        Todavía NO la convertimos en activeRoomId: el servidor
+        sigue siendo quien confirma si el ingreso fue válido.
+      */
+      pendingJoinRoomId = roomId;
+
+      if (pendingJoinRecoveryTimer) {
+        clearTimeout(pendingJoinRecoveryTimer);
+      }
+
+      /*
+        Si el servidor aceptó el JOIN pero se perdió game_ready
+        y también el arranque visual, consultamos la partida
+        activa sin volver a crear ni volver a debitar nada.
+      */
+      pendingJoinRecoveryTimer = setTimeout(() => {
+        pendingJoinRecoveryTimer = null;
+
+        if (
+          pendingJoinRoomId !== roomId ||
+          !socket ||
+          !socket.connected ||
+          !currentUser?.username
+        ) {
+          return;
+        }
+
+        socket.emit('check_active_game', {
+          userId: currentUser.username
+        });
+      }, 3500);
+
       resetTableVisuals(true);
       socket.emit('join_room', { roomId, userId: currentUser.username });
     }
@@ -3648,6 +3689,21 @@ async function openMatchHistory() {
 let initialGameRecoveryTimer = null;
 let activeGameRecoveryPending = false;
 
+function clearPendingJoinRecovery() {
+
+  if (pendingJoinRecoveryTimer) {
+    clearTimeout(pendingJoinRecoveryTimer);
+    pendingJoinRecoveryTimer = null;
+  }
+
+  pendingJoinRoomId = null;
+}
+
+function confirmActiveGamePresence() {
+  reconnectVerificationPending = false;
+  clearPendingJoinRecovery();
+}
+
 
 /*
   Comprueba si por lo menos una carta REAL del jugador
@@ -3707,16 +3763,40 @@ function scheduleInitialGameRecovery(reason = 'inicio') {
         return;
       }
 
+      const game = document.getElementById('gameContainer');
+      const lobby = document.getElementById('lobbyContainer');
+      const restore = document.getElementById('restoreScreen');
+
+      const gameVisible =
+        !!game && window.getComputedStyle(game).display !== 'none';
+
+      const lobbyVisible =
+        !!lobby && window.getComputedStyle(lobby).display !== 'none';
+
+      const restoreVisible =
+        !!restore &&
+        window.getComputedStyle(restore).display !== 'none' &&
+        !restore.classList.contains('restore-hidden');
+
       /*
-        Si las cartas ya aparecieron normalmente,
-        no hacemos absolutamente nada.
+        No alcanza con que las cartas existan en el DOM.
+        La partida está visualmente recuperada solo si:
+        - hay una carta real visible,
+        - la mesa está visible,
+        - el lobby está oculto,
+        - y la pantalla de restauración ya desapareció.
       */
-      if (hasVisibleRealPlayerCard()) {
+      if (
+        hasVisibleRealPlayerCard() &&
+        gameVisible &&
+        !lobbyVisible &&
+        !restoreVisible
+      ) {
         return;
       }
 
       console.log(
-        '⚠️ Las cartas no aparecieron. Resincronizando partida...'
+        '⚠️ Interfaz de partida incompleta. Resincronizando...'
       );
 
       requestLiveGameState(
@@ -3814,6 +3894,8 @@ function recoverActiveGameViewIfNeeded() {
     return;
   }
 
+  confirmActiveGamePresence();
+
   console.log(
     'Partida activa encontrada. Recuperando mesa...'
   );
@@ -3853,6 +3935,7 @@ function recoverActiveGameViewIfNeeded() {
 });
 
       socket.on('sync_game_state', (data) => {
+        confirmActiveGamePresence();
         currentGameIsBot = !!data.isBotGame;
         enterGameInterface(data.roomId, data.targetPoints, data.withFlor, data.betAmount, true);
         hideRestoreScreen();
@@ -4027,7 +4110,43 @@ function recoverActiveGameViewIfNeeded() {
   socket.emit('request_tables');
 
 });
-      socket.on('reconnect_failed', () => {
+      socket.on('reconnect_failed', (data) => {
+        const failedRoomId = String(data?.roomId || '');
+
+        /*
+          Puede llegar tarde el resultado de una reconexión a un roomId
+          viejo. Si entretanto active_game_found ya recuperó otra mesa,
+          ese fallo viejo no debe devolver al usuario al Lobby.
+        */
+        if (failedRoomId && activeRoomId && failedRoomId !== activeRoomId) {
+          return;
+        }
+
+        if (currentUser?.username && !currentUser.isGuest) {
+          reconnectVerificationPending = true;
+
+          socket.emit('check_active_game', {
+            userId: currentUser.username
+          });
+
+          return;
+        }
+
+        // Invitado contra la máquina: conserva el comportamiento anterior.
+        returnToLobbyAfterMatch();
+      });
+
+      socket.on('active_game_not_found', () => {
+        // Un JOIN pendiente que no quedó activo ya no necesita recuperación.
+        if (pendingJoinRoomId) {
+          clearPendingJoinRecovery();
+        }
+
+        if (!reconnectVerificationPending) {
+          return;
+        }
+
+        reconnectVerificationPending = false;
         returnToLobbyAfterMatch();
       });
 
@@ -4051,6 +4170,7 @@ function recoverActiveGameViewIfNeeded() {
       });
 
       socket.on('game_ready', (data) => {
+        confirmActiveGamePresence();
         resetGameChat();
         clearStoredGameLog(data.roomId);
         const gameLogBox = document.getElementById('gameLogs');
@@ -4409,6 +4529,21 @@ function animateDealToHands() {
 
 }
       socket.on('hand_started', (data) => {
+        /*
+          Si se perdió game_ready pero este evento sí llegó,
+          ya sabemos que el JOIN fue aceptado por el servidor.
+        */
+        if (pendingJoinRoomId) {
+          activeRoomId = pendingJoinRoomId;
+          sessionStorage.setItem('truco_active_room', activeRoomId);
+          isGameStarted = true;
+
+          clearPendingJoinRecovery();
+
+          // La mano ya existe en el servidor: pedimos su estado completo.
+          setTimeout(() => requestLiveGameState('hand_started_recovery'), 0);
+        }
+
         scheduleInitialGameRecovery(
   'hand_started'
 );
@@ -5017,6 +5152,7 @@ if (lastCall === 'FLOR') {
       });
 
       socket.on('error_action', (data) => {
+        if (pendingJoinRoomId) clearPendingJoinRecovery();
         const btn = document.getElementById('btnStartGuestBot');
         if (btn && !isGameStarted) { btn.disabled = false; btn.innerText = '🤖 JUGAR GRATIS CONTRA LA MÁQUINA'; }
         alert(data.message);
