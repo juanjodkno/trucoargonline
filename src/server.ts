@@ -659,6 +659,51 @@ app.post('/api/admin/reject-deposit', requireAdminAuth, async (req, res) => {
   return res.status(result.success ? 200 : 400).json(result);
 });
 
+/* =========================================================
+   PRUEBA ASTROPAY -> TASKER -> RENDER
+   SOLO RECIBE Y REGISTRA LA NOTIFICACIÓN.
+   NO MODIFICA FICHAS NI DEPÓSITOS.
+   ========================================================= */
+
+const ASTROPAY_DEVICE_SECRET =
+  process.env.ASTROPAY_DEVICE_SECRET || '';
+
+app.post('/api/internal/astropay-test', (req, res) => {
+  const secretReceived =
+    String(req.headers['x-astropay-secret'] || '');
+
+  if (
+    !ASTROPAY_DEVICE_SECRET ||
+    secretReceived !== ASTROPAY_DEVICE_SECRET
+  ) {
+    return res.status(401).json({
+      success: false,
+      message: 'No autorizado.'
+    });
+  }
+
+  const {
+    packageName,
+    title,
+    text
+  } = req.body || {};
+
+  console.log('====================================');
+  console.log('📲 NOTIFICACIÓN ASTROPAY RECIBIDA');
+  console.log('Package:', packageName);
+  console.log('Título:', title);
+  console.log('Texto:', text);
+  console.log('Fecha:', new Date().toISOString());
+  console.log('====================================');
+
+  return res.json({
+    success: true,
+    received: true,
+    packageName,
+    title,
+    text
+  });
+});
 setupSocketEvents(io);
 setupTeamSocketEvents(io);
 
