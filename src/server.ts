@@ -31,6 +31,14 @@ import {
   getUserHistoryFresh,
   resetRakeCounter,
 } from './auth/userService';
+import {
+  initAstroPayAutoStorage,
+  createAstroPayAutoRequest,
+  getActiveAstroPayAutoRequestForUser,
+  getAstroPayAutoRequest,
+  getAstroPayAutoStorageMode,
+  processAstroPayAutoNotification,
+} from './payments/astropayAuto';
 
 const app = express();
 const server = http.createServer(app);
@@ -45,6 +53,55 @@ if (!SESSION_SECRET) {
 }
 
 const SESSION_COOKIE = 'truco_session';
+
+/* =========================================================
+   CARGA AUTOMÁTICA ASTROPAY - PRODUCCIÓN
+   Se activa SOLO con ASTROPAY_AUTO_ENABLED=true.
+   La acreditación reutiliza adjustUserChipsAndRecord();
+   no modifica la lógica existente de fichas/depósitos/retiros.
+   ========================================================= */
+
+const ASTROPAY_AUTO_ENABLED =
+  String(process.env.ASTROPAY_AUTO_ENABLED || '').trim().toLowerCase() === 'true';
+
+const ASTROPAY_DEVICE_SECRET =
+  String(process.env.ASTROPAY_DEVICE_SECRET || '').trim();
+
+function secureSecretEquals(received: string, expected: string): boolean {
+  if (!received || !expected) return false;
+  const a = Buffer.from(received);
+  const b = Buffer.from(expected);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function requireAstroPayAutoEnabled(
+  _req: express.Request,
+  res: express.Response,
+  next: express.NextFunction
+) {
+  if (!ASTROPAY_AUTO_ENABLED) {
+    return res.status(503).json({
+      success: false,
+      message: 'La carga automática está temporalmente desactivada.'
+    });
+  }
+
+  if (!ASTROPAY_DEVICE_SECRET) {
+    return res.status(503).json({
+      success: false,
+      message: 'La carga automática no está configurada.'
+    });
+  }
+
+  if (getAstroPayAutoStorageMode() !== 'DATABASE') {
+    return res.status(503).json({
+      success: false,
+      message: 'La carga automática no tiene almacenamiento persistente disponible.'
+    });
+  }
+
+  next();
+}
 
 function createSessionToken(username: string): string {
 
@@ -375,6 +432,11 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
   });
 });
 
+app.post('/api/auth/logout', (_req, res) => {
+  clearUserSession(res);
+  return res.json({ success: true, message: 'Sesión cerrada.' });
+});
+
 // Valida sesiones guardadas en el navegador contra la fuente autoritativa.
 app.get('/api/auth/session/:username', async (req, res) => {
   try {
@@ -493,6 +555,165 @@ app.post('/api/wallet/deposit-request', async (req, res) => {
   const result = await requestDepositPersistent(username, Number(amount), reference);
   return res.status(result.success ? 200 : 400).json(result);
 });
+
+/* =========================================================
+   CARGA AUTOMÁTICA ASTROPAY
+   Rutas nuevas y separadas de /api/wallet/deposit-request.
+   La lógica manual existente queda intacta.
+   ========================================================= */
+
+app.get('/api/wallet/auto-deposit-health', requireAstroPayAutoEnabled, (_req, res) => {
+  return res.json({
+    success: true,
+    enabled: true,
+    storage: getAstroPayAutoStorageMode(),
+    ttlMinutes: 10
+  });
+});
+
+app.post(
+  '/api/wallet/auto-deposit-request',
+  requireAstroPayAutoEnabled,
+  requireUserSession,
+  async (req, res) => {
+    try {
+      const username = String(res.locals.authUsername || '').trim().toLowerCase();
+      const clientUsername = String(req.body?.clientUsername || '').trim().toLowerCase();
+      const holderName = String(req.body?.holderName || '');
+      const amount = Number(req.body?.amount);
+
+      if (!clientUsername || clientUsername !== username) {
+        return res.status(409).json({
+          success: false,
+          code: 'SESSION_MISMATCH',
+          message: 'La sesión del navegador no coincide con el usuario activo. Cerrá sesión e iniciá nuevamente.'
+        });
+      }
+
+      const result = await createAstroPayAutoRequest({
+        username,
+        holderName,
+        amount
+      });
+
+      return res.status(result.success ? 200 : 400).json({
+        ...result,
+        sessionUsername: username
+      });
+    } catch (err) {
+      console.error('Error creando solicitud AstroPay AUTO:', err);
+      return res.status(503).json({
+        success: false,
+        message: 'No se pudo crear la solicitud de carga.'
+      });
+    }
+  }
+);
+
+app.get(
+  '/api/wallet/auto-deposit-active',
+  requireAstroPayAutoEnabled,
+  requireUserSession,
+  async (_req, res) => {
+    try {
+      const username = String(res.locals.authUsername || '');
+      const request = await getActiveAstroPayAutoRequestForUser(username);
+
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json({
+        success: true,
+        sessionUsername: username,
+        request
+      });
+    } catch (err) {
+      console.error('Error consultando solicitud AstroPay AUTO:', err);
+      return res.status(503).json({
+        success: false,
+        message: 'No se pudo consultar la solicitud de carga.'
+      });
+    }
+  }
+);
+
+app.get(
+  '/api/wallet/auto-deposit-status/:id',
+  requireAstroPayAutoEnabled,
+  requireUserSession,
+  async (req, res) => {
+    try {
+      const username = String(res.locals.authUsername || '');
+      const request = await getAstroPayAutoRequest(req.params.id, username);
+
+      res.setHeader('Cache-Control', 'no-store');
+
+      if (!request) {
+        return res.status(404).json({
+          success: false,
+          message: 'Solicitud de carga no encontrada.'
+        });
+      }
+
+      return res.json({ success: true, request });
+    } catch (err) {
+      console.error('Error consultando estado AstroPay AUTO:', err);
+      return res.status(503).json({
+        success: false,
+        message: 'No se pudo consultar el estado de la carga.'
+      });
+    }
+  }
+);
+
+app.post(
+  '/api/internal/astropay',
+  requireAstroPayAutoEnabled,
+  async (req, res) => {
+    const secretReceived = String(req.headers['x-astropay-secret'] || '');
+
+    if (!secureSecretEquals(secretReceived, ASTROPAY_DEVICE_SECRET)) {
+      return res.status(401).json({
+        success: false,
+        message: 'No autorizado.'
+      });
+    }
+
+    const packageName = String(req.body?.packageName || '').trim();
+    const title = String(req.body?.title || '').trim();
+    const text = String(req.body?.text || '').trim();
+
+    if (packageName !== 'com.astropaycard.android') {
+      return res.status(400).json({
+        success: false,
+        message: 'Paquete de notificación no válido.'
+      });
+    }
+
+    if (title.toLowerCase() !== 'transferencia recibida') {
+      return res.status(400).json({
+        success: false,
+        message: 'Título de notificación no válido.'
+      });
+    }
+
+    const result = await processAstroPayAutoNotification(text);
+
+    console.log('====================================');
+    console.log('💳 ASTROPAY AUTO');
+    console.log('Package:', packageName);
+    console.log('Título:', title);
+    console.log('Texto:', text);
+    console.log('Parse:', result.parsed?.success ? 'OK' : 'ERROR');
+    console.log('Monto:', result.parsed?.amount ?? null);
+    console.log('Titular:', result.parsed?.holderNameNormalized ?? null);
+    console.log('Resultado:', result.status);
+    console.log('Solicitud:', result.request?.id || '(sin coincidencia)');
+    console.log('Usuario:', result.request?.username || '(sin coincidencia)');
+    console.log('Origen:', result.request?.source || 'ASTROPAY_AUTO');
+    console.log('====================================');
+
+    return res.status(result.status === 'CREDIT_ERROR' ? 500 : 200).json(result);
+  }
+);
 
 app.post('/api/wallet/withdraw-request', async (req, res) => {
   const { username, amount, cbuAlias } = req.body;
@@ -659,51 +880,6 @@ app.post('/api/admin/reject-deposit', requireAdminAuth, async (req, res) => {
   return res.status(result.success ? 200 : 400).json(result);
 });
 
-/* =========================================================
-   PRUEBA ASTROPAY -> TASKER -> RENDER
-   SOLO RECIBE Y REGISTRA LA NOTIFICACIÓN.
-   NO MODIFICA FICHAS NI DEPÓSITOS.
-   ========================================================= */
-
-const ASTROPAY_DEVICE_SECRET =
-  process.env.ASTROPAY_DEVICE_SECRET || '';
-
-app.post('/api/internal/astropay-test', (req, res) => {
-  const secretReceived =
-    String(req.headers['x-astropay-secret'] || '');
-
-  if (
-    !ASTROPAY_DEVICE_SECRET ||
-    secretReceived !== ASTROPAY_DEVICE_SECRET
-  ) {
-    return res.status(401).json({
-      success: false,
-      message: 'No autorizado.'
-    });
-  }
-
-  const {
-    packageName,
-    title,
-    text
-  } = req.body || {};
-
-  console.log('====================================');
-  console.log('📲 NOTIFICACIÓN ASTROPAY RECIBIDA');
-  console.log('Package:', packageName);
-  console.log('Título:', title);
-  console.log('Texto:', text);
-  console.log('Fecha:', new Date().toISOString());
-  console.log('====================================');
-
-  return res.json({
-    success: true,
-    received: true,
-    packageName,
-    title,
-    text
-  });
-});
 setupSocketEvents(io);
 setupTeamSocketEvents(io);
 
@@ -712,6 +888,12 @@ const PORT = process.env.PORT || 3000;
 async function startServer() {
   // Una sola inicialización. userService.ts ya no se auto-inicializa al importarse.
   await initDatabase();
+
+  if (ASTROPAY_AUTO_ENABLED) {
+    await initAstroPayAutoStorage();
+  } else {
+    console.log('💳 AstroPay AUTO: desactivado (ASTROPAY_AUTO_ENABLED != true).');
+  }
 
   server.listen(PORT, () => {
     console.log(`🎮 Servidor de Truco corriendo en http://localhost:${PORT}`);

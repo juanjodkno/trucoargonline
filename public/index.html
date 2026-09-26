@@ -295,6 +295,79 @@
     .modal-card { background: #16222f; width: 100%; max-width: 440px; padding: 25px; border-radius: 16px; border: 1px solid rgba(255,255,255,0.15); }
     .cbu-box { background: #080c10; padding: 14px; border-radius: 8px; font-size: 0.92rem; color: #ffd166; margin-bottom: 15px; border: 1px dashed #334155; line-height: 1.6; }
 
+
+    /* Carga automática AstroPay - producción */
+    .deposit-card { max-width: 560px; padding: 30px 32px; }
+    .deposit-card .cbu-box { margin-bottom: 0; }
+    .deposit-important {
+      margin: 12px 2px 22px;
+      color: #f8fafc;
+      font-size: 0.88rem;
+      line-height: 1.48;
+      font-weight: 900;
+      letter-spacing: .01em;
+    }
+    .deposit-actions { display:flex; gap:14px; margin-top:22px; align-items:stretch; }
+    .deposit-action-btn {
+      margin:0; border:none; border-radius:8px; color:#fff; min-height:54px;
+      font-size:1rem; font-weight:900; cursor:pointer; padding:12px 18px;
+      transition:.18s; display:flex; align-items:center; justify-content:center;
+      text-align:center;
+    }
+    .deposit-action-btn:hover { filter:brightness(1.08); transform:translateY(-1px); }
+    .deposit-request-btn { flex:1.25; background:#20b84b; }
+    .deposit-support-btn { flex:1; background:#f51b2b; }
+    .deposit-close-btn { flex:.72; background:#58616b; }
+    .deposit-action-btn:disabled { opacity:.62; cursor:wait; transform:none; }
+    .deposit-status-card {
+      display:none; margin-top:20px; background:#0b1320; border:1px solid #334155;
+      border-radius:14px; padding:20px; text-align:left;
+    }
+    .deposit-status-head { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+    .deposit-status-icon { font-size:2rem; line-height:1; }
+    .deposit-status-title { color:#fff; font-size:1.2rem; font-weight:900; }
+    .deposit-status-grid { display:grid; gap:9px; color:#cbd5e1; font-size:.92rem; }
+    .deposit-status-grid strong { color:#fff; }
+    .deposit-state-badge {
+      display:inline-flex; width:max-content; padding:6px 10px; border-radius:999px;
+      background:rgba(255,209,102,.14); border:1px solid rgba(255,209,102,.4);
+      color:#ffd166; font-weight:900; margin-top:4px;
+    }
+    .deposit-state-badge.success {
+      background:rgba(34,197,94,.14); border-color:rgba(34,197,94,.45); color:#4ade80;
+    }
+    .deposit-state-badge.expired,
+    .deposit-state-badge.error {
+      background:rgba(239,68,68,.12); border-color:rgba(239,68,68,.38); color:#f87171;
+    }
+    .deposit-status-note { margin-top:14px; color:#94a3b8; font-size:.82rem; line-height:1.45; }
+    .deposit-expiry-box {
+      display:none; margin-top:14px; padding:10px 12px; border-radius:10px;
+      background:rgba(255,209,102,.09); border:1px solid rgba(255,209,102,.28);
+      color:#f8fafc; font-size:.82rem; line-height:1.35;
+    }
+    .deposit-expiry-box strong { color:#ffd166; font-size:.96rem; font-variant-numeric:tabular-nums; }
+    .deposit-expiry-box.urgent {
+      background:rgba(239,68,68,.10); border-color:rgba(239,68,68,.38);
+    }
+    .deposit-expiry-box.urgent strong { color:#f87171; }
+    .deposit-loading-view {
+      display:none; margin-top:18px; padding:16px; border-radius:12px;
+      background:#0b1320; border:1px solid #334155; color:#cbd5e1;
+      text-align:center; font-size:.9rem; line-height:1.45;
+    }
+    .deposit-loading-view.error {
+      border-color:rgba(239,68,68,.45); color:#fecaca;
+      background:rgba(127,29,29,.16);
+    }
+
+    @media (max-width: 600px) {
+      .deposit-card { width:calc(100% - 10px); padding:24px 18px; }
+      .deposit-actions { gap:8px; }
+      .deposit-action-btn { min-height:50px; padding:10px 11px; font-size:.88rem; }
+      .deposit-important { font-size:.82rem; }
+    }
+
     /* Selector de Avatar Grid */
     .avatar-grid {
       display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 12px 0 16px 0;
@@ -1684,33 +1757,77 @@ margin-left:auto;
   </div>
 
 </div>
-  <!-- Modal Cargar Fichas -->
+  <!-- Modal Cargar Fichas - Automática AstroPay -->
   <div class="modal-overlay" id="depositModal">
-    <div class="modal-card">
-      <h3 style="color:#ffd166; margin-bottom:10px;">💳 Cargar Fichas (1 ARS = 1 Ficha)</h3>
-      <p style="font-size:0.85rem; color:#94a3b8; margin-bottom:12px;">Transferí desde tu banco o billetera virtual a estos datos oficiales:</p>
-      
+    <div class="modal-card deposit-card">
+      <h3 style="color:#ffd166; margin-bottom:12px;">💳 Cargar Fichas (1 ARS = 1 Ficha)</h3>
+      <p style="font-size:0.9rem; color:#94a3b8; margin-bottom:16px; line-height:1.5;">Primero creá la solicitud y después realizá la transferencia a estos datos oficiales:</p>
+
       <div class="cbu-box">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 4px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; gap:10px;">
           <div><strong>Alias:</strong> <span>juanjodecano.ap</span></div>
-          <button type="button" id="btnCopyAlias" onclick="copyAlias()" style="background:#0077b6; color:white; border:none; padding:4px 10px; border-radius:6px; font-size:0.75rem; cursor:pointer; font-weight:bold; transition:0.2s;">📋 Copiar</button>
+          <button type="button" id="btnCopyAlias" onclick="copyAlias()" style="background:#0077b6; color:white; border:none; padding:7px 13px; border-radius:6px; font-size:0.78rem; cursor:pointer; font-weight:bold; transition:0.2s; white-space:nowrap;">📋 Copiar</button>
         </div>
         <div><strong>Titular:</strong> Juan Jose Arancibia Jerez</div>
         <div><strong>Banco:</strong> AstroPay</div>
       </div>
 
-      <form onsubmit="handleDepositSubmit(event)">
+      <div class="deposit-important">
+        IMPORTANTE: El nombre completo del titular de la cuenta desde la que vas a transferir y el monto deben coincidir exactamente con la transferencia para que la carga sea automática.
+      </div>
+
+      <div id="depositLoadingView" class="deposit-loading-view">
+        Consultando si tenés una solicitud de carga en proceso...
+      </div>
+
+      <form id="depositRequestForm" onsubmit="handleDepositSubmit(event)">
         <div class="form-group">
-          <label>Monto Transferido (ARS):</label>
-          <input type="number" id="depAmount" class="form-control" placeholder="Ej: 1000" required min="100" />
+          <label>Nombre completo del titular de la cuenta</label>
+          <input type="text" id="depHolderName" class="form-control" placeholder="Nombres y apellidos" required autocomplete="name" maxlength="100" />
         </div>
-        <div style="display:flex; gap:10px; margin-top:18px;">
-          <button type="submit" class="btn-submit" style="margin:0; background:#25d366; font-size: 0.82rem; font-weight: 800; display:flex; align-items:center; justify-content:center; gap:6px; flex:1;">
-            <span>📲 ENVIAR COMPROBANTE DE TRANSFERENCIA</span>
-          </button>
-          <button type="button" class="btn-submit" style="margin:0; background:#495057; width: auto; padding: 12px 18px;" onclick="closeDepositModal()">Cerrar</button>
+
+        <div class="form-group" style="margin-top:24px;">
+          <label>Monto que vas a transferir</label>
+          <input type="number" id="depAmount" class="form-control" placeholder="Ej: 1000" required min="1" step="1" inputmode="numeric" />
+        </div>
+
+        <div id="depositFormError" class="auth-error" style="margin-top:12px;"></div>
+
+        <div class="deposit-actions">
+          <button type="submit" id="btnDepositRequest" class="deposit-action-btn deposit-request-btn">Enviar solicitud</button>
+          <button type="button" class="deposit-action-btn deposit-support-btn" onclick="openDepositSupportWhatsApp()">Soporte</button>
+          <button type="button" class="deposit-action-btn deposit-close-btn" onclick="closeDepositModal()">Cerrar</button>
         </div>
       </form>
+
+      <div id="depositStatusView" class="deposit-status-card">
+        <div class="deposit-status-head">
+          <div id="depositStatusIcon" class="deposit-status-icon">⏳</div>
+          <div>
+            <div id="depositStatusTitle" class="deposit-status-title">Carga solicitada</div>
+            <div id="depositStatusBadge" class="deposit-state-badge">En proceso</div>
+          </div>
+        </div>
+
+        <div class="deposit-status-grid">
+          <div><strong>Titular informado:</strong> <span id="depositStatusHolder">-</span></div>
+          <div><strong>Monto informado:</strong> <span id="depositStatusAmount">-</span></div>
+        </div>
+
+        <div id="depositStatusNote" class="deposit-status-note">
+          Esperando la transferencia. Cuando AstroPay confirme titular y monto, las fichas se acreditarán automáticamente.
+        </div>
+
+        <div id="depositExpiryBox" class="deposit-expiry-box">
+          ⏱️ La solicitud vence en <strong id="depositCountdown">10:00</strong>.
+        </div>
+
+        <div class="deposit-actions">
+          <button type="button" id="btnDepositNewRequest" class="deposit-action-btn deposit-request-btn" style="display:none;" onclick="resetAutoDepositForm()">Nueva solicitud</button>
+          <button type="button" class="deposit-action-btn deposit-support-btn" onclick="openDepositSupportWhatsApp()">Soporte</button>
+          <button type="button" class="deposit-action-btn deposit-close-btn" onclick="closeDepositModal()">Cerrar</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -3114,27 +3231,437 @@ async function openMatchHistory() {
       });
     }
 
-    function openDepositModal() { triggerHaptic(15); document.getElementById('depositModal').style.display = 'flex'; }
-    function closeDepositModal() { triggerHaptic(15); document.getElementById('depositModal').style.display = 'none'; }
+    let activeAutoDepositId = null;
+    let autoDepositPollTimer = null;
+    let autoDepositCountdownTimer = null;
+    let activeAutoDepositExpiresAt = null;
+    let autoDepositBalanceRefreshDoneForId = null;
+
+    function autoDepositStorageKey() {
+      const username = currentUser?.username || 'anon';
+      return `truco_auto_deposit_${String(username).toLowerCase()}`;
+    }
+
+    function formatDepositAmount(value) {
+      const amount = Number(value);
+      if (!Number.isFinite(amount)) return '$0';
+      return '$' + new Intl.NumberFormat('es-AR', {
+        maximumFractionDigits: 0
+      }).format(amount);
+    }
+
+    function setDepositFormError(message = '') {
+      const error = document.getElementById('depositFormError');
+      if (!error) return;
+      error.textContent = message;
+      error.style.display = message ? 'block' : 'none';
+    }
+
+    function setAutoDepositLoading(message = 'Consultando si tenés una solicitud de carga en proceso...', isError = false) {
+      const loading = document.getElementById('depositLoadingView');
+      if (!loading) return;
+      loading.textContent = message;
+      loading.classList.toggle('error', !!isError);
+      loading.style.display = 'block';
+    }
+
+    function hideAutoDepositLoading() {
+      const loading = document.getElementById('depositLoadingView');
+      if (!loading) return;
+      loading.style.display = 'none';
+      loading.classList.remove('error');
+    }
+
+    function stopAutoDepositPolling() {
+      if (autoDepositPollTimer) {
+        clearInterval(autoDepositPollTimer);
+        autoDepositPollTimer = null;
+      }
+    }
+
+    function stopAutoDepositCountdown() {
+      if (autoDepositCountdownTimer) {
+        clearInterval(autoDepositCountdownTimer);
+        autoDepositCountdownTimer = null;
+      }
+      activeAutoDepositExpiresAt = null;
+    }
+
+    function resetAutoDepositTransientState() {
+      stopAutoDepositPolling();
+      stopAutoDepositCountdown();
+      activeAutoDepositId = null;
+      autoDepositBalanceRefreshDoneForId = null;
+    }
+
+    function updateAutoDepositCountdown() {
+      const box = document.getElementById('depositExpiryBox');
+      const countdown = document.getElementById('depositCountdown');
+      if (!box || !countdown || !activeAutoDepositExpiresAt) return;
+
+      const expiresAtMs = new Date(activeAutoDepositExpiresAt).getTime();
+      if (!Number.isFinite(expiresAtMs)) {
+        box.style.display = 'none';
+        return;
+      }
+
+      const remainingMs = expiresAtMs - Date.now();
+      const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+      const minutes = Math.floor(totalSeconds / 60);
+      const seconds = totalSeconds % 60;
+
+      countdown.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      box.style.display = 'block';
+      box.classList.toggle('urgent', totalSeconds <= 60);
+
+      if (remainingMs <= 0) {
+        stopAutoDepositCountdown();
+        refreshAutoDepositStatus();
+      }
+    }
+
+    function startAutoDepositCountdown(expiresAt) {
+      const nextExpiresAt = String(expiresAt || '');
+      if (!nextExpiresAt) {
+        stopAutoDepositCountdown();
+        const box = document.getElementById('depositExpiryBox');
+        if (box) box.style.display = 'none';
+        return;
+      }
+
+      if (activeAutoDepositExpiresAt === nextExpiresAt && autoDepositCountdownTimer) {
+        updateAutoDepositCountdown();
+        return;
+      }
+
+      stopAutoDepositCountdown();
+      activeAutoDepositExpiresAt = nextExpiresAt;
+      updateAutoDepositCountdown();
+      autoDepositCountdownTimer = setInterval(updateAutoDepositCountdown, 1000);
+    }
+
+    async function refreshBalanceAfterAutoDeposit(requestId) {
+      if (!requestId || autoDepositBalanceRefreshDoneForId === requestId || !currentUser?.username) return;
+      autoDepositBalanceRefreshDoneForId = requestId;
+
+      try {
+        const response = await fetch(`/api/wallet/balance/${encodeURIComponent(currentUser.username)}?_=${Date.now()}`, {
+          cache: 'no-store'
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        const chips = Number(data?.chips);
+        if (!Number.isFinite(chips)) return;
+
+        updateChipsDisplay(chips);
+        currentUser.chips = chips;
+        const storage = localStorage.getItem('truco_saved_user') ? localStorage : sessionStorage;
+        storage.setItem('truco_saved_user', JSON.stringify(currentUser));
+      } catch (err) {
+        console.warn('No se pudo refrescar el saldo después de la carga automática.', err);
+      }
+    }
+
+    function renderAutoDepositStatus(request) {
+      if (!request) return;
+
+      hideAutoDepositLoading();
+      const form = document.getElementById('depositRequestForm');
+      const view = document.getElementById('depositStatusView');
+      const icon = document.getElementById('depositStatusIcon');
+      const title = document.getElementById('depositStatusTitle');
+      const badge = document.getElementById('depositStatusBadge');
+      const holder = document.getElementById('depositStatusHolder');
+      const amount = document.getElementById('depositStatusAmount');
+      const note = document.getElementById('depositStatusNote');
+      const expiryBox = document.getElementById('depositExpiryBox');
+      const newRequestBtn = document.getElementById('btnDepositNewRequest');
+
+      form.style.display = 'none';
+      view.style.display = 'block';
+      holder.textContent = request.holderName || '-';
+      amount.textContent = formatDepositAmount(request.amount);
+      badge.className = 'deposit-state-badge';
+      newRequestBtn.style.display = 'none';
+
+      if (request.status === 'CREDITED') {
+        icon.textContent = '✅';
+        title.textContent = 'Carga exitosa';
+        badge.textContent = 'Carga exitosa';
+        badge.classList.add('success');
+        note.textContent = 'Transferencia confirmada. Las fichas fueron acreditadas automáticamente en tu cuenta.';
+        newRequestBtn.style.display = 'flex';
+        if (expiryBox) expiryBox.style.display = 'none';
+        stopAutoDepositCountdown();
+        stopAutoDepositPolling();
+        refreshBalanceAfterAutoDeposit(request.id);
+        return;
+      }
+
+      if (request.status === 'EXPIRED') {
+        icon.textContent = '⏰';
+        title.textContent = 'Solicitud vencida';
+        badge.textContent = 'Vencida';
+        badge.classList.add('expired');
+        note.textContent = 'La solicitud se canceló automáticamente al cumplirse 10 minutos. Ya podés crear otra solicitud.';
+        newRequestBtn.style.display = 'flex';
+        if (expiryBox) expiryBox.style.display = 'none';
+        stopAutoDepositCountdown();
+        stopAutoDepositPolling();
+        return;
+      }
+
+      if (request.status === 'ERROR') {
+        icon.textContent = '⚠️';
+        title.textContent = 'No se pudo completar la carga';
+        badge.textContent = 'Revisar';
+        badge.classList.add('error');
+        note.textContent = request.errorMessage || 'La transferencia fue detectada, pero la acreditación no pudo completarse. Contactá a soporte.';
+        newRequestBtn.style.display = 'flex';
+        if (expiryBox) expiryBox.style.display = 'none';
+        stopAutoDepositCountdown();
+        stopAutoDepositPolling();
+        return;
+      }
+
+      if (request.status === 'PROCESSING') {
+        icon.textContent = '🔄';
+        title.textContent = 'Verificando transferencia';
+        badge.textContent = 'Procesando';
+        note.textContent = 'AstroPay confirmó la transferencia. Estamos completando la acreditación.';
+        if (expiryBox) expiryBox.style.display = 'none';
+        stopAutoDepositCountdown();
+        return;
+      }
+
+      icon.textContent = '⏳';
+      title.textContent = 'Carga solicitada';
+      badge.textContent = 'En proceso';
+      note.textContent = 'Solicitud creada. Realizá la transferencia antes de que venza; titular y monto deben coincidir exactamente.';
+      startAutoDepositCountdown(request.expiresAt);
+    }
+
+    function showAutoDepositForm(options = {}) {
+      const clearSaved = !!options.clearSaved;
+      stopAutoDepositPolling();
+      stopAutoDepositCountdown();
+      hideAutoDepositLoading();
+      const expiryBox = document.getElementById('depositExpiryBox');
+      if (expiryBox) expiryBox.style.display = 'none';
+      activeAutoDepositId = null;
+      autoDepositBalanceRefreshDoneForId = null;
+      if (clearSaved) localStorage.removeItem(autoDepositStorageKey());
+      document.getElementById('depositStatusView').style.display = 'none';
+      document.getElementById('depositRequestForm').style.display = 'block';
+      document.getElementById('btnDepositRequest').disabled = false;
+      setDepositFormError('');
+    }
+
+    function resetAutoDepositForm() {
+      triggerHaptic(15);
+      showAutoDepositForm({ clearSaved: true });
+      document.getElementById('depHolderName').value = '';
+      document.getElementById('depAmount').value = '';
+      document.getElementById('depHolderName').focus();
+    }
+
+    async function refreshAutoDepositStatus() {
+      if (!activeAutoDepositId) return;
+
+      try {
+        const response = await fetch(`/api/wallet/auto-deposit-status/${encodeURIComponent(activeAutoDepositId)}?_=${Date.now()}`, {
+          cache: 'no-store',
+          credentials: 'same-origin'
+        });
+
+        if (response.status === 404) {
+          showAutoDepositForm({ clearSaved: true });
+          return;
+        }
+
+        if (response.status === 401) {
+          setAutoDepositLoading('Tu sesión no es válida. Cerrá sesión e iniciá nuevamente.', true);
+          stopAutoDepositPolling();
+          return;
+        }
+
+        if (!response.ok) return;
+        const data = await response.json();
+        if (data?.request) renderAutoDepositStatus(data.request);
+      } catch (err) {
+        console.warn('Carga automática: no se pudo consultar el estado.', err);
+      }
+    }
+
+    function startAutoDepositPolling() {
+      stopAutoDepositPolling();
+      refreshAutoDepositStatus();
+      autoDepositPollTimer = setInterval(refreshAutoDepositStatus, 2000);
+    }
+
+    async function restoreAutoDepositRequest() {
+      resetAutoDepositTransientState();
+
+      const form = document.getElementById('depositRequestForm');
+      const view = document.getElementById('depositStatusView');
+      if (form) form.style.display = 'none';
+      if (view) view.style.display = 'none';
+      setDepositFormError('');
+      setAutoDepositLoading();
+
+      try {
+        const activeResponse = await fetch(`/api/wallet/auto-deposit-active?_=${Date.now()}`, {
+          cache: 'no-store',
+          credentials: 'same-origin'
+        });
+
+        if (activeResponse.status === 401) {
+          setAutoDepositLoading('Tu sesión no es válida para consultar la solicitud. Cerrá sesión e iniciá nuevamente.', true);
+          return;
+        }
+
+        if (activeResponse.status === 503) {
+          const data = await activeResponse.json().catch(() => ({}));
+          setAutoDepositLoading(data?.message || 'La carga automática está temporalmente desactivada.', true);
+          return;
+        }
+
+        if (!activeResponse.ok) {
+          setAutoDepositLoading('No se pudo consultar el estado de la solicitud. Reintentá en unos segundos.', true);
+          return;
+        }
+
+        const activeData = await activeResponse.json().catch(() => ({}));
+        const uiUsername = String(currentUser?.username || '').trim().toLowerCase();
+        const sessionUsername = String(activeData?.sessionUsername || '').trim().toLowerCase();
+
+        if (!uiUsername || !sessionUsername || uiUsername !== sessionUsername) {
+          setAutoDepositLoading('La sesión del navegador no coincide con el usuario mostrado. Cerrá sesión e iniciá nuevamente.', true);
+          return;
+        }
+
+        if (activeData?.request) {
+          activeAutoDepositId = activeData.request.id;
+          localStorage.setItem(autoDepositStorageKey(), activeAutoDepositId);
+          renderAutoDepositStatus(activeData.request);
+          startAutoDepositPolling();
+          return;
+        }
+
+        const savedId = localStorage.getItem(autoDepositStorageKey());
+        if (savedId) {
+          activeAutoDepositId = savedId;
+          const statusResponse = await fetch(
+            `/api/wallet/auto-deposit-status/${encodeURIComponent(savedId)}?_=${Date.now()}`,
+            { cache: 'no-store', credentials: 'same-origin' }
+          );
+
+          if (statusResponse.ok) {
+            const statusData = await statusResponse.json().catch(() => ({}));
+            if (statusData?.request) {
+              renderAutoDepositStatus(statusData.request);
+              if (statusData.request.status === 'PENDING' || statusData.request.status === 'PROCESSING') {
+                startAutoDepositPolling();
+              }
+              return;
+            }
+          }
+
+          localStorage.removeItem(autoDepositStorageKey());
+          activeAutoDepositId = null;
+        }
+
+        showAutoDepositForm();
+      } catch (err) {
+        console.warn('Carga automática: no se pudo recuperar la solicitud activa.', err);
+        setAutoDepositLoading('No se pudo consultar el estado de la solicitud. Verificá la conexión y reintentá.', true);
+      }
+    }
+
+    function openDepositModal() {
+      triggerHaptic(15);
+      document.getElementById('depositModal').style.display = 'flex';
+      restoreAutoDepositRequest();
+    }
+
+    function closeDepositModal() {
+      triggerHaptic(15);
+      stopAutoDepositPolling();
+      stopAutoDepositCountdown();
+      hideAutoDepositLoading();
+      document.getElementById('depositModal').style.display = 'none';
+    }
+
+    function openDepositSupportWhatsApp() {
+      triggerHaptic(20);
+      const phone = '5493815811724';
+      const userText = currentUser?.username ? ` de mi cuenta @${currentUser.username}` : '';
+      const textMsg = encodeURIComponent(`¡Hola! Necesito soporte con una carga de fichas${userText}.`);
+      window.open(`https://wa.me/${phone}?text=${textMsg}`, '_blank');
+    }
 
     async function handleDepositSubmit(e) {
       e.preventDefault();
       triggerHaptic(20);
-      const amount = document.getElementById('depAmount').value;
+      setDepositFormError('');
+
+      const holderName = document.getElementById('depHolderName').value.trim();
+      const amount = Number(document.getElementById('depAmount').value);
+      const submitBtn = document.getElementById('btnDepositRequest');
+
+      if (!holderName || holderName.length < 3) {
+        setDepositFormError('Ingresá el nombre completo del titular de la cuenta.');
+        return;
+      }
+
+      if (!Number.isFinite(amount) || amount <= 0 || !Number.isInteger(amount)) {
+        setDepositFormError('Ingresá un monto válido en pesos enteros.');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Enviando...';
 
       try {
-        fetch('/api/wallet/deposit-request', {
+        const response = await fetch('/api/wallet/auto-deposit-request', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: currentUser.username, amount, reference: 'Directo WhatsApp' })
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            holderName,
+            amount,
+            clientUsername: currentUser?.username || ''
+          })
         });
-      } catch(err) { console.error(err); }
 
-      const phone = '5493815811724';
-      const textMsg = encodeURIComponent(`¡Hola! Acabo de transferir $${amount} para cargar fichas.\n\n👤 Usuario: ${currentUser.username}\n💵 Monto: $${amount} ARS\n\nTe adjunto el comprobante por acá.`);
-      window.open(`https://wa.me/${phone}?text=${textMsg}`, '_blank');
+        const data = await response.json().catch(() => ({}));
 
-      closeDepositModal();
+        if (!response.ok || !data?.success || !data?.request) {
+          const message = data?.message || 'No se pudo crear la solicitud de carga.';
+
+          if (response.status === 401 || data?.code === 'SESSION_MISMATCH') {
+            setDepositFormError(message);
+            return;
+          }
+
+          if (message.includes('solicitud de carga en proceso')) {
+            await restoreAutoDepositRequest();
+            return;
+          }
+
+          throw new Error(message);
+        }
+
+        activeAutoDepositId = data.request.id;
+        localStorage.setItem(autoDepositStorageKey(), activeAutoDepositId);
+        renderAutoDepositStatus(data.request);
+        startAutoDepositPolling();
+      } catch (err) {
+        setDepositFormError(err?.message || 'No se pudo crear la solicitud.');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Enviar solicitud';
+      }
     }
 
     function openWithdrawModal() { triggerHaptic(15); document.getElementById('withdrawModal').style.display = 'flex'; }
