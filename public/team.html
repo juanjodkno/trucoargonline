@@ -716,7 +716,7 @@
         ENVIDO:'ENVIDO', REAL_ENVIDO:'REAL ENVIDO', FALTA_ENVIDO:'FALTA ENVIDO',
         QUIERO_ENVIDO:'QUIERO', NO_QUIERO_ENVIDO:'NO QUIERO',
         FLOR:'FLOR', CONTRAFLOR:'CONTRAFLOR', CONTRAFLOR_AL_JUEGO:'CONTRAFLOR AL JUEGO',
-        QUIERO_FLOR:'QUIERO', NO_QUIERO_FLOR:'NO QUIERO',
+        QUIERO_FLOR:'QUIERO', NO_QUIERO_FLOR:'NO QUIERO', CON_FLOR_ME_ACHICO:'CON FLOR ME ACHICO',
         CANTAR_ENVIDO:'CANTAR PUNTOS', SON_BUENAS_ENVIDO:'SON BUENAS',
         ME_VOY_AL_MAZO:'ME VOY AL MAZO'
       };
@@ -725,7 +725,7 @@
 
     function actionClass(action) {
       if (action.startsWith('QUIERO')) return 'accept';
-      if (action.startsWith('NO_QUIERO')) return 'reject';
+      if (action.startsWith('NO_QUIERO') || action === 'CON_FLOR_ME_ACHICO') return 'reject';
       if (action.includes('FLOR')) return 'flor';
       if (action === 'ME_VOY_AL_MAZO' || action === 'SON_BUENAS_ENVIDO') return 'fold';
       return 'call';

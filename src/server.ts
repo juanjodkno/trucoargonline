@@ -34,8 +34,7 @@ import {
 import {
   initAstroPayAutoStorage,
   createAstroPayAutoRequest,
-  getActiveAstroPayAutoRequestForUser,
-  getAstroPayAutoRequest,
+  getAstroPayAutoRequestByAccess,
   getAstroPayAutoStorageMode,
   processAstroPayAutoNotification,
 } from './payments/astropayAuto';
@@ -394,9 +393,25 @@ app.post('/api/admin/auth', adminAuthLimiter, (req, res) => {
 
 // Rutas de autenticación
 app.post('/api/auth/register', authLimiter, async (req, res) => {
-  const { fullName, email, username, password } = req.body;
+  const { fullName, email, username, password, remember } = req.body;
   const result = await registerUser(fullName, email, username, password);
-  return res.status(result.success ? 201 : 400).json(result);
+
+  if (!result.success || !result.user) {
+    return res.status(400).json(result);
+  }
+
+  // Todo usuario nuevo sale del registro con la misma sesión segura
+  // que recibiría al iniciar sesión manualmente.
+  setUserSession(
+    res,
+    result.user.username,
+    !!remember
+  );
+
+  return res.status(201).json({
+    ...result,
+    user: safeUserForClient(result.user)
+  });
 });
 
 app.post('/api/auth/login', authLimiter, async (req, res) => {
@@ -574,19 +589,19 @@ app.get('/api/wallet/auto-deposit-health', requireAstroPayAutoEnabled, (_req, re
 app.post(
   '/api/wallet/auto-deposit-request',
   requireAstroPayAutoEnabled,
-  requireUserSession,
   async (req, res) => {
     try {
-      const username = String(res.locals.authUsername || '').trim().toLowerCase();
-      const clientUsername = String(req.body?.clientUsername || '').trim().toLowerCase();
+      // Compatibilidad con usuarios antiguos: esta ruta NO exige la cookie
+      // truco_session. El username mostrado por la web se valida contra la DB
+      // dentro de createAstroPayAutoRequest().
+      const username = String(req.body?.clientUsername || '').trim().toLowerCase();
       const holderName = String(req.body?.holderName || '');
       const amount = Number(req.body?.amount);
 
-      if (!clientUsername || clientUsername !== username) {
-        return res.status(409).json({
+      if (!username) {
+        return res.status(400).json({
           success: false,
-          code: 'SESSION_MISMATCH',
-          message: 'La sesión del navegador no coincide con el usuario activo. Cerrá sesión e iniciá nuevamente.'
+          message: 'Usuario inválido.'
         });
       }
 
@@ -596,10 +611,7 @@ app.post(
         amount
       });
 
-      return res.status(result.success ? 200 : 400).json({
-        ...result,
-        sessionUsername: username
-      });
+      return res.status(result.success ? 200 : 400).json(result);
     } catch (err) {
       console.error('Error creando solicitud AstroPay AUTO:', err);
       return res.status(503).json({
@@ -610,19 +622,29 @@ app.post(
   }
 );
 
+// Ruta de compatibilidad para restaurar una solicitud conocida por este
+// navegador. No permite buscar solicitudes pasando solamente un username.
 app.get(
   '/api/wallet/auto-deposit-active',
   requireAstroPayAutoEnabled,
-  requireUserSession,
-  async (_req, res) => {
+  async (req, res) => {
     try {
-      const username = String(res.locals.authUsername || '');
-      const request = await getActiveAstroPayAutoRequestForUser(username);
+      const requestId = String(req.query?.requestId || '').trim();
+      const accessToken = String(req.headers['x-auto-deposit-token'] || '').trim();
 
       res.setHeader('Cache-Control', 'no-store');
+
+      if (!requestId || !accessToken) {
+        return res.json({ success: true, request: null });
+      }
+
+      const request = await getAstroPayAutoRequestByAccess(
+        requestId,
+        accessToken
+      );
+
       return res.json({
         success: true,
-        sessionUsername: username,
         request
       });
     } catch (err) {
@@ -638,13 +660,23 @@ app.get(
 app.get(
   '/api/wallet/auto-deposit-status/:id',
   requireAstroPayAutoEnabled,
-  requireUserSession,
   async (req, res) => {
     try {
-      const username = String(res.locals.authUsername || '');
-      const request = await getAstroPayAutoRequest(req.params.id, username);
+      const accessToken = String(req.headers['x-auto-deposit-token'] || '').trim();
 
       res.setHeader('Cache-Control', 'no-store');
+
+      if (!accessToken) {
+        return res.status(404).json({
+          success: false,
+          message: 'Solicitud de carga no encontrada.'
+        });
+      }
+
+      const request = await getAstroPayAutoRequestByAccess(
+        req.params.id,
+        accessToken
+      );
 
       if (!request) {
         return res.status(404).json({

@@ -3232,6 +3232,7 @@ async function openMatchHistory() {
     }
 
     let activeAutoDepositId = null;
+    let activeAutoDepositAccessToken = null;
     let autoDepositPollTimer = null;
     let autoDepositCountdownTimer = null;
     let activeAutoDepositExpiresAt = null;
@@ -3240,6 +3241,37 @@ async function openMatchHistory() {
     function autoDepositStorageKey() {
       const username = currentUser?.username || 'anon';
       return `truco_auto_deposit_${String(username).toLowerCase()}`;
+    }
+
+    function saveAutoDepositAccess(id, accessToken) {
+      if (!id || !accessToken) return;
+      localStorage.setItem(
+        autoDepositStorageKey(),
+        JSON.stringify({ id, accessToken })
+      );
+    }
+
+    function readAutoDepositAccess() {
+      const key = autoDepositStorageKey();
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+
+      try {
+        const parsed = JSON.parse(raw);
+        const id = String(parsed?.id || '').trim();
+        const accessToken = String(parsed?.accessToken || '').trim();
+        if (!id || !accessToken) throw new Error('Datos incompletos');
+        return { id, accessToken };
+      } catch {
+        // Compatibilidad: los IDs guardados por la versión anterior no traían
+        // token privado y no deben permitir consultar una solicitud.
+        localStorage.removeItem(key);
+        return null;
+      }
+    }
+
+    function clearAutoDepositAccess() {
+      localStorage.removeItem(autoDepositStorageKey());
     }
 
     function formatDepositAmount(value) {
@@ -3291,6 +3323,7 @@ async function openMatchHistory() {
       stopAutoDepositPolling();
       stopAutoDepositCountdown();
       activeAutoDepositId = null;
+      activeAutoDepositAccessToken = null;
       autoDepositBalanceRefreshDoneForId = null;
     }
 
@@ -3449,8 +3482,9 @@ async function openMatchHistory() {
       const expiryBox = document.getElementById('depositExpiryBox');
       if (expiryBox) expiryBox.style.display = 'none';
       activeAutoDepositId = null;
+      activeAutoDepositAccessToken = null;
       autoDepositBalanceRefreshDoneForId = null;
-      if (clearSaved) localStorage.removeItem(autoDepositStorageKey());
+      if (clearSaved) clearAutoDepositAccess();
       document.getElementById('depositStatusView').style.display = 'none';
       document.getElementById('depositRequestForm').style.display = 'block';
       document.getElementById('btnDepositRequest').disabled = false;
@@ -3466,22 +3500,19 @@ async function openMatchHistory() {
     }
 
     async function refreshAutoDepositStatus() {
-      if (!activeAutoDepositId) return;
+      if (!activeAutoDepositId || !activeAutoDepositAccessToken) return;
 
       try {
         const response = await fetch(`/api/wallet/auto-deposit-status/${encodeURIComponent(activeAutoDepositId)}?_=${Date.now()}`, {
           cache: 'no-store',
-          credentials: 'same-origin'
+          credentials: 'same-origin',
+          headers: {
+            'X-Auto-Deposit-Token': activeAutoDepositAccessToken
+          }
         });
 
         if (response.status === 404) {
           showAutoDepositForm({ clearSaved: true });
-          return;
-        }
-
-        if (response.status === 401) {
-          setAutoDepositLoading('Tu sesión no es válida. Cerrá sesión e iniciá nuevamente.', true);
-          stopAutoDepositPolling();
           return;
         }
 
@@ -3509,69 +3540,53 @@ async function openMatchHistory() {
       setDepositFormError('');
       setAutoDepositLoading();
 
-      try {
-        const activeResponse = await fetch(`/api/wallet/auto-deposit-active?_=${Date.now()}`, {
-          cache: 'no-store',
-          credentials: 'same-origin'
-        });
+      const saved = readAutoDepositAccess();
+      if (!saved) {
+        showAutoDepositForm();
+        return;
+      }
 
-        if (activeResponse.status === 401) {
-          setAutoDepositLoading('Tu sesión no es válida para consultar la solicitud. Cerrá sesión e iniciá nuevamente.', true);
+      activeAutoDepositId = saved.id;
+      activeAutoDepositAccessToken = saved.accessToken;
+
+      try {
+        const statusResponse = await fetch(
+          `/api/wallet/auto-deposit-status/${encodeURIComponent(saved.id)}?_=${Date.now()}`,
+          {
+            cache: 'no-store',
+            credentials: 'same-origin',
+            headers: {
+              'X-Auto-Deposit-Token': saved.accessToken
+            }
+          }
+        );
+
+        if (statusResponse.status === 404) {
+          showAutoDepositForm({ clearSaved: true });
           return;
         }
 
-        if (activeResponse.status === 503) {
-          const data = await activeResponse.json().catch(() => ({}));
+        if (statusResponse.status === 503) {
+          const data = await statusResponse.json().catch(() => ({}));
           setAutoDepositLoading(data?.message || 'La carga automática está temporalmente desactivada.', true);
           return;
         }
 
-        if (!activeResponse.ok) {
+        if (!statusResponse.ok) {
           setAutoDepositLoading('No se pudo consultar el estado de la solicitud. Reintentá en unos segundos.', true);
           return;
         }
 
-        const activeData = await activeResponse.json().catch(() => ({}));
-        const uiUsername = String(currentUser?.username || '').trim().toLowerCase();
-        const sessionUsername = String(activeData?.sessionUsername || '').trim().toLowerCase();
-
-        if (!uiUsername || !sessionUsername || uiUsername !== sessionUsername) {
-          setAutoDepositLoading('La sesión del navegador no coincide con el usuario mostrado. Cerrá sesión e iniciá nuevamente.', true);
+        const statusData = await statusResponse.json().catch(() => ({}));
+        if (!statusData?.request) {
+          showAutoDepositForm({ clearSaved: true });
           return;
         }
 
-        if (activeData?.request) {
-          activeAutoDepositId = activeData.request.id;
-          localStorage.setItem(autoDepositStorageKey(), activeAutoDepositId);
-          renderAutoDepositStatus(activeData.request);
+        renderAutoDepositStatus(statusData.request);
+        if (statusData.request.status === 'PENDING' || statusData.request.status === 'PROCESSING') {
           startAutoDepositPolling();
-          return;
         }
-
-        const savedId = localStorage.getItem(autoDepositStorageKey());
-        if (savedId) {
-          activeAutoDepositId = savedId;
-          const statusResponse = await fetch(
-            `/api/wallet/auto-deposit-status/${encodeURIComponent(savedId)}?_=${Date.now()}`,
-            { cache: 'no-store', credentials: 'same-origin' }
-          );
-
-          if (statusResponse.ok) {
-            const statusData = await statusResponse.json().catch(() => ({}));
-            if (statusData?.request) {
-              renderAutoDepositStatus(statusData.request);
-              if (statusData.request.status === 'PENDING' || statusData.request.status === 'PROCESSING') {
-                startAutoDepositPolling();
-              }
-              return;
-            }
-          }
-
-          localStorage.removeItem(autoDepositStorageKey());
-          activeAutoDepositId = null;
-        }
-
-        showAutoDepositForm();
       } catch (err) {
         console.warn('Carga automática: no se pudo recuperar la solicitud activa.', err);
         setAutoDepositLoading('No se pudo consultar el estado de la solicitud. Verificá la conexión y reintentá.', true);
@@ -3639,21 +3654,27 @@ async function openMatchHistory() {
         if (!response.ok || !data?.success || !data?.request) {
           const message = data?.message || 'No se pudo crear la solicitud de carga.';
 
-          if (response.status === 401 || data?.code === 'SESSION_MISMATCH') {
-            setDepositFormError(message);
-            return;
-          }
-
           if (message.includes('solicitud de carga en proceso')) {
-            await restoreAutoDepositRequest();
+            const saved = readAutoDepositAccess();
+            if (saved) {
+              await restoreAutoDepositRequest();
+            } else {
+              setDepositFormError(message);
+            }
             return;
           }
 
           throw new Error(message);
         }
 
+        const accessToken = String(data?.accessToken || '').trim();
+        if (!accessToken) {
+          throw new Error('La solicitud fue creada, pero no se pudo guardar el acceso privado para consultar su estado.');
+        }
+
         activeAutoDepositId = data.request.id;
-        localStorage.setItem(autoDepositStorageKey(), activeAutoDepositId);
+        activeAutoDepositAccessToken = accessToken;
+        saveAutoDepositAccess(activeAutoDepositId, activeAutoDepositAccessToken);
         renderAutoDepositStatus(data.request);
         startAutoDepositPolling();
       } catch (err) {

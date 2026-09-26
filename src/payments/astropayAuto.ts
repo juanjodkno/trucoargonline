@@ -56,6 +56,13 @@ const SOURCE = 'ASTROPAY_AUTO' as const;
 const IDEMPOTENCY_PREFIX = 'ASTROPAY_AUTO:';
 const DATABASE_URL = String(process.env.DATABASE_URL || '').trim();
 
+function hashAccessToken(token: string): string {
+  return crypto
+    .createHash('sha256')
+    .update(String(token || ''))
+    .digest('hex');
+}
+
 function hasPersistentStorage(): boolean {
   return !!DATABASE_URL;
 }
@@ -256,6 +263,7 @@ export async function initAstroPayAutoStorage(): Promise<void> {
       status VARCHAR(20) NOT NULL DEFAULT 'PENDING'
         CHECK (status IN ('PENDING', 'PROCESSING', 'CREDITED', 'EXPIRED', 'ERROR')),
       source VARCHAR(30) NOT NULL DEFAULT 'ASTROPAY_AUTO',
+      access_token_hash VARCHAR(64),
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       expires_at TIMESTAMPTZ NOT NULL,
       processing_at TIMESTAMPTZ,
@@ -264,6 +272,13 @@ export async function initAstroPayAutoStorage(): Promise<void> {
       transaction_id VARCHAR(50),
       error_message TEXT
     );
+  `);
+
+  // Compatibilidad con bases creadas por la versión anterior.
+  // Las solicitudes nuevas siempre reciben un token privado de consulta.
+  await pool.query(`
+    ALTER TABLE astropay_auto_deposit_requests
+    ADD COLUMN IF NOT EXISTS access_token_hash VARCHAR(64);
   `);
 
   await pool.query(`
@@ -303,7 +318,12 @@ export async function createAstroPayAutoRequest(input: {
   username: string;
   holderName: string;
   amount: number;
-}): Promise<{ success: boolean; message: string; request?: AstroPayAutoRequest }> {
+}): Promise<{
+  success: boolean;
+  message: string;
+  request?: AstroPayAutoRequest;
+  accessToken?: string;
+}> {
   if (!hasPersistentStorage()) {
     return { success: false, message: 'La carga automática no está disponible.' };
   }
@@ -325,6 +345,8 @@ export async function createAstroPayAutoRequest(input: {
   const amountCents = amount * 100;
   const now = Date.now();
   const requestId = `autodep_${crypto.randomBytes(10).toString('hex')}`;
+  const accessToken = crypto.randomBytes(32).toString('hex');
+  const accessTokenHash = hashAccessToken(accessToken);
   const createdAt = new Date(now).toISOString();
   const expiresAt = new Date(now + ASTROPAY_AUTO_REQUEST_TTL_MS).toISOString();
 
@@ -380,8 +402,8 @@ export async function createAstroPayAutoRequest(input: {
     const inserted = await client.query(
       `INSERT INTO astropay_auto_deposit_requests
        (id, username, holder_name, holder_name_normalized, holder_match_key,
-        amount_cents, status, source, created_at, expires_at)
-       VALUES ($1,$2,$3,$4,$5,$6,'PENDING',$7,$8,$9)
+        amount_cents, status, source, access_token_hash, created_at, expires_at)
+       VALUES ($1,$2,$3,$4,$5,$6,'PENDING',$7,$8,$9,$10)
        RETURNING *`,
       [
         requestId,
@@ -391,6 +413,7 @@ export async function createAstroPayAutoRequest(input: {
         holderMatchKey,
         amountCents,
         SOURCE,
+        accessTokenHash,
         createdAt,
         expiresAt
       ]
@@ -400,7 +423,8 @@ export async function createAstroPayAutoRequest(input: {
     return {
       success: true,
       message: 'Carga solicitada. Estado: En proceso.',
-      request: rowToRequest(inserted.rows[0])
+      request: rowToRequest(inserted.rows[0]),
+      accessToken
     };
   } catch (error: any) {
     try { await client.query('ROLLBACK'); } catch {}
@@ -474,6 +498,31 @@ export async function getAstroPayAutoRequest(
   sql += ` LIMIT 1`;
 
   const result = await pool.query(sql, params);
+  return result.rowCount ? rowToRequest(result.rows[0]) : null;
+}
+
+export async function getAstroPayAutoRequestByAccess(
+  id: string,
+  accessToken: string
+): Promise<AstroPayAutoRequest | null> {
+  if (!hasPersistentStorage()) return null;
+
+  await recoverStaleProcessing();
+  await expireOldRequests();
+
+  const cleanId = String(id || '').trim();
+  const cleanToken = String(accessToken || '').trim();
+  if (!cleanId || !cleanToken) return null;
+
+  const result = await pool.query(
+    `SELECT *
+       FROM astropay_auto_deposit_requests
+      WHERE id = $1
+        AND access_token_hash = $2
+      LIMIT 1`,
+    [cleanId, hashAccessToken(cleanToken)]
+  );
+
   return result.rowCount ? rowToRequest(result.rows[0]) : null;
 }
 
