@@ -3,6 +3,7 @@
 import express from 'express';
 import http from 'http';
 import path from 'path';
+import fs from 'fs';
 import crypto from 'crypto';
 import { Server } from 'socket.io';
 import rateLimit from 'express-rate-limit';
@@ -294,8 +295,12 @@ app.use(express.json());
 app.use(express.json());
 
 /* =========================================================
-   VERSION PUBLICADA DE LA APP
-   Solo informa qué deploy está activo.
+   VERSION PUBLICADA + HTML VERSIONADO
+
+   Cada deploy de Render tiene su propio RENDER_GIT_COMMIT.
+   El servidor inserta esa versión dentro del index.html para que
+   el navegador sepa qué frontend está ejecutando realmente.
+
    NO modifica partidas, fichas ni lógica del juego.
    ========================================================= */
 
@@ -304,8 +309,18 @@ const APP_VERSION = String(
   `local-${Date.now()}`
 );
 
-app.get('/api/app-version', (_req, res) => {
+const INDEX_TEMPLATE_PATH = path.join(__dirname, '../public/index.html');
+let indexTemplateCache: string | null = null;
 
+function getIndexTemplate(): string {
+  if (indexTemplateCache === null) {
+    indexTemplateCache = fs.readFileSync(INDEX_TEMPLATE_PATH, 'utf8');
+  }
+
+  return indexTemplateCache;
+}
+
+function noStore(res: express.Response) {
   res.setHeader(
     'Cache-Control',
     'no-store, no-cache, must-revalidate, proxy-revalidate'
@@ -313,13 +328,34 @@ app.get('/api/app-version', (_req, res) => {
 
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
+}
+
+app.get('/api/app-version', (_req, res) => {
+  noStore(res);
 
   return res.json({
     success: true,
     version: APP_VERSION
   });
-
 });
+
+function sendVersionedIndex(
+  _req: express.Request,
+  res: express.Response
+) {
+  noStore(res);
+
+  const html = getIndexTemplate().replace(
+    '__TRUCO_PAGE_VERSION_JSON__',
+    JSON.stringify(APP_VERSION)
+  );
+
+  res.type('html').send(html);
+}
+
+// Estas rutas van ANTES de express.static para evitar servir un index viejo.
+app.get('/', sendVersionedIndex);
+app.get('/index.html', sendVersionedIndex);
 
 app.use(express.static(path.join(__dirname, '../public')));
 app.use(express.static(path.join(__dirname, '../public')));

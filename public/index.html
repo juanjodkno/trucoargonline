@@ -12,8 +12,15 @@
   <title>Truco Argentino Online - Jugar al Truco</title>
   <link rel="icon" type="image/png" href="/logo.png" />
   <script src="/socket.io/socket.io.js"></script>
-  <script>
-    if ('serviceWorker' in navigator) {
+
+<script>
+  // Versión exacta del HTML que está ejecutando este navegador/PWA.
+  // El servidor reemplaza este marcador al entregar index.html.
+  window.__TRUCO_PAGE_VERSION__ = __TRUCO_PAGE_VERSION_JSON__;
+</script>
+
+<script>
+  if ('serviceWorker' in navigator) {
 
     window.addEventListener('load', async () => {
 
@@ -1361,7 +1368,7 @@
           href="https://chat.whatsapp.com/GA717bCJifHKfryNdzzgvl?s=cl&p=a&mlu=4&ilr=4"
           target="_blank"
           rel="noopener noreferrer"
-        >💬 UNITE A LA COMUNIDAD DE JUGADORES EN WHATSAPP</a>
+        >💬 CLICK PARA UNIRSE AL GRUPO DE JUGADORES EN WHATSAPP</a>
       </section>
     </div>
 
@@ -3203,10 +3210,15 @@ async function openMatchHistory() {
     ya podemos mostrar directamente el lobby.
   */
 
-  hideRestoreScreen();
+ hideRestoreScreen();
+
+// Si el usuario llegó al lobby con una versión vieja, éste es un punto seguro
+// para actualizar. Nunca se ejecuta si hay una partida 1vs1/2vs2 activa.
+maybeAutoUpdateInLobby();
 
 }
-    function updateChipsDisplay(chips) {
+
+function updateChipsDisplay(chips) {
       currentUser.chips = chips;
       document.getElementById('lobbyChips').innerText = new Intl.NumberFormat('es-AR').format(chips);
     }
@@ -3593,11 +3605,19 @@ async function openMatchHistory() {
       }
     }
 
-    function openDepositModal() {
-      triggerHaptic(15);
-      document.getElementById('depositModal').style.display = 'flex';
-      restoreAutoDepositRequest();
-    }
+    async function openDepositModal() {
+  triggerHaptic(15);
+
+  // Nunca abrimos Cargar fichas con un frontend viejo frente a un servidor nuevo.
+  // Si detectamos una versión más reciente, se actualiza primero, únicamente
+  // cuando estamos realmente en el lobby.
+  const freshEnough = await ensureFreshAppBeforeDeposit();
+
+  if (!freshEnough) return;
+
+  document.getElementById('depositModal').style.display = 'flex';
+  restoreAutoDepositRequest();
+}
 
     function closeDepositModal() {
       triggerHaptic(15);
@@ -3783,7 +3803,7 @@ async function openMatchHistory() {
 
       // Nueva validación: Bloqueo de auto-partida
       if (creatorId === currentUser.username) {
-        alert("no puedes jugar contra ti mismo");
+        alert("no puedes jugar contra tu mismo");
         return;
       }
 
@@ -4027,9 +4047,17 @@ async function openMatchHistory() {
       document.getElementById('lobbyContainer').style.display = 'flex';
       socket.emit('request_tables');
       fetch(`/api/wallet/balance/${currentUser.username}`)
-        .then(res => res.json())
-        .then(d => { if (d.chips !== undefined) updateChipsDisplay(d.chips); });
+  .then(res => res.json())
+  .then(d => {
+    if (d.chips !== undefined) {
+      updateChipsDisplay(d.chips);
     }
+  });
+
+// Si hubo un deploy mientras jugaba, recién ahora (ya en lobby) actualizamos.
+maybeAutoUpdateInLobby();
+
+}
 
     function getCardSrc(cardId) {
 
@@ -6023,24 +6051,28 @@ window.addEventListener('DOMContentLoaded', () => {
 
 });
   /* =========================================================
-   ACTUALIZACIONES DE LA APP
+   ACTUALIZACIONES SEGURAS DE LA APP
 
-   - Detecta un nuevo deploy.
-   - NUNCA recarga automáticamente.
-   - El aviso está dentro del lobby.
-   - Si está jugando, permanece invisible.
+   OBJETIVOS:
+   - La página conoce la versión exacta del HTML que está ejecutando.
+   - Compara esa versión con la publicada por el servidor.
+   - Si está en el lobby, puede actualizar automáticamente.
+   - Si está jugando o recuperando una partida, JAMÁS recarga.
+   - Antes de abrir Cargar fichas, exige frontend actualizado.
+   - Protección anti-bucle: un solo intento automático por versión publicada.
    ========================================================= */
 
-let trucoLoadedAppVersion = null;
+let trucoLoadedAppVersion =
+  String(window.__TRUCO_PAGE_VERSION__ || '').trim() || null;
+
 let trucoPendingAppVersion = null;
 let trucoVersionCheckRunning = false;
 let trucoVersionInterval = null;
 
+const TRUCO_AUTO_UPDATE_GUARD_KEY =
+  'truco_auto_update_guard_v1';
 
-/*
-  Consulta qué versión está actualmente
-  publicada en Render.
-*/
+
 async function getTrucoPublishedVersion() {
 
   try {
@@ -6048,7 +6080,8 @@ async function getTrucoPublishedVersion() {
     const response = await fetch(
       `/api/app-version?t=${Date.now()}`,
       {
-        cache: 'no-store'
+        cache: 'no-store',
+        credentials: 'same-origin'
       }
     );
 
@@ -6056,11 +6089,10 @@ async function getTrucoPublishedVersion() {
       return null;
     }
 
-    const data =
-      await response.json();
+    const data = await response.json();
 
     return data?.version
-      ? String(data.version)
+      ? String(data.version).trim()
       : null;
 
   } catch {
@@ -6072,97 +6104,246 @@ async function getTrucoPublishedVersion() {
 }
 
 
-/*
-  Comprueba si apareció una versión nueva.
-*/
-async function checkForTrucoAppUpdate() {
+function isElementVisible(element) {
 
-  if (trucoVersionCheckRunning) {
-    return;
+  if (!element) {
+    return false;
   }
 
-  /*
-    Primero necesitamos conocer la versión
-    con la que esta página comenzó.
-  */
-  if (!trucoLoadedAppVersion) {
+  return (
+    window.getComputedStyle(element).display !== 'none'
+  );
 
-    trucoLoadedAppVersion =
-      await getTrucoPublishedVersion();
+}
 
-    return;
 
+function isSafeLobbyForAutomaticUpdate() {
+
+  const lobby =
+    document.getElementById('lobbyContainer');
+
+  const game =
+    document.getElementById('gameContainer');
+
+  const team =
+    document.getElementById('teamModeContainer');
+
+
+  const lobbyVisible =
+    isElementVisible(lobby);
+
+  const gameVisible =
+    isElementVisible(game);
+
+  const teamVisible =
+    isElementVisible(team);
+
+  const has1v1Room =
+    !!activeRoomId;
+
+  const has2v2Session =
+    sessionStorage.getItem(
+      'team2v2_mode_open'
+    ) === '1';
+
+
+  return (
+    lobbyVisible &&
+    !gameVisible &&
+    !teamVisible &&
+    !has1v1Room &&
+    !has2v2Session
+  );
+
+}
+
+
+function showTrucoUpdateBanner() {
+
+  const banner =
+    document.getElementById(
+      'appUpdateBanner'
+    );
+
+  if (banner) {
+    banner.style.display = 'flex';
   }
 
+}
 
-  trucoVersionCheckRunning = true;
+
+function hideTrucoUpdateBanner() {
+
+  const banner =
+    document.getElementById(
+      'appUpdateBanner'
+    );
+
+  if (banner) {
+    banner.style.display = 'none';
+  }
+
+}
+
+
+function canAttemptAutomaticUpdate(targetVersion) {
 
   try {
 
-    const publishedVersion =
-      await getTrucoPublishedVersion();
+    const raw =
+      sessionStorage.getItem(
+        TRUCO_AUTO_UPDATE_GUARD_KEY
+      );
 
 
-    if (!publishedVersion) {
-      return;
-    }
+    if (raw) {
+
+      const previous =
+        JSON.parse(raw);
+
+      const sameVersion =
+        String(previous?.version || '') ===
+        String(targetVersion || '');
 
 
-    if (
-      publishedVersion !==
-      trucoLoadedAppVersion
-    ) {
+      /*
+        Ya intentamos actualizar automáticamente
+        hacia ESTA misma versión.
 
-      trucoPendingAppVersion =
-        publishedVersion;
-
-
-      const banner =
-        document.getElementById(
-          'appUpdateBanner'
-        );
-
-
-      if (banner) {
-
-        /*
-          El cartel está físicamente dentro
-          de lobbyContainer.
-
-          Si el jugador está en una partida,
-          lobbyContainer está oculto y por eso
-          NO verá absolutamente nada.
-
-          Cuando vuelva al lobby,
-          aparecerá automáticamente.
-        */
-
-        banner.style.display =
-          'flex';
-
+        Si volviera a entrar el HTML viejo,
+        no repetimos la recarga automáticamente.
+      */
+      if (sameVersion) {
+        return false;
       }
 
     }
 
-  } finally {
 
-    trucoVersionCheckRunning = false;
+    sessionStorage.setItem(
+      TRUCO_AUTO_UPDATE_GUARD_KEY,
+      JSON.stringify({
+        version: targetVersion,
+        at: Date.now()
+      })
+    );
+
+  } catch {}
+
+
+  return true;
+
+}
+
+
+function clearAutomaticUpdateGuardIfFresh() {
+
+  if (!trucoPendingAppVersion) {
+
+    try {
+
+      sessionStorage.removeItem(
+        TRUCO_AUTO_UPDATE_GUARD_KEY
+      );
+
+    } catch {}
 
   }
 
 }
 
 
-/*
-  ESTA FUNCIÓN ES LA ÚNICA QUE ACTUALIZA.
+async function detectTrucoVersionMismatch() {
 
-  Solo se ejecuta cuando el usuario
-  presiona "Actualizar app".
-*/
-async function updateTrucoApp() {
+  const publishedVersion =
+    await getTrucoPublishedVersion();
 
-  if (!trucoPendingAppVersion) {
-    return;
+
+  if (
+    !publishedVersion ||
+    !trucoLoadedAppVersion
+  ) {
+
+    return {
+      mismatch: false,
+      publishedVersion
+    };
+
+  }
+
+
+  const mismatch =
+    publishedVersion !==
+    trucoLoadedAppVersion;
+
+
+  if (mismatch) {
+
+    trucoPendingAppVersion =
+      publishedVersion;
+
+  } else {
+
+    trucoPendingAppVersion = null;
+
+    hideTrucoUpdateBanner();
+
+    clearAutomaticUpdateGuardIfFresh();
+
+  }
+
+
+  return {
+    mismatch,
+    publishedVersion
+  };
+
+}
+
+
+async function performTrucoAppUpdate(
+  { automatic = false } = {}
+) {
+
+  const targetVersion =
+    trucoPendingAppVersion ||
+    await getTrucoPublishedVersion();
+
+
+  if (!targetVersion) {
+    return false;
+  }
+
+
+  /*
+    Regla principal:
+    jamás recargar si hay una partida
+    o una sala activa.
+  */
+  if (!isSafeLobbyForAutomaticUpdate()) {
+
+    showTrucoUpdateBanner();
+
+    return false;
+
+  }
+
+
+  /*
+    Protección anti-bucle.
+    Solo se aplica a actualizaciones automáticas.
+  */
+  if (
+    automatic &&
+    !canAttemptAutomaticUpdate(
+      targetVersion
+    )
+  ) {
+
+    showTrucoUpdateBanner();
+
+    return false;
+
   }
 
 
@@ -6183,10 +6364,8 @@ async function updateTrucoApp() {
 
 
   /*
-    Le pedimos al Service Worker que también
-    compruebe archivos nuevos.
-
-    Esto NO recarga automáticamente.
+    Pedimos al Service Worker que consulte
+    también si existe una versión nueva.
   */
   try {
 
@@ -6211,40 +6390,217 @@ async function updateTrucoApp() {
 
 
   /*
-    ÚNICA RECARGA DE TODO EL SISTEMA.
+    Navegamos a una URL nueva para evitar
+    reutilizar una navegación anterior
+    desde caché.
 
-    Ocurre exclusivamente porque el usuario
-    tocó "Actualizar app".
+    Esto solamente puede ocurrir
+    estando en un lobby seguro.
   */
+  const nextUrl =
+    new URL(
+      '/',
+      window.location.origin
+    );
 
-  window.location.reload();
+
+  nextUrl.searchParams.set(
+    'app_update',
+    String(Date.now())
+  );
+
+
+  window.location.replace(
+    nextUrl.toString()
+  );
+
+
+  return true;
+
+}
+
+
+async function checkForTrucoAppUpdate(
+  options = {}
+) {
+
+  if (trucoVersionCheckRunning) {
+    return false;
+  }
+
+
+  trucoVersionCheckRunning = true;
+
+
+  try {
+
+    const result =
+      await detectTrucoVersionMismatch();
+
+
+    if (!result.mismatch) {
+      return false;
+    }
+
+
+    showTrucoUpdateBanner();
+
+
+    const autoApply =
+      options.autoApply === true;
+
+
+    if (
+      autoApply &&
+      isSafeLobbyForAutomaticUpdate()
+    ) {
+
+      return await performTrucoAppUpdate({
+        automatic: true
+      });
+
+    }
+
+
+    return false;
+
+
+  } finally {
+
+    trucoVersionCheckRunning = false;
+
+  }
+
+}
+
+
+async function maybeAutoUpdateInLobby() {
+
+  if (
+    !isSafeLobbyForAutomaticUpdate()
+  ) {
+
+    return false;
+
+  }
+
+
+  return await checkForTrucoAppUpdate({
+    autoApply: true
+  });
+
+}
+
+
+async function ensureFreshAppBeforeDeposit() {
+
+  const result =
+    await detectTrucoVersionMismatch();
+
+
+  /*
+    Si temporalmente no podemos consultar
+    la versión, no bloqueamos una carga válida.
+
+    El backend mantiene sus propias
+    validaciones de seguridad.
+  */
+  if (
+    !result.publishedVersion ||
+    !result.mismatch
+  ) {
+
+    return true;
+
+  }
+
+
+  showTrucoUpdateBanner();
+
+
+  if (
+    isSafeLobbyForAutomaticUpdate()
+  ) {
+
+    await performTrucoAppUpdate({
+      automatic: true
+    });
+
+  }
+
+
+  /*
+    No permitimos abrir Cargar fichas
+    mientras siga ejecutándose
+    el frontend viejo.
+  */
+  return false;
 
 }
 
 
 /*
-  Al abrir la web/app guardamos la versión
-  con la que comenzó esta sesión.
+  Botón manual de respaldo.
+
+  También respeta la regla de
+  jamás recargar mientras juega.
+*/
+async function updateTrucoApp() {
+
+  if (!trucoPendingAppVersion) {
+
+    const result =
+      await detectTrucoVersionMismatch();
+
+
+    if (!result.mismatch) {
+      return;
+    }
+
+  }
+
+
+  await performTrucoAppUpdate({
+    automatic: false
+  });
+
+}
+
+
+/*
+  Al abrir la página NO preguntamos al servidor
+  qué versión tenemos.
+
+  La versión que tenemos viene incrustada
+  dentro del propio HTML.
 */
 window.addEventListener(
   'DOMContentLoaded',
   async () => {
 
     trucoLoadedAppVersion =
-      await getTrucoPublishedVersion();
+      String(
+        window.__TRUCO_PAGE_VERSION__ || ''
+      ).trim() || null;
 
 
-    /*
-      Comprobamos una vez por minuto.
-      SOLO comprobamos.
-      Nunca recargamos automáticamente.
-    */
+    await checkForTrucoAppUpdate({
+      autoApply: false
+    });
+
 
     if (!trucoVersionInterval) {
 
       trucoVersionInterval =
         setInterval(
-          checkForTrucoAppUpdate,
+          () => {
+
+            checkForTrucoAppUpdate({
+              autoApply:
+                isSafeLobbyForAutomaticUpdate()
+            });
+
+          },
           60000
         );
 
@@ -6255,10 +6611,8 @@ window.addEventListener(
 
 
 /*
-  Muy importante para celulares:
-
-  si la app estuvo en segundo plano y
-  el usuario vuelve, comprobamos inmediatamente.
+  Si el celular estuvo en segundo plano
+  y vuelve a la app, comprobamos inmediatamente.
 */
 document.addEventListener(
   'visibilitychange',
@@ -6266,7 +6620,10 @@ document.addEventListener(
 
     if (!document.hidden) {
 
-      checkForTrucoAppUpdate();
+      checkForTrucoAppUpdate({
+        autoApply:
+          isSafeLobbyForAutomaticUpdate()
+      });
 
     }
 
@@ -6275,13 +6632,17 @@ document.addEventListener(
 
 
 /*
-  También sirve para navegador PC.
+  También comprueba al volver a enfocar
+  la ventana en PC.
 */
 window.addEventListener(
   'focus',
   () => {
 
-    checkForTrucoAppUpdate();
+    checkForTrucoAppUpdate({
+      autoApply:
+        isSafeLobbyForAutomaticUpdate()
+    });
 
   }
 );
