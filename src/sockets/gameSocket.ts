@@ -1515,6 +1515,108 @@ io.to(room.roomId).emit('flor_declared', {
     sendPendingInteractionSync(socket, room);
   }
 
+  /*
+    Recuperación visual 1vs1 durante la ventana de arranque de la mano.
+
+    Situación protegida:
+    - el JOIN ya fue aceptado;
+    - ambos jugadores ya están asociados a la sala;
+    - todavía no existe room.gameRound porque dealAutoHand() corre 1,2 s después;
+    - el navegador se recargó/reconectó justo en esa ventana.
+
+    Antes, reconnect_game/request_game_state intentaban sincronizar una sola vez y
+    sendFullSync() salía sin emitir nada mientras gameRound todavía no existía.
+    Eso podía dejar al usuario indefinidamente en "Recuperando tu partida...".
+
+    Este helper NO crea manos, NO reparte cartas, NO modifica puntos ni fichas.
+    Solo espera a que la mano que el flujo normal ya programó exista y entonces
+    envía el estado completo una única vez a ese socket recuperado.
+  */
+  const pendingRecoverySyncs = new Set<string>();
+
+  function sendCompleteGameSyncOrWait(
+    socket: Socket,
+    room: ActiveRoom,
+    userId: string
+  ) {
+    if (room.gameRound) {
+      sendCompleteGameSync(socket, room, userId);
+      return;
+    }
+
+    // Una mesa que todavía espera rival se recupera por waiting_room_restored.
+    if (!room.guestId) return;
+
+    const key = `${socket.id}::${room.roomId}::${String(userId || '').toLowerCase()}`;
+
+    // reconnect_game y request_game_state pueden llegar casi juntos.
+    // Evitamos abrir dos cadenas de reintento para el mismo socket/sala.
+    if (pendingRecoverySyncs.has(key)) return;
+
+    pendingRecoverySyncs.add(key);
+    let attempts = 0;
+
+    const trySync = () => {
+      const liveRoom = rooms.get(room.roomId);
+
+      if (!socket.connected || liveRoom !== room) {
+        pendingRecoverySyncs.delete(key);
+        return;
+      }
+
+      if (room.gameRound) {
+        pendingRecoverySyncs.delete(key);
+        sendCompleteGameSync(socket, room, userId);
+        return;
+      }
+
+      attempts++;
+
+      /*
+        RESCATE EXCLUSIVO DEL PRIMER REPARTO.
+
+        El flujo normal programa dealAutoHand() a los 1,2 s del JOIN.
+        Si uno de los jugadores estaba desconectado justo cuando venció ese
+        temporizador, dealAutoHand() sale sin crear room.gameRound y ese reparto
+        normal ya no vuelve a intentarse.
+
+        Esperamos 1,5 s desde el comienzo de ESTA recuperación para darle
+        prioridad absoluta al reparto normal. Solo si después de ese margen:
+        - siguen estando los dos jugadores,
+        - no existe ninguna mano, y
+        - ya no hay nadie marcado como desconectado,
+        recuperamos ese primer reparto perdido usando el mismo dealAutoHand().
+
+        No crea una segunda mano: si el reparto normal ya ocurrió, gameRound
+        existe y este bloque no se ejecuta.
+      */
+      if (
+        attempts === 15 &&
+        room.guestId &&
+        !room.gameRound &&
+        !room.disconnectedUser
+      ) {
+        dealAutoHand(room);
+
+        if (room.gameRound) {
+          pendingRecoverySyncs.delete(key);
+          sendCompleteGameSync(socket, room, userId);
+          return;
+        }
+      }
+
+      // Límite de seguridad: nunca dejamos una cadena de recuperación infinita.
+      if (attempts >= 50) {
+        pendingRecoverySyncs.delete(key);
+        return;
+      }
+
+      setTimeout(trySync, 100);
+    };
+
+    setTimeout(trySync, 100);
+  }
+
   io.on('connection', (socket: Socket) => {
 
     socket.emit('update_tables', getAvailableRooms());
@@ -1714,15 +1816,20 @@ io.to(room.roomId).emit('flor_declared', {
       );
 
 
-      startTurnTimer(
-        room,
-        resumeSeconds
-      );
+      // Si la reconexión ocurrió antes del primer reparto, todavía no existe
+      // una mano sobre la cual reanudar el reloj. dealAutoHand() iniciará el
+      // temporizador cuando la mano exista realmente.
+      if (room.gameRound) {
+        startTurnTimer(
+          room,
+          resumeSeconds
+        );
+      }
 
     }
 
 
-    sendCompleteGameSync(
+    sendCompleteGameSyncOrWait(
       socket,
       room,
       userId
@@ -1742,7 +1849,7 @@ io.to(room.roomId).emit('flor_declared', {
 
     socket.on('request_game_state', async ({ roomId, userId }) => {
       const room = rooms.get(roomId);
-      if (!room || !room.gameRound || !userId) return;
+      if (!room || !userId) return;
 
       const cleanUser = String(userId).trim().toLowerCase();
       if (!room.isBotGame) {
@@ -1763,7 +1870,7 @@ io.to(room.roomId).emit('flor_declared', {
       if (isCreator) room.creatorSocketId = socket.id;
       else room.guestSocketId = socket.id;
 
-      sendCompleteGameSync(socket, room, userId);
+      sendCompleteGameSyncOrWait(socket, room, userId);
     });
 
     socket.on('check_active_game', async ({ userId }) => {

@@ -6146,13 +6146,26 @@ function isSafeLobbyForAutomaticUpdate() {
       'team2v2_mode_open'
     ) === '1';
 
+  /*
+    Aunque visualmente todavía siga en el lobby, NO es seguro recargar
+    mientras un JOIN 1vs1 o una recuperación está en curso.
+
+    Esto evita que una actualización automática pueda cortar justamente
+    la transición entre "entrar a la mesa" y "mostrar la partida".
+  */
+  const hasPending1v1Transition =
+    !!pendingJoinRoomId ||
+    activeGameRecoveryPending ||
+    reconnectVerificationPending;
+
 
   return (
     lobbyVisible &&
     !gameVisible &&
     !teamVisible &&
     !has1v1Room &&
-    !has2v2Session
+    !has2v2Session &&
+    !hasPending1v1Transition
   );
 
 }
