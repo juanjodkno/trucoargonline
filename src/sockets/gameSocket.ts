@@ -48,6 +48,14 @@ interface ActiveRoom {
   florChain: string[];
   florPendingCaller: string | null;
 
+  // Transición entre manos humanas: el reparto sobrevive a una desconexión.
+  pendingNextHand?: {
+    round: TrucoRound;
+    dueAt: number;
+    checkEndAndRotate: boolean;
+    timer?: NodeJS.Timeout;
+  };
+
   turnInterval?: NodeJS.Timeout;
   turnDeadline?: number;
   disconnectInterval?: NodeJS.Timeout;
@@ -692,6 +700,8 @@ export function setupSocketEvents(io: Server) {
 
   function startTurnTimer(room: ActiveRoom, seconds: number = 30) {
     clearTurnTimer(room);
+    // Una mano humana cerrada espera reparto; no tiene un turno para reanudar.
+    if (!room.isBotGame && (room.pendingNextHand || room.roundEnding || room.gameRound?.isFinished)) return;
     if (room.disconnectedUser) return;
 
     if (isBotActionPending(room)) {
@@ -1277,7 +1287,94 @@ io.to(room.roomId).emit('flor_declared', {
     handleRoundTransition(room);
   }
 
+  function logNextHand(room: ActiveRoom, event: string) {
+    if (process.env.TRUCO_TRANSITION_DEBUG !== 'true') return;
+    console.log('[NEXT_HAND]', JSON.stringify({
+      event, roomId: room.roomId, at: new Date().toISOString(),
+      dueAt: room.pendingNextHand?.dueAt,
+      disconnected: !!room.disconnectedUser,
+      creatorConnected: !!io.sockets.sockets.get(room.creatorSocketId || '')?.connected,
+      guestConnected: !!io.sockets.sockets.get(room.guestSocketId || '')?.connected,
+      manoId: room.manoId, scores: getScoreMap(room)
+    }));
+  }
+
+  function resumePendingNextHand(room: ActiveRoom) {
+    const pending = room.pendingNextHand;
+    if (!pending || room.isBotGame) return;
+
+    const discard = () => {
+      if (pending.timer) clearTimeout(pending.timer);
+      if (room.pendingNextHand === pending) room.pendingNextHand = undefined;
+    };
+
+    // No repartir en una sala cerrada, liquidándose o con otra mano.
+    if (rooms.get(room.roomId) !== room || room.gameRound !== pending.round || room.settlementInProgress) {
+      discard();
+      return;
+    }
+
+    const remaining = pending.dueAt - Date.now();
+    if (remaining > 0) {
+      if (!pending.timer) {
+        pending.timer = setTimeout(() => {
+          pending.timer = undefined;
+          resumePendingNextHand(room);
+        }, remaining);
+      }
+      return;
+    }
+
+    // Conserva el control de fin de partida del camino con tantos mostrados.
+    if (pending.checkEndAndRotate && checkMatchEnd(room)) {
+      discard();
+      return;
+    }
+
+    // disconnectedUser es un único marcador; además comprobamos ambos sockets.
+    if (room.disconnectedUser || !room.guestId ||
+        !io.sockets.sockets.get(room.creatorSocketId || '')?.connected ||
+        !io.sockets.sockets.get(room.guestSocketId || '')?.connected) {
+      logNextHand(room, 'waiting_for_reconnection');
+      return;
+    }
+
+    // Consumir antes de repartir hace idempotentes temporizador y reconexiones.
+    discard();
+    if (pending.checkEndAndRotate) {
+      room.manoId = room.manoId.toLowerCase() === room.creatorId.toLowerCase()
+        ? room.guestId : room.creatorId;
+    }
+    logNextHand(room, 'dealing');
+    dealAutoHand(room);
+  }
+
+  function scheduleNextHand(room: ActiveRoom, delayMs: number, checkEndAndRotate: boolean) {
+    // Conserva exactamente el comportamiento anterior del modo máquina.
+    if (room.isBotGame) {
+      setTimeout(() => {
+        if (checkEndAndRotate) {
+          if (checkMatchEnd(room)) return;
+          room.manoId = room.manoId.toLowerCase() === room.creatorId.toLowerCase()
+            ? (room.guestId || room.creatorId) : room.creatorId;
+        }
+        dealAutoHand(room);
+      }, delayMs);
+      return;
+    }
+    if (!room.gameRound || room.pendingNextHand) return;
+    room.pendingNextHand = {
+      round: room.gameRound,
+      dueAt: Date.now() + delayMs,
+      checkEndAndRotate
+    };
+    logNextHand(room, 'scheduled');
+    resumePendingNextHand(room);
+  }
+
   function handleRoundTransition(room: ActiveRoom, lastCardRevealDelayMs: number = 0) {
+    // Un segundo pedido no vuelve a rotar la mano ni a programar otro reparto.
+    if (!room.isBotGame && room.pendingNextHand) return;
     clearTurnTimer(room);
 
     if (room.envidoWinnerRecord) {
@@ -1293,17 +1390,13 @@ io.to(room.roomId).emit('flor_declared', {
         });
       }, lastCardRevealDelayMs);
 
-      setTimeout(() => {
-        if (checkMatchEnd(room)) return;
-        room.manoId = room.manoId.toLowerCase() === room.creatorId.toLowerCase() ? (room.guestId || room.creatorId) : room.creatorId;
-        dealAutoHand(room);
-      }, lastCardRevealDelayMs + 3800);
+      scheduleNextHand(room, lastCardRevealDelayMs + 3800, true);
       return;
     }
 
     if (checkMatchEnd(room)) return;
     room.manoId = room.manoId.toLowerCase() === room.creatorId.toLowerCase() ? (room.guestId || room.creatorId) : room.creatorId;
-    setTimeout(() => { dealAutoHand(room); }, 3000);
+    scheduleNextHand(room, 3000, false);
   }
 
   function executePlayCard(room: ActiveRoom, userId: string, cardId: string) {
@@ -1539,6 +1632,8 @@ io.to(room.roomId).emit('flor_declared', {
     room: ActiveRoom,
     userId: string
   ) {
+    // Antes de sincronizar una mano terminada, retomar su reparto si ya venció.
+    resumePendingNextHand(room);
     if (room.gameRound) {
       sendCompleteGameSync(socket, room, userId);
       return;
