@@ -572,6 +572,9 @@ function setupSocketEvents(io) {
     }
     function startTurnTimer(room, seconds = 30) {
         clearTurnTimer(room);
+        // Una mano humana cerrada espera reparto; no tiene un turno para reanudar.
+        if (!room.isBotGame && (room.pendingNextHand || room.roundEnding || room.gameRound?.isFinished))
+            return;
         if (room.disconnectedUser)
             return;
         if (isBotActionPending(room)) {
@@ -1093,7 +1096,92 @@ function setupSocketEvents(io) {
         });
         handleRoundTransition(room);
     }
+    function logNextHand(room, event) {
+        if (process.env.TRUCO_TRANSITION_DEBUG !== 'true')
+            return;
+        console.log('[NEXT_HAND]', JSON.stringify({
+            event, roomId: room.roomId, at: new Date().toISOString(),
+            dueAt: room.pendingNextHand?.dueAt,
+            disconnected: !!room.disconnectedUser,
+            creatorConnected: !!io.sockets.sockets.get(room.creatorSocketId || '')?.connected,
+            guestConnected: !!io.sockets.sockets.get(room.guestSocketId || '')?.connected,
+            manoId: room.manoId, scores: getScoreMap(room)
+        }));
+    }
+    function resumePendingNextHand(room) {
+        const pending = room.pendingNextHand;
+        if (!pending || room.isBotGame)
+            return;
+        const discard = () => {
+            if (pending.timer)
+                clearTimeout(pending.timer);
+            if (room.pendingNextHand === pending)
+                room.pendingNextHand = undefined;
+        };
+        // No repartir en una sala cerrada, liquidándose o con otra mano.
+        if (rooms.get(room.roomId) !== room || room.gameRound !== pending.round || room.settlementInProgress) {
+            discard();
+            return;
+        }
+        const remaining = pending.dueAt - Date.now();
+        if (remaining > 0) {
+            if (!pending.timer) {
+                pending.timer = setTimeout(() => {
+                    pending.timer = undefined;
+                    resumePendingNextHand(room);
+                }, remaining);
+            }
+            return;
+        }
+        // Conserva el control de fin de partida del camino con tantos mostrados.
+        if (pending.checkEndAndRotate && checkMatchEnd(room)) {
+            discard();
+            return;
+        }
+        // disconnectedUser es un único marcador; además comprobamos ambos sockets.
+        if (room.disconnectedUser || !room.guestId ||
+            !io.sockets.sockets.get(room.creatorSocketId || '')?.connected ||
+            !io.sockets.sockets.get(room.guestSocketId || '')?.connected) {
+            logNextHand(room, 'waiting_for_reconnection');
+            return;
+        }
+        // Consumir antes de repartir hace idempotentes temporizador y reconexiones.
+        discard();
+        if (pending.checkEndAndRotate) {
+            room.manoId = room.manoId.toLowerCase() === room.creatorId.toLowerCase()
+                ? room.guestId : room.creatorId;
+        }
+        logNextHand(room, 'dealing');
+        dealAutoHand(room);
+    }
+    function scheduleNextHand(room, delayMs, checkEndAndRotate) {
+        // Conserva exactamente el comportamiento anterior del modo máquina.
+        if (room.isBotGame) {
+            setTimeout(() => {
+                if (checkEndAndRotate) {
+                    if (checkMatchEnd(room))
+                        return;
+                    room.manoId = room.manoId.toLowerCase() === room.creatorId.toLowerCase()
+                        ? (room.guestId || room.creatorId) : room.creatorId;
+                }
+                dealAutoHand(room);
+            }, delayMs);
+            return;
+        }
+        if (!room.gameRound || room.pendingNextHand)
+            return;
+        room.pendingNextHand = {
+            round: room.gameRound,
+            dueAt: Date.now() + delayMs,
+            checkEndAndRotate
+        };
+        logNextHand(room, 'scheduled');
+        resumePendingNextHand(room);
+    }
     function handleRoundTransition(room, lastCardRevealDelayMs = 0) {
+        // Un segundo pedido no vuelve a rotar la mano ni a programar otro reparto.
+        if (!room.isBotGame && room.pendingNextHand)
+            return;
         clearTurnTimer(room);
         if (room.envidoWinnerRecord) {
             // Si la mano terminó por una carta, dejamos esa última carta visible antes
@@ -1106,18 +1194,13 @@ function setupSocketEvents(io) {
                     cards: winnerRecord.cards, durationMs: 3500,
                 });
             }, lastCardRevealDelayMs);
-            setTimeout(() => {
-                if (checkMatchEnd(room))
-                    return;
-                room.manoId = room.manoId.toLowerCase() === room.creatorId.toLowerCase() ? (room.guestId || room.creatorId) : room.creatorId;
-                dealAutoHand(room);
-            }, lastCardRevealDelayMs + 3800);
+            scheduleNextHand(room, lastCardRevealDelayMs + 3800, true);
             return;
         }
         if (checkMatchEnd(room))
             return;
         room.manoId = room.manoId.toLowerCase() === room.creatorId.toLowerCase() ? (room.guestId || room.creatorId) : room.creatorId;
-        setTimeout(() => { dealAutoHand(room); }, 3000);
+        scheduleNextHand(room, 3000, false);
     }
     function executePlayCard(room, userId, cardId) {
         if (!room.gameRound)
@@ -1309,6 +1392,91 @@ function setupSocketEvents(io) {
         sendFullSync(socket, room, userId);
         sendPendingInteractionSync(socket, room);
     }
+    /*
+      Recuperación visual 1vs1 durante la ventana de arranque de la mano.
+  
+      Situación protegida:
+      - el JOIN ya fue aceptado;
+      - ambos jugadores ya están asociados a la sala;
+      - todavía no existe room.gameRound porque dealAutoHand() corre 1,2 s después;
+      - el navegador se recargó/reconectó justo en esa ventana.
+  
+      Antes, reconnect_game/request_game_state intentaban sincronizar una sola vez y
+      sendFullSync() salía sin emitir nada mientras gameRound todavía no existía.
+      Eso podía dejar al usuario indefinidamente en "Recuperando tu partida...".
+  
+      Este helper NO crea manos, NO reparte cartas, NO modifica puntos ni fichas.
+      Solo espera a que la mano que el flujo normal ya programó exista y entonces
+      envía el estado completo una única vez a ese socket recuperado.
+    */
+    const pendingRecoverySyncs = new Set();
+    function sendCompleteGameSyncOrWait(socket, room, userId) {
+        // Antes de sincronizar una mano terminada, retomar su reparto si ya venció.
+        resumePendingNextHand(room);
+        if (room.gameRound) {
+            sendCompleteGameSync(socket, room, userId);
+            return;
+        }
+        // Una mesa que todavía espera rival se recupera por waiting_room_restored.
+        if (!room.guestId)
+            return;
+        const key = `${socket.id}::${room.roomId}::${String(userId || '').toLowerCase()}`;
+        // reconnect_game y request_game_state pueden llegar casi juntos.
+        // Evitamos abrir dos cadenas de reintento para el mismo socket/sala.
+        if (pendingRecoverySyncs.has(key))
+            return;
+        pendingRecoverySyncs.add(key);
+        let attempts = 0;
+        const trySync = () => {
+            const liveRoom = rooms.get(room.roomId);
+            if (!socket.connected || liveRoom !== room) {
+                pendingRecoverySyncs.delete(key);
+                return;
+            }
+            if (room.gameRound) {
+                pendingRecoverySyncs.delete(key);
+                sendCompleteGameSync(socket, room, userId);
+                return;
+            }
+            attempts++;
+            /*
+              RESCATE EXCLUSIVO DEL PRIMER REPARTO.
+      
+              El flujo normal programa dealAutoHand() a los 1,2 s del JOIN.
+              Si uno de los jugadores estaba desconectado justo cuando venció ese
+              temporizador, dealAutoHand() sale sin crear room.gameRound y ese reparto
+              normal ya no vuelve a intentarse.
+      
+              Esperamos 1,5 s desde el comienzo de ESTA recuperación para darle
+              prioridad absoluta al reparto normal. Solo si después de ese margen:
+              - siguen estando los dos jugadores,
+              - no existe ninguna mano, y
+              - ya no hay nadie marcado como desconectado,
+              recuperamos ese primer reparto perdido usando el mismo dealAutoHand().
+      
+              No crea una segunda mano: si el reparto normal ya ocurrió, gameRound
+              existe y este bloque no se ejecuta.
+            */
+            if (attempts === 15 &&
+                room.guestId &&
+                !room.gameRound &&
+                !room.disconnectedUser) {
+                dealAutoHand(room);
+                if (room.gameRound) {
+                    pendingRecoverySyncs.delete(key);
+                    sendCompleteGameSync(socket, room, userId);
+                    return;
+                }
+            }
+            // Límite de seguridad: nunca dejamos una cadena de recuperación infinita.
+            if (attempts >= 50) {
+                pendingRecoverySyncs.delete(key);
+                return;
+            }
+            setTimeout(trySync, 100);
+        };
+        setTimeout(trySync, 100);
+    }
     io.on('connection', (socket) => {
         socket.emit('update_tables', getAvailableRooms());
         socket.on('request_tables', () => {
@@ -1335,7 +1503,7 @@ function setupSocketEvents(io) {
             const room = rooms.get(roomId);
             const cleanUser = (userId || '').trim().toLowerCase();
             if (!cleanUser) {
-                return socket.emit('reconnect_failed');
+                return socket.emit('reconnect_failed', { roomId: String(roomId || '') });
             }
             /*
               Conservamos exactamente la validación
@@ -1424,17 +1592,22 @@ function setupSocketEvents(io) {
                     io.to(roomId).emit('player_reconnected', {
                         reconnectedUser: userId
                     });
-                    startTurnTimer(room, resumeSeconds);
+                    // Si la reconexión ocurrió antes del primer reparto, todavía no existe
+                    // una mano sobre la cual reanudar el reloj. dealAutoHand() iniciará el
+                    // temporizador cuando la mano exista realmente.
+                    if (room.gameRound) {
+                        startTurnTimer(room, resumeSeconds);
+                    }
                 }
-                sendCompleteGameSync(socket, room, userId);
+                sendCompleteGameSyncOrWait(socket, room, userId);
             }
             else {
-                socket.emit('reconnect_failed');
+                socket.emit('reconnect_failed', { roomId: String(roomId || '') });
             }
         });
         socket.on('request_game_state', async ({ roomId, userId }) => {
             const room = rooms.get(roomId);
-            if (!room || !room.gameRound || !userId)
+            if (!room || !userId)
                 return;
             const cleanUser = String(userId).trim().toLowerCase();
             if (!room.isBotGame) {
@@ -1459,7 +1632,7 @@ function setupSocketEvents(io) {
                 room.creatorSocketId = socket.id;
             else
                 room.guestSocketId = socket.id;
-            sendCompleteGameSync(socket, room, userId);
+            sendCompleteGameSyncOrWait(socket, room, userId);
         });
         socket.on('check_active_game', async ({ userId }) => {
             if (!userId)
@@ -1487,6 +1660,9 @@ function setupSocketEvents(io) {
                     return;
                 }
             }
+            // Respuesta explícita para que el cliente no quede indefinidamente
+            // en "Recuperando tu partida..." cuando realmente no hay partida activa.
+            socket.emit('active_game_not_found', { userId: cleanUser });
         });
         // Chat temporal 1 vs 1. No se guarda en la base de datos ni altera el estado del juego.
         socket.on('send_chat_message', ({ roomId, message }) => {

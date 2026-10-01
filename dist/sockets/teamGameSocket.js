@@ -101,20 +101,31 @@ function envidoPoints(room) {
 function florPoints(room, accepted) {
     const chain = room.florChain;
     const last = chain[chain.length - 1] || 'FLOR';
+    // Misma lógica oficial que 1vs1:
+    // FLOR -> Con Flor me Achico = 4
+    // FLOR -> CONTRAFLOR -> No Quiero = 4
+    // FLOR -> CONTRAFLOR AL JUEGO -> No Quiero = 4
+    // FLOR -> CONTRAFLOR -> CONTRAFLOR AL JUEGO -> No Quiero = 6
+    // CONTRAFLOR querida = 6
+    // CONTRAFLOR AL JUEGO querida = puntos restantes para terminar.
     if (!accepted) {
         if (last === 'CONTRAFLOR')
             return 4;
         if (last === 'CONTRAFLOR_AL_JUEGO') {
-            return chain.includes('CONTRAFLOR') ? 7 : 4;
+            return chain.includes('CONTRAFLOR') ? 6 : 4;
         }
+        if (last === 'FLOR')
+            return 4;
         return 3;
     }
     if (last === 'CONTRAFLOR_AL_JUEGO') {
-        return Math.max(1, room.targetPoints - Math.max(room.scoreA, room.scoreB));
+        return room.targetPoints - Math.max(room.scoreA, room.scoreB);
     }
     if (last === 'CONTRAFLOR')
         return 6;
-    return 3;
+    // FLOR -> QUIERO directo no existe.
+    // Queda como resguardo interno, igual que en 1vs1.
+    return 6;
 }
 function bestEnvidoForTeam(room, team) {
     const order = seatOrderFrom(room.manoSeat);
@@ -541,12 +552,17 @@ function availableActions(room, seat) {
                 actions.push('FLOR');
             return [...new Set(actions)];
         }
-        actions.push('QUIERO_FLOR', 'NO_QUIERO_FLOR');
         const last = room.florChain[room.florChain.length - 1];
-        if (last === 'FLOR')
-            actions.push('CONTRAFLOR', 'CONTRAFLOR_AL_JUEGO');
-        else if (last === 'CONTRAFLOR')
-            actions.push('CONTRAFLOR_AL_JUEGO');
+        if (last === 'FLOR') {
+            // Igual que 1vs1: no existe Quiero directo a Flor.
+            actions.push('CON_FLOR_ME_ACHICO', 'CONTRAFLOR', 'CONTRAFLOR_AL_JUEGO');
+        }
+        else if (last === 'CONTRAFLOR') {
+            actions.push('QUIERO_FLOR', 'NO_QUIERO_FLOR', 'CONTRAFLOR_AL_JUEGO');
+        }
+        else if (last === 'CONTRAFLOR_AL_JUEGO') {
+            actions.push('QUIERO_FLOR', 'NO_QUIERO_FLOR');
+        }
         return actions;
     }
     if (seat.seat !== room.round.currentTurnSeat)
@@ -843,6 +859,7 @@ function emitCallAudio(io, room, callType) {
         QUIERO_TRUCO: 'quiero.mp3',
         QUIERO_ENVIDO: 'quiero.mp3',
         QUIERO_FLOR: 'quiero.mp3',
+        CON_FLOR_ME_ACHICO: 'con_flor_me_achico.mp3',
         NO_QUIERO_TRUCO: 'no quiero.mp3',
         NO_QUIERO_ENVIDO: 'no quiero.mp3',
         NO_QUIERO_FLOR: 'no quiero.mp3',
@@ -1144,6 +1161,10 @@ function handleCall(io, socket, room, seat, callType) {
     }
     if (callType === 'FLOR')
         return startFlorCall(io, room, seat);
+    if (callType === 'CON_FLOR_ME_ACHICO') {
+        emitCallAudio(io, room, callType);
+        return resolveFlor(io, room, false);
+    }
     if (callType === 'QUIERO_FLOR') {
         emitCallAudio(io, room, callType);
         return resolveFlor(io, room, true);
