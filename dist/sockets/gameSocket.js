@@ -649,7 +649,7 @@ function setupSocketEvents(io) {
             executePlayCard(room, activePlayerId, autoCard.id);
         }
     }
-    function startDisconnectGracePeriod(room, disconnectedUser) {
+    function startDisconnectGracePeriod(room, disconnectedUser, graceSeconds = 180) {
         // Guardamos el tiempo REAL que quedaba en el turno antes de pausarlo.
         // Así una actualización/reconexión no vuelve a regalar 30 segundos.
         room.pausedTurnSeconds = room.turnDeadline
@@ -658,7 +658,7 @@ function setupSocketEvents(io) {
         clearTurnTimer(room);
         clearDisconnectTimer(room);
         room.disconnectedUser = disconnectedUser;
-        let graceLeft = 140;
+        let graceLeft = graceSeconds;
         room.disconnectDeadline = Date.now() + (graceLeft * 1000);
         io.to(room.roomId).emit('player_disconnected_grace', {
             disconnectedUser,
@@ -2015,6 +2015,12 @@ function setupSocketEvents(io) {
                     betAmount: room.betAmount,
                     isBotGame: false
                 });
+                const creatorConnected = room.creatorSocketId
+                    ? io.sockets.sockets.get(room.creatorSocketId)?.connected === true
+                    : false;
+                if (!creatorConnected && !room.disconnectedUser) {
+                    startDisconnectGracePeriod(room, room.creatorId, 180);
+                }
                 broadcastTables();
                 setTimeout(() => { dealAutoHand(room); }, 1200);
             }
