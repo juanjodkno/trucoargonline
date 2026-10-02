@@ -782,7 +782,7 @@ export function setupSocketEvents(io: Server) {
   function startDisconnectGracePeriod(
   room: ActiveRoom,
   disconnectedUser: string,
-  graceSeconds: number = 180
+  graceSeconds: number = 140
 ) {
     // Guardamos el tiempo REAL que quedaba en el turno antes de pausarlo.
     // Así una actualización/reconexión no vuelve a regalar 30 segundos.
