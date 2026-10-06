@@ -218,7 +218,25 @@
 
       <!-- Tab 4: Resetear Password -->
       <form id="tabPass" onsubmit="handleResetPass(event)" style="display:none;">
-        <h4 style="color:#ffd166; margin-bottom:12px;">Restablecer Clave de Jugador</h4>
+        <h4 style="color:#ffd166; margin-bottom:12px;">Recuperación de contraseña por enlace</h4>
+        <p style="color:#94a3b8; font-size:0.85rem; margin:0 0 12px;">Generá un enlace único válido durante 15 minutos y pegalo en el chat de WhatsApp del jugador.</p>
+        <div class="form-group">
+          <label>Nombre de Usuario:</label>
+          <input type="text" id="recoveryUser" placeholder="Ej: juan" required />
+        </div>
+        <button type="button" class="btn-submit btn-pass" style="margin-top:6px; background:#2a9d8f;" onclick="handleGenerateRecoveryLink()">🔐 Generar enlace de recuperación</button>
+        <div id="recoveryLinkBox" style="display:none; margin-top:14px;">
+          <label>Enlace generado (válido 15 minutos):</label>
+          <textarea id="recoveryLinkValue" readonly style="width:100%; min-height:80px; resize:vertical;"></textarea>
+          <div style="display:flex; gap:10px; margin-top:8px;">
+            <button type="button" class="btn-submit" style="margin:0; background:#0077b6;" onclick="copyRecoveryLink()">📋 Copiar enlace</button>
+            <button type="button" class="btn-submit" style="margin:0; background:#25d366;" onclick="openRecoveryWhatsApp()">💬 Abrir WhatsApp</button>
+          </div>
+          <div id="recoveryExpiry" style="color:#fbbf24; font-size:0.82rem; margin-top:8px; text-align:center;"></div>
+        </div>
+
+        <hr style="border:none; border-top:1px solid #334155; margin:20px 0;" />
+        <h4 style="color:#ffd166; margin-bottom:12px;">Restablecer Clave de Jugador Manualmente</h4>
         <div class="form-group">
           <label>Nombre de Usuario:</label>
           <input type="text" id="passUser" placeholder="Ej: juan" required />
@@ -850,6 +868,76 @@ const userLabel =
         msg.innerText = 'Error de conexión.';
         msg.style.display = 'block';
       }
+    }
+
+
+    async function handleGenerateRecoveryLink() {
+      const username = document.getElementById('recoveryUser').value.trim();
+      const msg = document.getElementById('statusMsg');
+      const box = document.getElementById('recoveryLinkBox');
+      const linkInput = document.getElementById('recoveryLinkValue');
+      const expiry = document.getElementById('recoveryExpiry');
+
+      if (!username) {
+        msg.style.display = 'block';
+        msg.className = 'msg err';
+        msg.innerText = 'Ingresá un nombre de usuario.';
+        return;
+      }
+
+      box.style.display = 'none';
+      try {
+        const res = await fetch('/api/admin/password-reset-link', {
+          method: 'POST',
+          headers: getHeaders(),
+          body: JSON.stringify({ username })
+        });
+        const data = await res.json();
+
+        msg.style.display = 'block';
+        if (!res.ok) {
+          msg.className = 'msg err';
+          msg.innerText = data.message || 'No se pudo generar el enlace.';
+          return;
+        }
+
+        msg.className = 'msg ok';
+        msg.innerText = data.message;
+        linkInput.value = data.link;
+        expiry.innerText = `Vence: ${new Date(data.expiresAt).toLocaleString('es-AR')}`;
+        box.style.display = 'block';
+      } catch {
+        msg.style.display = 'block';
+        msg.className = 'msg err';
+        msg.innerText = 'Error de conexión.';
+      }
+    }
+
+    async function copyRecoveryLink() {
+      const value = document.getElementById('recoveryLinkValue').value;
+      if (!value) return;
+      try {
+        await navigator.clipboard.writeText(value);
+        const msg = document.getElementById('statusMsg');
+        msg.style.display = 'block';
+        msg.className = 'msg ok';
+        msg.innerText = 'Enlace copiado. Ahora pegalo en WhatsApp.';
+      } catch {
+        const input = document.getElementById('recoveryLinkValue');
+        input.focus();
+        input.select();
+        document.execCommand('copy');
+      }
+    }
+
+    function openRecoveryWhatsApp() {
+      const link = document.getElementById('recoveryLinkValue').value.trim();
+      if (!link) return;
+      const username = document.getElementById('recoveryUser').value.trim();
+      const textMsg = encodeURIComponent(`Hola @${username}, acá tenés el enlace para restablecer tu contraseña. Es válido durante 15 minutos y sirve una sola vez:
+
+${link}`);
+      window.open(`https://wa.me/?text=${textMsg}`, '_blank');
     }
 
     async function handleResetPass(e) {

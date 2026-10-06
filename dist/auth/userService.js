@@ -10,6 +10,9 @@ exports.getLocalRankingResults = getLocalRankingResults;
 exports.initDatabase = initDatabase;
 exports.registerUser = registerUser;
 exports.loginUser = loginUser;
+exports.createPasswordResetToken = createPasswordResetToken;
+exports.validatePasswordResetToken = validatePasswordResetToken;
+exports.resetPasswordWithToken = resetPasswordWithToken;
 exports.resetUserPassword = resetUserPassword;
 exports.getUserChips = getUserChips;
 exports.getUserChipsFresh = getUserChipsFresh;
@@ -91,6 +94,8 @@ exports.pool = new pg_1.Pool({
 });
 let usersCache = [];
 let depositsCache = [];
+// Fallback únicamente para desarrollo/local sin PostgreSQL.
+const localPasswordResetTokens = new Map();
 let transactionsCache = [];
 let settlementsCache = [];
 function getLocalRankingResults() {
@@ -170,6 +175,25 @@ async function initDatabase() {
     `);
         await client.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar VARCHAR(50) DEFAULT 'gaucho';
+    `);
+        await client.query(`
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id VARCHAR(50) PRIMARY KEY,
+        user_id VARCHAR(50) NOT NULL,
+        token_hash VARCHAR(64) UNIQUE NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        used_at TIMESTAMPTZ,
+        invalidated_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+        await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user
+      ON password_reset_tokens(user_id);
+    `);
+        await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires
+      ON password_reset_tokens(expires_at);
     `);
         await client.query(`
       CREATE TABLE IF NOT EXISTS deposits (
@@ -393,6 +417,184 @@ async function loginUser(usernameOrEmail, password) {
         return { success: false, message: 'Contraseña incorrecta.' };
     }
     return { success: true, message: 'Inicio de sesión exitoso.', user };
+}
+const PASSWORD_RESET_TTL_MS = 15 * 60 * 1000;
+function hashPasswordResetToken(token) {
+    return crypto_1.default.createHash('sha256').update(token).digest('hex');
+}
+async function createPasswordResetToken(username) {
+    const clean = cleanUsername(username);
+    if (!clean)
+        return { success: false, message: 'Ingresá un nombre de usuario.' };
+    let user;
+    if (DATABASE_URL) {
+        try {
+            const res = await exports.pool.query('SELECT id, username FROM users WHERE LOWER(username) = $1 LIMIT 1', [clean]);
+            if (res.rows.length > 0) {
+                user = usersCache.find(u => cleanUsername(u.username) === clean);
+                if (!user) {
+                    user = { id: res.rows[0].id, fullName: '', email: '', username: res.rows[0].username, chips: 0, avatar: 'gaucho', createdAt: new Date().toISOString() };
+                }
+            }
+        }
+        catch (err) {
+            console.error('Error buscando usuario para recuperación:', err);
+            return { success: false, message: 'Error al conectar con la base de datos.' };
+        }
+    }
+    else {
+        user = usersCache.find(u => cleanUsername(u.username) === clean);
+    }
+    if (!user)
+        return { success: false, message: 'Usuario no encontrado.' };
+    const token = crypto_1.default.randomBytes(32).toString('hex');
+    const tokenHash = hashPasswordResetToken(token);
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+    if (DATABASE_URL) {
+        const client = await exports.pool.connect();
+        try {
+            await client.query('BEGIN');
+            // Un usuario solo puede tener un enlace de recuperación activo a la vez.
+            await client.query('UPDATE password_reset_tokens SET invalidated_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND used_at IS NULL AND invalidated_at IS NULL', [user.id]);
+            await client.query(`INSERT INTO password_reset_tokens (id, user_id, token_hash, expires_at)
+         VALUES ($1, $2, $3, $4)`, ['prt_' + crypto_1.default.randomBytes(8).toString('hex'), user.id, tokenHash, expiresAt.toISOString()]);
+            await client.query('COMMIT');
+        }
+        catch (err) {
+            await client.query('ROLLBACK').catch(() => { });
+            console.error('Error generando enlace de recuperación:', err);
+            return { success: false, message: 'No se pudo generar el enlace de recuperación.' };
+        }
+        finally {
+            client.release();
+        }
+    }
+    else {
+        for (const [key, value] of localPasswordResetTokens) {
+            if (value.username === clean && !value.usedAt && !value.invalidatedAt) {
+                value.invalidatedAt = Date.now();
+                localPasswordResetTokens.set(key, value);
+            }
+        }
+        localPasswordResetTokens.set(tokenHash, {
+            username: clean,
+            tokenHash,
+            expiresAt: expiresAt.getTime(),
+            usedAt: null,
+            invalidatedAt: null,
+        });
+    }
+    return {
+        success: true,
+        message: 'Enlace de recuperación generado.',
+        username: user.username,
+        token,
+        expiresAt: expiresAt.toISOString(),
+    };
+}
+async function validatePasswordResetToken(token) {
+    const cleanToken = String(token || '').trim();
+    if (!/^[a-f0-9]{64}$/i.test(cleanToken)) {
+        return { success: false, message: 'El enlace de recuperación no es válido o ya venció.' };
+    }
+    const tokenHash = hashPasswordResetToken(cleanToken);
+    if (DATABASE_URL) {
+        try {
+            const res = await exports.pool.query(`SELECT expires_at FROM password_reset_tokens
+         WHERE token_hash = $1 AND used_at IS NULL AND invalidated_at IS NULL
+         LIMIT 1`, [tokenHash]);
+            if (!res.rows.length)
+                return { success: false, message: 'El enlace de recuperación no es válido o ya venció.' };
+            const expiresAt = new Date(res.rows[0].expires_at);
+            if (expiresAt.getTime() <= Date.now()) {
+                return { success: false, message: 'El enlace de recuperación venció. Solicitá uno nuevo por WhatsApp.' };
+            }
+            return { success: true, message: 'Enlace válido.', expiresAt: expiresAt.toISOString() };
+        }
+        catch (err) {
+            console.error('Error validando enlace de recuperación:', err);
+            return { success: false, message: 'No se pudo validar el enlace de recuperación.' };
+        }
+    }
+    const local = localPasswordResetTokens.get(tokenHash);
+    if (!local || local.usedAt || local.invalidatedAt) {
+        return { success: false, message: 'El enlace de recuperación no es válido o ya venció.' };
+    }
+    if (local.expiresAt <= Date.now()) {
+        return { success: false, message: 'El enlace de recuperación venció. Solicitá uno nuevo por WhatsApp.' };
+    }
+    return { success: true, message: 'Enlace válido.', expiresAt: new Date(local.expiresAt).toISOString() };
+}
+async function resetPasswordWithToken(token, newPass) {
+    const cleanToken = String(token || '').trim();
+    if (!/^[a-f0-9]{64}$/i.test(cleanToken)) {
+        return { success: false, message: 'El enlace de recuperación no es válido o ya venció.' };
+    }
+    if (!newPass || newPass.length < 6) {
+        return { success: false, message: 'La contraseña debe tener al menos 6 caracteres.' };
+    }
+    const tokenHash = hashPasswordResetToken(cleanToken);
+    const salt = crypto_1.default.randomBytes(16).toString('hex');
+    const passwordHash = hashPbkdf2(newPass, salt);
+    if (DATABASE_URL) {
+        const client = await exports.pool.connect();
+        try {
+            await client.query('BEGIN');
+            const tokenRes = await client.query(`SELECT id, user_id, expires_at
+         FROM password_reset_tokens
+         WHERE token_hash = $1 AND used_at IS NULL AND invalidated_at IS NULL
+         FOR UPDATE`, [tokenHash]);
+            if (!tokenRes.rows.length) {
+                await client.query('ROLLBACK');
+                return { success: false, message: 'El enlace de recuperación no es válido o ya venció.' };
+            }
+            const row = tokenRes.rows[0];
+            if (new Date(row.expires_at).getTime() <= Date.now()) {
+                await client.query('ROLLBACK');
+                return { success: false, message: 'El enlace de recuperación venció. Solicitá uno nuevo por WhatsApp.' };
+            }
+            const updatedUser = await client.query('UPDATE users SET password_hash = $1, salt = $2 WHERE id = $3 RETURNING id', [passwordHash, salt, row.user_id]);
+            if (updatedUser.rowCount !== 1) {
+                await client.query('ROLLBACK');
+                return { success: false, message: 'La cuenta ya no existe.' };
+            }
+            await client.query('UPDATE password_reset_tokens SET used_at = CURRENT_TIMESTAMP WHERE id = $1', [row.id]);
+            await client.query('UPDATE password_reset_tokens SET invalidated_at = CURRENT_TIMESTAMP WHERE user_id = $1 AND used_at IS NULL AND invalidated_at IS NULL AND id <> $2', [row.user_id, row.id]);
+            await client.query('COMMIT');
+            const user = usersCache.find(u => u.id === row.user_id);
+            if (user) {
+                user.passwordHash = passwordHash;
+                user.salt = salt;
+            }
+            return { success: true, message: 'Contraseña actualizada correctamente.' };
+        }
+        catch (err) {
+            await client.query('ROLLBACK').catch(() => { });
+            console.error('Error restableciendo contraseña:', err);
+            return { success: false, message: 'No se pudo actualizar la contraseña.' };
+        }
+        finally {
+            client.release();
+        }
+    }
+    const local = localPasswordResetTokens.get(tokenHash);
+    if (!local || local.usedAt || local.invalidatedAt || local.expiresAt <= Date.now()) {
+        return { success: false, message: 'El enlace de recuperación no es válido o ya venció.' };
+    }
+    const user = usersCache.find(u => cleanUsername(u.username) === local.username);
+    if (!user)
+        return { success: false, message: 'La cuenta ya no existe.' };
+    user.salt = salt;
+    user.passwordHash = passwordHash;
+    local.usedAt = Date.now();
+    localPasswordResetTokens.set(tokenHash, local);
+    for (const [key, value] of localPasswordResetTokens) {
+        if (value.username === local.username && key !== tokenHash && !value.usedAt && !value.invalidatedAt) {
+            value.invalidatedAt = Date.now();
+            localPasswordResetTokens.set(key, value);
+        }
+    }
+    return { success: true, message: 'Contraseña actualizada correctamente.' };
 }
 function resetUserPassword(username, newPass) {
     const clean = cleanUsername(username);

@@ -27,6 +27,16 @@ if (!SESSION_SECRET) {
     throw new Error('SESSION_SECRET no está configurado.');
 }
 const SESSION_COOKIE = 'truco_session';
+const PASSWORD_RESET_PUBLIC_PATH = '/restablecer';
+function getPublicBaseUrl(req) {
+    const configured = String(process.env.PUBLIC_APP_URL || '').trim().replace(/\/+$/, '');
+    if (configured)
+        return configured;
+    const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+    const protocol = forwardedProto || req.protocol || 'https';
+    const host = String(req.get('host') || '').trim();
+    return `${protocol}://${host}`;
+}
 /* =========================================================
    CARGA AUTOMÁTICA ASTROPAY - PRODUCCIÓN
    Se activa SOLO con ASTROPAY_AUTO_ENABLED=true.
@@ -207,6 +217,10 @@ function sendVersionedIndex(_req, res) {
 // Estas rutas van ANTES de express.static para evitar servir un index viejo.
 app.get('/', sendVersionedIndex);
 app.get('/index.html', sendVersionedIndex);
+app.get(PASSWORD_RESET_PUBLIC_PATH, (_req, res) => {
+    noStore(res);
+    return res.sendFile(path_1.default.join(__dirname, '../public/reset-password.html'));
+});
 app.use(express_1.default.static(path_1.default.join(__dirname, '../public')));
 app.use(express_1.default.static(path_1.default.join(__dirname, '../public')));
 app.get('/ranking', (_req, res) => {
@@ -298,6 +312,26 @@ app.post('/api/auth/login', authLimiter, async (req, res) => {
 app.post('/api/auth/logout', (_req, res) => {
     clearUserSession(res);
     return res.json({ success: true, message: 'Sesión cerrada.' });
+});
+const passwordResetLimiter = (0, express_rate_limit_1.default)({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { success: false, message: 'Demasiados intentos. Probá nuevamente en 15 minutos.' },
+});
+app.get('/api/auth/password-reset/validate', passwordResetLimiter, async (req, res) => {
+    const token = String(req.query.token || '');
+    const result = await (0, userService_1.validatePasswordResetToken)(token);
+    return res.status(result.success ? 200 : 400).json(result);
+});
+app.post('/api/auth/password-reset/complete', passwordResetLimiter, async (req, res) => {
+    const { token, newPassword, confirmPassword } = req.body || {};
+    if (!newPassword || !confirmPassword || newPassword !== confirmPassword) {
+        return res.status(400).json({ success: false, message: 'Las dos contraseñas deben coincidir.' });
+    }
+    const result = await (0, userService_1.resetPasswordWithToken)(String(token || ''), String(newPassword));
+    return res.status(result.success ? 200 : 400).json(result);
 });
 // Valida sesiones guardadas en el navegador contra la fuente autoritativa.
 app.get('/api/auth/session/:username', async (req, res) => {
@@ -609,6 +643,22 @@ app.post('/api/admin/remove-chips', requireAdminAuth, async (req, res) => {
         success: true,
         message: `¡Se descontaron $${new Intl.NumberFormat('es-AR').format(numAmount)} fichas a @${username}!`,
         chips: result.balance ?? 0
+    });
+});
+app.post('/api/admin/password-reset-link', requireAdminAuth, async (req, res) => {
+    const username = String(req.body?.username || '').trim();
+    const result = await (0, userService_1.createPasswordResetToken)(username);
+    if (!result.success || !result.token || !result.expiresAt || !result.username) {
+        return res.status(400).json(result);
+    }
+    const link = `${getPublicBaseUrl(req)}${PASSWORD_RESET_PUBLIC_PATH}?token=${encodeURIComponent(result.token)}`;
+    return res.json({
+        success: true,
+        message: `Enlace de recuperación generado para @${result.username}.`,
+        username: result.username,
+        link,
+        expiresAt: result.expiresAt,
+        expiresInMinutes: 15
     });
 });
 app.post('/api/admin/reset-password', requireAdminAuth, (req, res) => {

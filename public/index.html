@@ -1422,6 +1422,7 @@
           <input type="checkbox" id="logRememberMe" checked style="width:17px; height:17px; cursor:pointer;" />
           <label for="logRememberMe" style="cursor:pointer; margin:0;">Mantener sesión iniciada</label>
         </div>
+        <a id="forgotPasswordLink" href="#" onclick="openForgotPasswordWhatsApp(event)" style="display:block; margin:8px 0 10px; color:#25d366; font-size:0.9rem; font-weight:700; text-decoration:none; text-align:center;">¿Olvidaste tu contraseña? Apretá aquí</a>
         <button type="submit" class="btn-submit">Ingresar al Lobby</button>
       </form>
       <div class="auth-error" id="authError"></div>
@@ -2530,6 +2531,19 @@ function hideRestoreScreen() {
     window.location.reload();
   });
 }
+
+    function openForgotPasswordWhatsApp(event) {
+      event?.preventDefault();
+      triggerHaptic(20);
+      const phone = '5493815811724';
+      const username = String(document.getElementById('logUser')?.value || '').trim();
+      const textMsg = encodeURIComponent(
+        username
+          ? `Hola! Olvidé mi contraseña. Mi nombre de usuario es: ${username}`
+          : 'Hola! Olvidé mi contraseña. Mi nombre de usuario es: '
+      );
+      window.open(`https://wa.me/${phone}?text=${textMsg}`, '_blank');
+    }
 
     function openSupportWhatsApp() {
       triggerHaptic(20);
