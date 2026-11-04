@@ -1564,6 +1564,7 @@ async function getAllTransactionsFresh(limit = 60) {
     const [txRes, settlementRes, teamSettlementRes] = await Promise.all([
         exports.pool.query(`SELECT id, type, username, amount, details, created_at
        FROM transactions
+       WHERE type NOT IN ('TOURNAMENT_ENTRY','TOURNAMENT_REFUND','TOURNAMENT_PRIZE')
        ORDER BY created_at DESC
        LIMIT $1`, [safeLimit]),
         exports.pool.query(`SELECT *
@@ -1605,7 +1606,7 @@ function getAdminMetrics() {
     const pendingDepositsAmount = pendingDeposits.reduce((sum, d) => sum + (d.amount || 0), 0);
     const afterRakeReset = (createdAt) => !localRakeCounterResetAt || new Date(createdAt).getTime() > localRakeCounterResetAt.getTime();
     const legacyRake = transactionsCache
-        .filter(t => t.type === 'COMMISSION_RAKE' && afterRakeReset(t.createdAt))
+        .filter(t => (t.type === 'COMMISSION_RAKE' || t.type === 'TOURNAMENT_SETTLEMENT') && afterRakeReset(t.createdAt))
         .reduce((sum, t) => sum + (t.amount || 0), 0);
     const settledRake = settlementsCache
         .filter(s => afterRakeReset(s.createdAt))
@@ -1649,7 +1650,7 @@ async function getAdminMetricsFresh() {
       (SELECT COALESCE(SUM(chips), 0)::bigint FROM users) AS total_chips,
       (SELECT COUNT(*)::bigint FROM deposits WHERE status = 'PENDING') AS pending_count,
       (SELECT COALESCE(SUM(amount), 0)::bigint FROM deposits WHERE status = 'PENDING') AS pending_amount,
-      (SELECT COALESCE(SUM(amount), 0)::bigint FROM transactions WHERE type = 'COMMISSION_RAKE' ${rakeDateFilter}) AS legacy_rake,
+      (SELECT COALESCE(SUM(amount), 0)::bigint FROM transactions WHERE type IN ('COMMISSION_RAKE','TOURNAMENT_SETTLEMENT') ${rakeDateFilter}) AS legacy_rake,
       (SELECT COALESCE(SUM(rake_amount), 0)::bigint FROM match_settlements WHERE 1=1 ${rakeDateFilter}) AS settled_rake,
       (SELECT COALESCE(SUM(rake_amount), 0)::bigint FROM team_match_settlements WHERE 1=1 ${rakeDateFilter}) AS team_settled_rake,
       (SELECT COALESCE(SUM(amount), 0)::bigint FROM transactions WHERE type = 'DEPOSIT') AS total_deposits,

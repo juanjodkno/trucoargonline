@@ -25,6 +25,12 @@ class TournamentService {
         const r = await userService_1.pool.query("SELECT day,state FROM daily_tournaments WHERE state->>'status' IN ('open','running') OR day=$1", [calendar(exports.clock.now()).day]);
         for (const row of r.rows)
             this.cache.set(row.day, row.state);
+        // Completar el resumen de torneos ya finalizados, sin repetir premios ni mover fichas.
+        const completed = await userService_1.pool.query(`SELECT day FROM daily_tournaments d
+      WHERE state->>'status'='done' AND NOT EXISTS
+      (SELECT 1 FROM transactions t WHERE t.idempotency_key='tour:'||d.day||':summary')`);
+        for (const row of completed.rows)
+            await this.tx(row.day, (s, c) => this.recordSummary(s, c));
     }
     serial(fn) {
         const next = this.tail.then(fn);
@@ -150,8 +156,25 @@ class TournamentService {
                 await this.move(c, `tour:${s.day}:prize:${rank}`, user, amount, `Premio ${rank}º torneo ${s.day}`);
                 s.prizes[rank] = user;
             }
-        if (f?.status === 'done' && third?.status === 'done')
+        if (f?.status === 'done' && third?.status === 'done') {
             s.status = 'done';
+            await this.recordSummary(s, c);
+        }
+    }
+    async recordSummary(s, c) {
+        if (s.status !== 'done')
+            return;
+        const date = s.day.split('-').reverse();
+        date[2] = date[2].slice(-2);
+        const podium = [['1', 13000], ['2', 5000], ['3', 3000]];
+        const winners = new Set(Object.values(s.prizes));
+        const others = [...new Set(s.entries.filter(e => e.active).map(e => e.user))].filter(u => !winners.has(u));
+        const details = `Torneo ${date.join('/')} | ` + podium.map(([rank, amount]) => s.prizes[rank] ? `${rank}º @${s.prizes[rank]}: ${amount.toLocaleString('es-AR')} fichas` : `${rank}º sin clasificado`).join(' | ') + ` | Participantes restantes: ${others.map(u => '@' + u).join(', ') || 'Ninguno'} | Comisión: 3.000 fichas`;
+        // Solo registro contable: los saldos ya fueron liquidados mediante move().
+        await c.query(`INSERT INTO transactions(id,type,username,amount,details,idempotency_key,created_at)
+      VALUES($1,'TOURNAMENT_SETTLEMENT',$2,3000,$3,$4,
+        COALESCE((SELECT MAX(created_at) FROM transactions WHERE idempotency_key LIKE $5),CURRENT_TIMESTAMP))
+      ON CONFLICT DO NOTHING`, ['t_' + crypto_1.default.randomBytes(12).toString('hex'), s.prizes['1'] || 'torneo', details, `tour:${s.day}:summary`, `tour:${s.day}:%`]);
     }
     async finish(id, winner, loser) {
         const day = id.slice(7, 17);

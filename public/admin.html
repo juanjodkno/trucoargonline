@@ -521,6 +521,7 @@
           let typeLabel = 'DEPÓSITO';
           if (t.type === 'WITHDRAW') { badgeClass = 'badge-withdraw'; typeLabel = 'RETIRO'; }
           else if (t.type === 'COMMISSION_RAKE') { badgeClass = 'badge-rake'; typeLabel = 'RAKE 7%'; }
+          else if (t.type === 'TOURNAMENT_SETTLEMENT') { badgeClass = 'badge-rake'; typeLabel = 'TORNEO / COMISIÓN'; }
           else if (t.type === 'MATCH_SETTLEMENT') {
   badgeClass = 'badge-rake';
   typeLabel = 'PARTIDA 1VS1 / RAKE 7%';
