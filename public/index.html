@@ -2351,8 +2351,8 @@ function hideRestoreScreen() {
     }
 
     function playAudio(audioName) {
-      if (!audioName) return;
-      const cleanName = audioName.toString().trim().toLowerCase();
+      if (audioName === null || audioName === undefined || audioName === '') return;
+      const cleanName = (audioName === 0 || audioName === '0') ? 'cero' : audioName.toString().trim().toLowerCase();
       const src = `/audio/${cleanName}.mp3`;
       const audio = new Audio(src);
       audio.play().catch(err => console.warn('Audio no disponible:', src, err));
@@ -6674,5 +6674,6 @@ window.addEventListener(
   }
 );
   </script>
+  <script src="/tournament.js?v=torneo-30-20261104"></script>
 </body>
 </html> 

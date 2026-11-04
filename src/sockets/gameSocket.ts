@@ -25,7 +25,14 @@ interface EnvidoWinnerRecord {
   pointsAwarded: number;
 }
 
+export interface TournamentHooks {
+  finish(id: string, winner: string, loser: string): Promise<void>;
+  snapshot(id: string, state: any): void;
+}
+
 interface ActiveRoom {
+  isTournament?: boolean;
+  disconnectDeadlines?: Record<string, number>;
   roomId: string;
   creatorId: string;
   creatorSocketId?: string;
@@ -103,11 +110,11 @@ const rooms = new Map<string, ActiveRoom>();
 const pendingRoomCreations = new Set<string>();
 const BOT_DEFAULT_ID = 'La_Maquina';
 
-export function setupSocketEvents(io: Server) {
+export function setupSocketEvents(io: Server, tournament?: TournamentHooks) {
 
   function getAvailableRooms() {
     return Array.from(rooms.values())
-      .filter(r => !r.guestId)
+      .filter(r => !r.guestId && !r.isTournament)
       .map(r => ({
         roomId: r.roomId,
         creatorId: r.creatorId,
@@ -605,6 +612,32 @@ export function setupSocketEvents(io: Server) {
     eventType: 'match_finished' | 'player_surrendered',
     surrenderedUser?: string
   ) {
+    if (room.isTournament) {
+      if (rooms.get(room.roomId) !== room || room.settlementInProgress) return;
+      room.settlementInProgress = true;
+      clearTurnTimer(room);
+      clearDisconnectTimer(room);
+      try {
+        // El torneo registra el resultado y sus premios en una transacción propia.
+        // No pasa por liquidaciones comunes, rake ni ranking semanal.
+        await tournament!.finish(room.roomId, winnerId, loserId);
+        const users = [room.creatorId, room.guestId!];
+        releaseRoomPresence(room);
+        rooms.delete(room.roomId);
+        io.to(room.roomId).emit('tournament_match_finished', {
+          roomId: room.roomId, winnerId, loserId, reason: finishReason, scores: getScoreMap(room)
+        });
+        for (const id of [room.creatorSocketId, room.guestSocketId]) {
+          if (id) io.sockets.sockets.get(id)?.leave(room.roomId);
+        }
+      } catch (error) {
+        room.settlementInProgress = false;
+        // Un fallo de persistencia nunca habilita una liquidación de mesa común.
+        setTimeout(() => { if (rooms.get(room.roomId) === room) void settleAndCloseMatch(room, winnerId, loserId, finishReason, eventType, surrenderedUser); }, 1500);
+        console.error('No se pudo registrar el resultado del torneo:', error);
+      }
+      return;
+    }
     if (room.isBotGame) {
       clearTurnTimer(room);
       clearDisconnectTimer(room);
@@ -747,7 +780,7 @@ export function setupSocketEvents(io: Server) {
         score = getEnvidoDetails(allCards).score;
       }
 
-      if (room.highestEnvidoScore === 0) {
+      if (room.highestEnvidoUser === null) {
         executeDeclareEnvido(room, activeUser, score);
       } else {
         if (score > room.highestEnvidoScore) {
@@ -783,7 +816,15 @@ export function setupSocketEvents(io: Server) {
   room: ActiveRoom,
   disconnectedUser: string,
   graceSeconds: number = 140
-) {
+ ) {
+    if (!room.isBotGame) {
+      const key=disconnectedUser.toLowerCase();
+      room.disconnectDeadlines ||= {};
+      room.disconnectDeadlines[key] ??= Date.now()+graceSeconds*1000;
+      // Actualizar el jugador presente no reemplaza ni reinicia la espera del ausente.
+      if(room.disconnectedUser&&room.disconnectInterval)return;
+      graceSeconds=Math.max(0,Math.ceil((room.disconnectDeadlines[key]-Date.now())/1000));
+    }
     // Guardamos el tiempo REAL que quedaba en el turno antes de pausarlo.
     // Así una actualización/reconexión no vuelve a regalar 30 segundos.
     room.pausedTurnSeconds = room.turnDeadline
@@ -795,7 +836,9 @@ export function setupSocketEvents(io: Server) {
 
     room.disconnectedUser = disconnectedUser;
     let graceLeft = graceSeconds;
-    room.disconnectDeadline = Date.now() + (graceLeft * 1000);
+    room.disconnectDeadline = !room.isBotGame
+      ? room.disconnectDeadlines![disconnectedUser.toLowerCase()]
+      : Date.now() + (graceLeft * 1000);
 
     io.to(room.roomId).emit('player_disconnected_grace', {
       disconnectedUser,
@@ -964,7 +1007,7 @@ if (isFlor && room.gameRound) {
     if (!room.gameRound || !room.isDeclaringEnvido) return;
     if (room.envidoDeclarer && room.envidoDeclarer.toLowerCase() !== userId.toLowerCase()) return;
 
-    if (room.highestEnvidoScore === 0) {
+    if (room.highestEnvidoUser === null) {
       room.highestEnvidoScore = declaredPoints;
       room.highestEnvidoUser = userId;
       const rivalId = userId.toLowerCase() === room.creatorId.toLowerCase() ? room.guestId! : room.creatorId;
@@ -1742,6 +1785,7 @@ io.to(room.roomId).emit('flor_declared', {
     socket.on('reconnect_game', async ({ roomId, userId }) => {
 
   const room = rooms.get(roomId);
+  if (room?.isTournament && (socket.data.tournamentUser !== String(userId || '').toLowerCase())) return;
 
   const cleanUser =
     (userId || '').trim().toLowerCase();
@@ -1788,6 +1832,11 @@ io.to(room.roomId).emit('flor_declared', {
 
   }
 
+
+  // La validación anterior es asíncrona. Una petición enviada al entrar puede
+  // terminar después de la primera desconexión: ese socket cerrado no volvió
+  // y no debe reemplazar el enlace ni cancelar la espera vigente del torneo.
+  if (room && !room.isBotGame && (!socket.connected || rooms.get(roomId) !== room)) return;
 
   const canReconnect =
     !!room && (
@@ -1889,6 +1938,23 @@ io.to(room.roomId).emit('flor_declared', {
        TODO lo de abajo queda igual que ahora.
        ===================================================== */
 
+    if(!room.isBotGame){
+      if(room.disconnectDeadlines)delete room.disconnectDeadlines[cleanUser];
+      if(room.disconnectedUser?.toLowerCase()===cleanUser){
+        const other=room.creatorId.toLowerCase()===cleanUser?room.guestId!:room.creatorId;
+        const otherSocket=other===room.creatorId?room.creatorSocketId:room.guestSocketId;
+        if(!otherSocket||!io.sockets.sockets.get(otherSocket)?.connected){
+          // Si vuelve el primero pero el otro sigue fuera, conservar la pausa y el plazo propio del otro.
+          const pausedSeconds=room.pausedTurnSeconds;
+          clearDisconnectTimer(room);
+          startDisconnectGracePeriod(room,other);
+          room.pausedTurnSeconds=pausedSeconds;
+          sendCompleteGameSyncOrWait(socket,room,userId);
+          return;
+        }
+      }
+    }
+
     if (
       room.disconnectedUser &&
       room.disconnectedUser.toLowerCase() === cleanUser
@@ -1959,6 +2025,8 @@ io.to(room.roomId).emit('flor_declared', {
           }
         } catch { return; }
       }
+      if (!room.isBotGame && (!socket.connected || rooms.get(roomId) !== room)) return;
+      if (room.isTournament && socket.data.tournamentUser !== cleanUser) return;
       const isCreator = room.creatorId.toLowerCase() === cleanUser;
       const isGuest = !room.isBotGame && !!room.guestId && room.guestId.toLowerCase() === cleanUser;
       if (!isCreator && !isGuest) return;
@@ -2271,6 +2339,7 @@ io.to(room.roomId).emit('flor_declared', {
     });
 
     socket.on('join_room', async ({ roomId, userId }) => {
+      if (String(roomId || '').startsWith('torneo_')) return;
       const cleanUser = (userId || '').trim().toLowerCase();
       let claimedTarget = false;
       let debitSucceeded = false;
@@ -2794,4 +2863,87 @@ if (callType === 'NO_QUIERO_FLOR') {
       } catch (err) { console.error('Error en send_call:', err); }
     });
   });
+  function tournamentSnapshot(room: ActiveRoom) {
+    return JSON.parse(JSON.stringify(room, (key, value) => {
+      if (['waitingTimeout','turnInterval','disconnectInterval','botThinkingTimeout','timer','creatorSocketId','guestSocketId','recentClientActions','isProcessingPlay','settlementInProgress','joiningUser'].includes(key)) return undefined;
+      return value;
+    }));
+  }
+  function checkpoint(room: ActiveRoom) {
+    if (room.isTournament && !room.settlementInProgress) tournament?.snapshot(room.roomId, tournamentSnapshot(room));
+  }
+  // Estado nuevo tras acciones y transiciones de mano; solo se observan salas de torneo.
+  if (tournament) {
+    const originalTo = io.to.bind(io);
+    io.to = ((target: any) => {
+      const operator = originalTo(target);
+      if (typeof target === 'string' && target.startsWith('torneo_')) {
+        const emit = operator.emit.bind(operator);
+        operator.emit = ((event: any, ...args: any[]) => {
+          queueMicrotask(() => { const room=rooms.get(target); if(room) checkpoint(room); });
+          return emit(event, ...args);
+        }) as any;
+      }
+      return operator;
+    }) as any;
+  }
+  return {
+    exists(id: string) { return rooms.has(id); },
+    busy(user: string) { return [...rooms.values()].some(r => [r.creatorId,r.guestId].some(u=>u?.toLowerCase()===user.toLowerCase())); },
+    snapshot(id: string) { const r=rooms.get(id); return r ? tournamentSnapshot(r) : null; },
+    start(id: string, players: string[], sockets: string[], saved?: any) {
+      if (rooms.has(id)) return tournamentSnapshot(rooms.get(id)!);
+      for (const user of players) {
+        const presence=getActiveGamePresence(user);
+        if (presence && presence.roomId !== id) throw Error('Jugador ocupado.');
+      }
+      for (const user of players) claimActiveGame(user,'1v1',id);
+      const room: ActiveRoom = saved ? {...saved, gameRound: saved.gameRound ? Object.assign(Object.create(TrucoRound.prototype), saved.gameRound) : undefined} : {
+        roomId:id, creatorId:players[0], guestId:players[1], betAmount:0,
+        targetPoints:30, withFlor:false, scoreP1:0, scoreP2:0, manoId:players[crypto.randomInt(2)],
+        envidoChain:[],florChain:[],envidoPendingCaller:null,florPendingCaller:null,
+        isDeclaringEnvido:false,envidoDeclarer:null,highestEnvidoScore:0,highestEnvidoUser:null,
+        trucoLevel:1,trucoOwner:null,logs:[],isTournament:true
+      };
+      room.creatorSocketId=sockets[0];room.guestSocketId=sockets[1];
+      room.settlementInProgress=false;
+      if (room.pendingNextHand) room.pendingNextHand.round=room.gameRound!;
+      rooms.set(id,room);
+      for(const socketId of sockets) if(socketId) io.sockets.sockets.get(socketId)?.join(id);
+      if (!saved) {
+        // Crear el reparto antes de persistir, y abrirlo cuando el servicio confirme el guardado.
+        room.gameRound=new TrucoRound(players[0],players[1],room.manoId,30,false);
+      }
+      return tournamentSnapshot(room);
+    },
+    activate(id: string, restored=false) {
+      const room=rooms.get(id);if(!room)return;
+      io.to(id).emit('game_ready',{roomId:id,creatorId:room.creatorId,guestId:room.guestId,
+        creatorAvatar:getUserAvatar(room.creatorId),guestAvatar:getUserAvatar(room.guestId!),
+        targetPoints:room.targetPoints,withFlor:room.withFlor,betAmount:0,pot:0,isTournament:true});
+      for (const [user,socketId] of [[room.creatorId,room.creatorSocketId],[room.guestId!,room.guestSocketId]]) {
+        const socket=socketId?io.sockets.sockets.get(socketId):undefined;
+        if(socket)sendCompleteGameSync(socket,room,user!);
+      }
+      if(restored) {
+        const candidates=[room.creatorId,room.guestId!];
+        if(room.disconnectedUser)candidates.sort((a,b)=>a===room.disconnectedUser?-1:b===room.disconnectedUser?1:0);
+        const absent=candidates.find(u=>!io.sockets.sockets.get(u===room.creatorId?room.creatorSocketId!:room.guestSocketId!)?.connected);
+        if(absent) {
+          const left=room.disconnectDeadline?Math.max(1,Math.ceil((room.disconnectDeadline-Date.now())/1000)):140;
+          clearDisconnectTimer(room);startDisconnectGracePeriod(room,absent,left);return;
+        }
+      }
+      clearDisconnectTimer(room);
+      if(room.pendingNextHand)resumePendingNextHand(room);
+      else startTurnTimer(room,restored&&room.turnDeadline?Math.max(1,Math.ceil((room.turnDeadline-Date.now())/1000)):30);
+    },
+    close(id: string) {
+      const room=rooms.get(id);if(!room?.isTournament)return;
+      clearTurnTimer(room);clearDisconnectTimer(room);
+      if(room.pendingNextHand?.timer)clearTimeout(room.pendingNextHand.timer);
+      releaseRoomPresence(room);rooms.delete(id);
+    }
+  };
+
 }

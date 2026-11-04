@@ -1,0 +1,191 @@
+import crypto from 'crypto';
+import { pool } from '../auth/userService';
+export const clock = { now: () => Date.now() };
+export function calendar(now: number) {
+  const parts = new Intl.DateTimeFormat('en-CA', {timeZone:'America/Argentina/Buenos_Aires',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).formatToParts(now);
+  const p = Object.fromEntries(parts.map(x=>[x.type,x.value]));
+  return {day:`${p.year}-${p.month}-${p.day}`, seconds:+p.hour*3600 + +p.minute*60 + +p.second};
+}
+export interface Entry { id:string; user:string; active:boolean; refunded:boolean; }
+export interface Match { id:string; stage:string; players:(string|null)[]; status:'waiting'|'playing'|'done'; deadline:number; winner?:string|null; loser?:string|null; snapshot?:any; }
+export interface Tournament { day:string; status:'open'|'running'|'cancelled'|'done'; entries:Entry[]; matches:Match[]; receipts:Record<string,string>; prizes:Record<string,string>; }
+export interface Bridge {
+  available(user:string, before?:number):boolean;
+  start(match:Match):any;
+  activate(id:string):void;
+  exists(id:string):boolean;
+  restore(match:Match):void;
+  close(id:string):void;
+  notify(users:string[], event:string, data:any):void;
+}
+const fresh=(day:string):Tournament=>({day,status:'open',entries:[],matches:[],receipts:{},prizes:{}});
+export class TournamentService {
+  bridge:Bridge; private tail:Promise<any>=Promise.resolve(); private boot=true; private cache=new Map<string,Tournament>();
+  constructor(bridge:Bridge){this.bridge=bridge;}
+  async init(){
+    await pool.query(`CREATE TABLE IF NOT EXISTS daily_tournaments (day TEXT PRIMARY KEY, state JSONB NOT NULL)`);
+    const r=await pool.query("SELECT day,state FROM daily_tournaments WHERE state->>'status' IN ('open','running') OR day=$1",[calendar(clock.now()).day]);
+    for(const row of r.rows)this.cache.set(row.day,row.state);
+  }
+  private serial<T>(fn:()=>Promise<T>):Promise<T> {
+    const next=this.tail.then(fn); this.tail=next.catch(()=>{}); return next;
+  }
+  private tx<T>(day:string, fn:(state:Tournament,c:any)=>Promise<T>):Promise<T>{
+    return this.serial(async()=>{
+      const c=await pool.connect();
+      try {
+        await c.query('BEGIN');
+        await c.query('INSERT INTO daily_tournaments(day,state) VALUES($1,$2::jsonb) ON CONFLICT DO NOTHING',[day,JSON.stringify(fresh(day))]);
+        const r=await c.query('SELECT state FROM daily_tournaments WHERE day=$1 FOR UPDATE',[day]);
+        const state:Tournament=r.rows[0].state;
+        const before=JSON.stringify(state);
+        const result=await fn(state,c);
+        if(before!==JSON.stringify(state))await c.query('UPDATE daily_tournaments SET state=$2::jsonb WHERE day=$1',[day,JSON.stringify(state)]);
+        await c.query('COMMIT');this.cache.set(day,state);return result;
+      } catch(e){await c.query('ROLLBACK');throw e;} finally{c.release();}
+    });
+  }
+  private async move(c:any,key:string,user:string,amount:number,details:string){
+    const prior=await c.query('SELECT id FROM transactions WHERE idempotency_key=$1',[key]);
+    if(prior.rows.length)return;
+    const r=await c.query('UPDATE users SET chips=chips+$1 WHERE LOWER(username)=$2 AND chips+$1>=0 RETURNING chips',[amount,user]);
+    if(!r.rows.length)throw Error('Saldo insuficiente o usuario inexistente.');
+    await c.query(`INSERT INTO transactions(id,type,username,amount,details,idempotency_key) VALUES($1,$2,$3,$4,$5,$6)`,['t_'+crypto.randomBytes(12).toString('hex'),amount<0?'TOURNAMENT_ENTRY':details.includes('Devolución')?'TOURNAMENT_REFUND':'TOURNAMENT_PRIZE',user,Math.abs(amount),details,key]);
+  }
+  async register(user:string,requestId:string){
+    const {day}=calendar(clock.now()); user=user.toLowerCase();
+    return this.tx(day,async(s,c)=>{
+      if(!requestId||requestId.length>100)throw Error('Solicitud inválida.');
+      if(s.receipts[`${user}:${requestId}`])return s.receipts[`${user}:${requestId}`];
+      const t=calendar(clock.now());
+      if(t.day!==day||t.seconds<18*3600||t.seconds>=22*3600||s.status!=='open')throw Error('Inscripciones de 18:00 a 22:00 (Argentina).');
+      const active=s.entries.find(e=>e.user===user&&e.active);
+      if(active)return active.id;
+      if(s.entries.filter(e=>e.active).length>=8)throw Error('El cupo de 8 jugadores está completo.');
+      const id=crypto.randomUUID();
+      await this.move(c,`tour:${day}:entry:${id}`,user,-3000,`Inscripción torneo ${day}`);
+      s.entries.push({id,user,active:true,refunded:false});s.receipts[`${user}:${requestId}`]=id;return id;
+    });
+  }
+  async cancel(user:string,id:string){
+    const {day}=calendar(clock.now());
+    return this.tx(day,async(s,c)=>{
+      const e=s.entries.find(e=>e.user===user&&e.id===id);
+      if(!e||e.refunded||!e.active)return;
+      const t=calendar(clock.now());
+      if(t.day!==day||t.seconds>=21*3600+55*60||s.status!=='open')throw Error('La cancelación está disponible hasta antes de las 21:55.');
+      await this.refund(s,c,e); e.active=false;
+    });
+  }
+  private async refund(s:Tournament,c:any,e:Entry){
+    if(e.refunded)return;
+    await this.move(c,`tour:${s.day}:refund:${e.id}`,e.user,3000,`Devolución torneo ${s.day}`); e.refunded=true;e.active=false;
+  }
+  async state(day=calendar(clock.now()).day):Promise<Tournament>{
+    if(!this.cache.has(day)){const r=await pool.query('SELECT state FROM daily_tournaments WHERE day=$1',[day]);this.cache.set(day,r.rows[0]?.state||fresh(day));}return JSON.parse(JSON.stringify(this.cache.get(day)));
+  }
+  private match(s:Tournament,id:string,stage:string,players:(string|null)[]){
+    const m:Match={id:`torneo_${s.day}_${id}`,stage,players,status:'waiting',deadline:clock.now()+180000};
+    // Un puesto sin rival no elimina a quien sí está habilitado.
+    if(players.filter(Boolean).length<2){m.status='done';m.winner=players.find(Boolean)||null;m.loser=null;}
+    s.matches.push(m);return m;
+  }
+  private async advance(s:Tournament,c:any){
+    const stage=(n:string)=>s.matches.filter(m=>m.stage===n);
+    const q=stage('Cuartos');
+    if(q.length===4){
+      for(let i=0;i<2;i++)if(!s.matches.some(m=>m.id.endsWith(`_s${i}`))&&q.slice(i*2,i*2+2).every(m=>m.status==='done'))this.match(s,`s${i}`,'Semifinal',q.slice(i*2,i*2+2).map(m=>m.winner||null));
+    }
+    const semis=stage('Semifinal');
+    if(semis.length===2&&semis.every(m=>m.status==='done')&&!stage('Final').length){
+      this.match(s,'f','Final',semis.map(m=>m.winner||null));
+      this.match(s,'third','Tercer puesto',semis.map(m=>m.loser||null));
+    }
+    const f=stage('Final')[0], third=stage('Tercer puesto')[0];
+    const awards:[string,string|null|undefined,number][]=[];
+    if(f?.status==='done')awards.push(['1',f.winner,13000],['2',f.loser,5000]);
+    if(third?.status==='done')awards.push(['3',third.winner,3000]);
+    for(const [rank,user,amount] of awards)if(user&&!s.prizes[rank]){
+      await this.move(c,`tour:${s.day}:prize:${rank}`,user,amount,`Premio ${rank}º torneo ${s.day}`);s.prizes[rank]=user;
+    }
+    if(f?.status==='done'&&third?.status==='done')s.status='done';
+  }
+  async finish(id:string,winner:string,loser:string){
+    const day=id.slice(7,17);
+    await this.tx(day,async(s,c)=>{
+      const m=s.matches.find(m=>m.id===id);
+      if(!m||m.status==='done')return;
+      if(m.status!=='playing'||!m.players.includes(winner)||!m.players.includes(loser)||winner===loser)throw Error('Resultado inválido.');
+      m.status='done';m.winner=winner;m.loser=loser;delete m.snapshot;
+      await this.advance(s,c);
+    });
+  }
+  async snapshot(id:string,snapshot:any){
+    await this.tx(id.slice(7,17),async(s)=>{const m=s.matches.find(m=>m.id===id);if(m?.status==='playing')m.snapshot=snapshot;});
+  }
+  async tick(){
+    const now=clock.now(), today=calendar(now); const boot=this.boot;
+    const days=new Set<string>([today.day,...[...this.cache.values()].filter(s=>s.status==='open'||s.status==='running').map(s=>s.day)]);
+    for(const day of days){
+      const launch:Match[]=[],recover:Match[]=[];let notify:Tournament=await this.state(day);
+      const due=day<today.day||(day===today.day&&today.seconds>=22*3600);
+      const needsChange=(notify.status==='open'&&due)||(notify.status==='running'&&notify.matches.some(m=>(m.status==='playing'&&!m.snapshot&&!this.bridge.exists(m.id))||(m.status==='waiting'&&(now>=m.deadline||m.players.every(u=>u&&this.bridge.available(u,m.deadline))))));
+      if(needsChange)await this.tx(day,async(s,c)=>{
+        const eligible=day<today.day||(day===today.day&&today.seconds>=22*3600);
+        if(s.status==='open'&&eligible){
+          const active=s.entries.filter(e=>e.active);
+          if(boot||day<today.day||active.length!==8){
+            for(const e of active)await this.refund(s,c,e);s.status='cancelled';
+          }else{
+            // Fisher-Yates con fuente criptográfica: todos los inscriptos entran en un único sorteo persistido.
+            const users=active.map(e=>e.user);
+            for(let i=users.length-1;i>0;i--){const j=crypto.randomInt(i+1);[users[i],users[j]]=[users[j],users[i]];}
+            s.status='running';for(let i=0;i<4;i++)this.match(s,`q${i}`,'Cuartos',users.slice(i*2,i*2+2));
+          }
+        }
+        if(s.status==='running'){
+          await this.advance(s,c);
+          for(const m of s.matches){
+            if(m.status==='playing'&&!m.snapshot&&!this.bridge.exists(m.id))m.status='waiting';
+            if(m.status==='playing')continue;
+            if(m.status!=='waiting')continue;
+            const present=m.players.filter(u=>u&&this.bridge.available(u,m.deadline));
+            if(present.length===2){m.status='playing'; launch.push(m);}
+            else if(now>=m.deadline){
+              m.status='done';m.winner=present.length===1?present[0]:null;
+              // Ausencia inicial: ambos ausentes quedan descalificados; solo un ausente pierde contra el presente.
+              m.loser=null; // El ausente queda descalificado, sin acceso al tercer puesto ni a un premio.
+            }
+          }
+          await this.advance(s,c);
+        }
+        notify=JSON.parse(JSON.stringify(s));
+      });
+      for(const m of notify.matches)if(m.status==='playing'&&!this.bridge.exists(m.id))recover.push(m);
+      // Primero persistir la asignación; después abrir las cuatro mesas, sin esperar el fin de ninguna.
+      for(const m of recover.filter(m=>!launch.some(l=>l.id===m.id))){
+        if(m.snapshot)this.bridge.restore(m);
+        else if(m.players.every(u=>u&&this.bridge.available(u))){const snapshot=this.bridge.start(m);await this.snapshot(m.id,snapshot);this.bridge.activate(m.id);}
+      }
+      for(const m of launch){
+        const snapshot=this.bridge.start(m);
+        await this.snapshot(m.id,snapshot);
+        this.bridge.activate(m.id);
+      }
+      // El proceso conserva torneos anteriores en curso, pero el panel diario solo recibe la fecha actual.
+      if(day===calendar(clock.now()).day)this.bridge.notify(notify!.entries.map(e=>e.user),'tournament_state',this.publicState(notify!));
+    }
+    this.boot=false;
+  }
+  playingMatchFor(user:string):Match|null {
+    for(const state of this.cache.values()) {
+      if(state.status!=='running')continue;
+      const match=state.matches.find(m=>m.status==='playing'&&m.players.includes(user));
+      if(match)return match;
+    }
+    return null;
+  }
+  publicState(s:Tournament){
+    return {day:s.day,status:s.status,serverNow:clock.now(),entries:s.entries.filter(e=>e.active).map(e=>({user:e.user,id:e.id})),matches:s.matches.map(({snapshot,...m})=>m),prizes:s.prizes};
+  }
+}

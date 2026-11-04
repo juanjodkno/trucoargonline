@@ -3,10 +3,12 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+const service_1 = require("./tournament/service");
+const http_1 = require("./tournament/http");
 // src/server.ts
 // PRUEBA DE DEPLOY PARA DETECTOR DE ACTUALIZACION
 const express_1 = __importDefault(require("express"));
-const http_1 = __importDefault(require("http"));
+const http_2 = __importDefault(require("http"));
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const crypto_1 = __importDefault(require("crypto"));
@@ -18,7 +20,7 @@ const teamGameSocket_1 = require("./sockets/teamGameSocket");
 const userService_1 = require("./auth/userService");
 const astropayAuto_1 = require("./payments/astropayAuto");
 const app = (0, express_1.default)();
-const server = http_1.default.createServer(app);
+const server = http_2.default.createServer(app);
 /* =========================================================
    SESIONES SEGURAS DE USUARIO
    ========================================================= */
@@ -696,12 +698,21 @@ app.post('/api/admin/reject-deposit', requireAdminAuth, async (req, res) => {
     const result = await (0, userService_1.rejectDeposit)(depositId);
     return res.status(result.success ? 200 : 400).json(result);
 });
-(0, gameSocket_1.setupSocketEvents)(io);
+let tournamentRuntime;
+const tournamentService = new service_1.TournamentService(null);
+const tournamentEngine = (0, gameSocket_1.setupSocketEvents)(io, {
+    finish: (id, winner, loser) => tournamentService.finish(id, winner, loser),
+    snapshot: (id, state) => tournamentRuntime?.checkpoint(id, state)
+});
+tournamentRuntime = (0, http_1.mountTournament)(app, io, tournamentEngine, tournamentService, requireUserSession, cookie => verifySessionToken(getCookie({ headers: { cookie } }, SESSION_COOKIE)));
 (0, teamGameSocket_1.setupTeamSocketEvents)(io);
 const PORT = process.env.PORT || 3000;
 async function startServer() {
     // Una sola inicialización. userService.ts ya no se auto-inicializa al importarse.
     await (0, userService_1.initDatabase)();
+    await tournamentService.init();
+    await tournamentRuntime.tick();
+    tournamentRuntime.start();
     if (ASTROPAY_AUTO_ENABLED) {
         await (0, astropayAuto_1.initAstroPayAutoStorage)();
     }

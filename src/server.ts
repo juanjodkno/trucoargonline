@@ -1,3 +1,5 @@
+import { TournamentService } from './tournament/service';
+import { mountTournament } from './tournament/http';
 // src/server.ts
 // PRUEBA DE DEPLOY PARA DETECTOR DE ACTUALIZACION
 import express from 'express';
@@ -1011,7 +1013,14 @@ app.post('/api/admin/reject-deposit', requireAdminAuth, async (req, res) => {
   return res.status(result.success ? 200 : 400).json(result);
 });
 
-setupSocketEvents(io);
+let tournamentRuntime: ReturnType<typeof mountTournament>;
+const tournamentService = new TournamentService(null as any);
+const tournamentEngine = setupSocketEvents(io, {
+  finish: (id,winner,loser) => tournamentService.finish(id,winner,loser),
+  snapshot: (id,state) => tournamentRuntime?.checkpoint(id,state)
+});
+tournamentRuntime = mountTournament(app,io,tournamentEngine,tournamentService,requireUserSession,
+  cookie => verifySessionToken(getCookie({headers:{cookie}} as express.Request, SESSION_COOKIE)));
 setupTeamSocketEvents(io);
 
 const PORT = process.env.PORT || 3000;
@@ -1019,6 +1028,9 @@ const PORT = process.env.PORT || 3000;
 async function startServer() {
   // Una sola inicialización. userService.ts ya no se auto-inicializa al importarse.
   await initDatabase();
+  await tournamentService.init();
+  await tournamentRuntime.tick();
+  tournamentRuntime.start();
 
   if (ASTROPAY_AUTO_ENABLED) {
     await initAstroPayAutoStorage();
