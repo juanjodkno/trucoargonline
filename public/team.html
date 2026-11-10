@@ -303,6 +303,168 @@
       }
     }
 
+    .game-chat-fab {
+      position: fixed;
+      right: max(16px, env(safe-area-inset-right));
+      bottom: max(16px, env(safe-area-inset-bottom));
+      z-index: 180;
+      display: none;
+      align-items: center;
+      gap: 7px;
+      background: #0077b6;
+      color: white;
+      border: 1px solid rgba(255,255,255,.18);
+      border-radius: 24px;
+      padding: 10px 16px;
+      font-size: .9rem;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 8px 24px rgba(0,0,0,.45);
+      user-select: none;
+    }
+    .game-chat-fab:hover { background:#0096c7; }
+    .game-chat-unread {
+      display: none;
+      min-width: 20px;
+      height: 20px;
+      padding: 0 6px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: #e63946;
+      color: white;
+      font-size: .72rem;
+      line-height: 20px;
+      font-weight: 900;
+    }
+    .game-chat-panel {
+      position: fixed;
+      right: max(16px, env(safe-area-inset-right));
+      bottom: calc(max(16px, env(safe-area-inset-bottom)) + 56px);
+      z-index: 181;
+      width: min(360px, calc(100vw - 24px));
+      height: min(430px, calc(100vh - 110px));
+      display: none;
+      flex-direction: column;
+      overflow: hidden;
+      background: #101923;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      box-shadow: 0 18px 48px rgba(0,0,0,.58);
+    }
+    .game-chat-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      background: #16222f;
+      border-bottom: 1px solid #334155;
+    }
+    .game-chat-title { font-weight: 900; color: #ffd166; font-size: .92rem; }
+    .game-chat-close {
+      background: transparent;
+      border: none;
+      color: #cbd5e1;
+      font-size: 1.15rem;
+      cursor: pointer;
+      padding: 2px 5px;
+    }
+    .game-chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: #0b1320;
+    }
+    .game-chat-empty {
+      margin: auto;
+      color: #64748b;
+      font-size: .82rem;
+      text-align: center;
+      padding: 20px;
+    }
+    .game-chat-message {
+      max-width: 82%;
+      padding: 8px 10px;
+      border-radius: 12px;
+      font-size: .84rem;
+      line-height: 1.3;
+      overflow-wrap: anywhere;
+    }
+    .game-chat-message.mine {
+      align-self: flex-end;
+      background: #0077b6;
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+    .game-chat-message.rival {
+      align-self: flex-start;
+      background: #1e293b;
+      color: #e2e8f0;
+      border-bottom-left-radius: 4px;
+    }
+    .game-chat-author {
+      display: block;
+      font-size: .68rem;
+      font-weight: 800;
+      opacity: .8;
+      margin-bottom: 3px;
+    }
+    .game-chat-form {
+      display: flex;
+      gap: 8px;
+      padding: 10px;
+      background: #16222f;
+      border-top: 1px solid #334155;
+    }
+    .game-chat-input {
+      flex: 1;
+      min-width: 0;
+      padding: 9px 11px;
+      border-radius: 9px;
+      border: 1px solid #334155;
+      outline: none;
+      background: #080c10;
+      color: white;
+      font-size: .86rem;
+    }
+    .game-chat-input:focus { border-color: #0077b6; }
+    .game-chat-send {
+      border: none;
+      border-radius: 9px;
+      background: #2a9d8f;
+      color: white;
+      font-weight: 900;
+      padding: 8px 12px;
+      cursor: pointer;
+    }
+
+    @media (max-width: 480px) {
+      .game-chat-fab {
+        right: max(12px, env(safe-area-inset-right));
+        bottom: max(12px, env(safe-area-inset-bottom));
+        padding: 9px 14px;
+      }
+      .game-chat-panel {
+        left: 12px;
+        right: 12px;
+        width: auto;
+        bottom: calc(max(12px, env(safe-area-inset-bottom)) + 54px);
+        height: min(55vh, 420px);
+      }
+    }
+
+    .game-chat-fab, .game-chat-panel { margin-bottom: var(--team-chat-inset, 0px); }
+    .team-tantos-overlay { position:fixed; inset:0; z-index:100; display:grid; place-items:center; padding:16px; background:rgba(0,0,0,.85); backdrop-filter:blur(6px); pointer-events:none; text-align:center; }
+    .team-tantos-overlay > div { padding:18px; color:#e0e1dd; }
+    #tantoResultTitle { color:#ffd166; font-size:1.6rem; font-weight:900; margin-bottom:6px; }
+    #tantoResultText { font-size:1.05rem; margin:0 0 18px; }
+    .team-tantos-cards { display:flex; justify-content:center; gap:clamp(8px, 4vw, 20px); }
+    .team-tantos-cards img { width:min(100px, 23vw); height:auto; object-fit:contain; border-radius:6px; }
+    .team-tantos-overlay.hidden { display:none; }
   </style>
 </head>
 <body>
@@ -368,8 +530,15 @@
         <div id="waitingRoomId" class="hint"></div>
       </div>
       <div id="waitingSeats" class="waiting-seats"></div>
+      <div id="teammateChoice" class="hidden" style="margin-top:12px">
+        <strong id="teammatePrompt"></strong> · <span id="teammateCountdown"></span>
+        <form id="teammateForm" class="hidden" style="margin-top:8px">
+          <select id="teammateSelect" aria-label="Compañero" required></select>
+          <button type="submit" class="btn">Confirmar compañero</button>
+        </form>
+      </div>
       <div style="display:flex;justify-content:center;margin-top:16px">
-        <button class="btn danger" onclick="leaveWaitingRoom()">Salir de la mesa</button>
+        <button id="leaveWaitingButton" class="btn danger" onclick="leaveWaitingRoom()">Salir de la mesa</button>
       </div>
     </section>
 
@@ -384,6 +553,9 @@
         <div id="turnBanner" class="turn-banner">Esperando estado...</div>
         <div id="timerBadge" class="timer-badge hidden">⏱ 30s</div>
         <div id="pendingBanner" class="pending-banner hidden"></div>
+        <div id="tantoResult" class="team-tantos-overlay hidden" aria-live="polite">
+          <div><div id="tantoResultTitle">🃏 TANTOS</div><p id="tantoResultText"></p><div id="tantoResultCards" class="team-tantos-cards"></div></div>
+        </div>
 
         <div id="playerTop" class="player top"></div>
         <div id="playerRight" class="player right"></div>
@@ -419,17 +591,28 @@
           <div id="matchOver" class="match-over hidden"></div>
           <div id="logBox" class="logbox"></div>
         </div>
-        <div class="team-chat">
-          <h3 id="teamChatTitle">💬 Chat privado</h3>
-          <div class="hint">Solo lo ve tu compañero de equipo.</div>
-          <div id="teamChatMessages" class="chat-messages"></div>
-          <div class="chat-compose">
-            <input id="teamChatInput" type="text" maxlength="160" placeholder="Escribile a tu compañero...">
-            <button class="btn secondary" onclick="sendPrivateChat()">Enviar</button>
-          </div>
-        </div>
       </div>
     </section>
+  </div>
+
+  <button type="button" class="game-chat-fab" id="gameChatFab" onclick="toggleGameChat()" aria-label="Chat privado con tu compañero">
+    <span>💬 Chat privado con tu compañero</span>
+    <span class="game-chat-unread" id="gameChatUnread">0</span>
+  </button>
+
+  <div class="game-chat-panel" id="gameChatPanel" aria-live="polite">
+    <div class="game-chat-header">
+      <div class="game-chat-title">💬 Chat privado con tu compañero</div>
+      <button type="button" class="game-chat-close" onclick="toggleGameChat(false)" aria-label="Cerrar chat">✕</button>
+    </div>
+    <div class="game-chat-messages" id="gameChatMessages">
+      <div class="game-chat-empty" id="gameChatEmpty">Todavía no hay mensajes.</div>
+    </div>
+    <form class="game-chat-form" onsubmit="sendPrivateChat(event)">
+      <input id="gameChatInput" class="game-chat-input" type="text" maxlength="160" autocomplete="off"
+        placeholder="Escribí un mensaje..." aria-label="Mensaje para tu compañero" />
+      <button type="submit" class="game-chat-send">Enviar</button>
+    </form>
   </div>
 
   <div id="toast" class="toast"></div>
@@ -564,12 +747,16 @@
     }
 
     function showLobby() {
+      resetTeamChat();
+      $('tantoResult').classList.add('hidden');
       $('lobbyView').classList.remove('hidden');
       $('waitingView').classList.add('hidden');
       $('gameView').classList.add('hidden');
     }
 
     function showWaiting() {
+      resetTeamChat();
+      $('tantoResult').classList.add('hidden');
       $('lobbyView').classList.add('hidden');
       $('waitingView').classList.remove('hidden');
       $('gameView').classList.add('hidden');
@@ -581,8 +768,40 @@
       $('gameView').classList.remove('hidden');
     }
 
+    let teammateCountdownUntil = 0;
+    let teammateChoicesKey = '';
+    function updateTeammateCountdown() {
+      $('teammateCountdown').textContent = Math.max(0, Math.ceil((teammateCountdownUntil - performance.now()) / 1000)) + ' s';
+    }
+    setInterval(() => {
+      if (state?.phase === 'CHOOSING_TEAMMATE') updateTeammateCountdown();
+    }, 250);
+    $('teammateForm').addEventListener('submit', e => {
+      e.preventDefault();
+      if (state?.phase !== 'CHOOSING_TEAMMATE' || !state.teammateChoice?.canChoose) return;
+      const userId = $('teammateSelect').value;
+      if (userId) socket.emit('team_choose_teammate', { roomId: activeRoomId, userId });
+    });
+
     function renderWaiting(s) {
       showWaiting();
+      const choice = s.teammateChoice;
+      $('teammateChoice').classList.toggle('hidden', !choice);
+      $('leaveWaitingButton').classList.toggle('hidden', !!choice);
+      $('teammateForm').classList.toggle('hidden', !choice?.canChoose);
+      if (choice) {
+        teammateCountdownUntil = performance.now() + choice.secondsLeft * 1000;
+        updateTeammateCountdown();
+        $('teammatePrompt').textContent = choice.canChoose ? 'Elegí a tu compañero' : 'El creador está eligiendo compañero';
+        const users = s.players.filter(p => p.seat !== s.mySeat).map(p => p.userId);
+        const key = JSON.stringify([s.roomId, users]);
+        if (choice.canChoose && key !== teammateChoicesKey) {
+          teammateChoicesKey = key;
+          $('teammateSelect').replaceChildren(new Option('Seleccioná un jugador', ''), ...users.map(u => new Option(u, u)));
+        }
+      } else {
+        teammateChoicesKey = '';
+      }
       const payout = s.payout || teamPayoutFromBet(s.betAmount);
       const money = Number(s.betAmount) > 0
         ? `${formatChips(s.betAmount)} fichas c/u · Pozo ${formatChips(payout.grossPot)} · Rake 7% ${formatChips(payout.rakeAmount)}`
@@ -593,7 +812,7 @@
         const p = bySeat[seat];
         const team = seat % 2 === 0 ? 'A' : 'B';
         return `<div class="wait-seat ${team.toLowerCase()}">
-          <div><strong>J${seat + 1} · Equipo ${team}</strong><br><span class="hint">${p ? escapeHtml(p.userId) : 'Esperando jugador...'}</span></div>
+          <div><strong>J${seat + 1}${choice ? '' : ' · Equipo ' + team}</strong><br><span class="hint">${p ? escapeHtml(p.userId) : 'Esperando jugador...'}</span></div>
         </div>`;
       }).join('');
     }
@@ -618,10 +837,11 @@
       el.className = `player ${pos} team${player.team} ${active ? 'active' : ''} ${player.connected ? '' : 'disconnected'}`;
       const count = player.seat === s.mySeat ? 0 : cardCountFor(s, player.seat);
       const backs = Array.from({length:count}, () => '<img src="/cards/back.png" alt="carta">').join('');
-      const extra = player.seat === s.mySeat ? ' · VOS' : (player.team === s.myTeam ? ' · COMPAÑERO' : ' · RIVAL');
+      const teamLabel = player.seat === s.mySeat ? `Equipo ${player.team} · VOS`
+        : player.team === s.myTeam ? 'Tu compañero' : `Equipo ${player.team} · RIVAL`;
       el.innerHTML = `<div class="avatar">${initials(player.userId)}</div>
         <div class="pname">${escapeHtml(player.userId)}</div>
-        <div class="pteam">Equipo ${player.team}${extra}</div>
+        <div class="pteam">${teamLabel}</div>
         <div class="backs">${backs}</div>`;
     }
 
@@ -787,6 +1007,7 @@
       const actions = (s.availableActions || []).filter(x => x !== 'PLAY_CARD');
       $('actionGrid').innerHTML = actions.map(action => {
         let label = labelAction(action);
+        if (action === 'CANTAR_FLOR') label = `${s.round?.myFlorScore ?? 0} DE FLOR`;
         if (action === 'CANTAR_ENVIDO') label = `${s.round?.myEnvidoScore ?? 0} DE ENVIDO`;
         return `<button class="action ${actionClass(action)}" onclick="sendCall('${action}')">${label}</button>`;
       }).join('');
@@ -808,7 +1029,7 @@
     function renderStatus(s) {
       const pending = s.pendingCall ? `${s.pendingCall.callType.replaceAll('_',' ')} · responde Equipo ${s.pendingCall.responderTeam}` : 'Sin canto pendiente';
       const envidoDecl = s.envidoDeclaration?.active
-        ? `${s.availableActions?.includes('SON_BUENAS_ENVIDO') ? 'Responde Son buenas' : 'Canta Envido'}: J${(s.envidoDeclaration.currentSeat ?? 0) + 1}`
+        ? `${s.availableActions?.includes('SON_BUENAS_ENVIDO') ? 'Responde Son buenas' : s.envidoDeclaration.kind === 'FLOR' ? 'Canta Flor' : 'Canta Envido'}: J${(s.envidoDeclaration.currentSeat ?? 0) + 1}`
         : null;
       $('statusLine').innerHTML = [
         `Mano: J${s.manoSeat + 1}`,
@@ -820,22 +1041,87 @@
       ].filter(Boolean).map(x => `<span class="status-chip">${escapeHtml(x)}</span>`).join('');
     }
 
-    function formatChatTime(ms) {
-      return new Date(ms).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+    let chatRoom = null;
+    let chatMessageIds = [];
+    let chatUnread = 0;
+
+    function updateChatBadge() {
+      const badge = $('gameChatUnread');
+      badge.textContent = chatUnread > 99 ? '99+' : String(chatUnread);
+      badge.style.display = chatUnread ? 'inline-flex' : 'none';
+    }
+
+    function resetTeamChat() {
+      chatRoom = null;
+      chatMessageIds = [];
+      chatUnread = 0;
+      $('gameChatFab').style.display = 'none';
+      $('gameChatPanel').style.display = 'none';
+      $('gameChatInput').value = '';
+      $('gameChatMessages').replaceChildren();
+      updateChatBadge();
+    }
+
+    // El 2vs2 vive en un iframe: mantené el chat dentro del área visible del teléfono.
+    function positionTeamChat() {
+      if (!embeddedMode || !window.frameElement) return;
+      const viewport = window.parent.visualViewport;
+      const bottom = viewport ? viewport.offsetTop + viewport.height : window.parent.innerHeight;
+      const inset = Math.max(0, window.frameElement.getBoundingClientRect().bottom - bottom);
+      document.body.style.setProperty('--team-chat-inset', inset + 'px');
+    }
+    if (embeddedMode && window.frameElement) {
+      window.parent.addEventListener('resize', positionTeamChat);
+      window.parent.addEventListener('scroll', positionTeamChat);
+      window.parent.visualViewport?.addEventListener('resize', positionTeamChat);
+      window.parent.visualViewport?.addEventListener('scroll', positionTeamChat);
+    }
+
+    function toggleGameChat(forceOpen) {
+      if (state?.phase !== 'PLAYING' || !chatRoom) return;
+      const panel = $('gameChatPanel');
+      const open = typeof forceOpen === 'boolean' ? forceOpen : panel.style.display !== 'flex';
+      panel.style.display = open ? 'flex' : 'none';
+      if (open) {
+        chatUnread = 0;
+        updateChatBadge();
+        const messages = $('gameChatMessages');
+        messages.scrollTop = messages.scrollHeight;
+        $('gameChatInput').focus({ preventScroll: true });
+      }
     }
 
     function renderTeamChat(s) {
-      $('teamChatTitle').textContent = `💬 Chat privado · Equipo ${s.myTeam}`;
+      if (s.phase !== 'PLAYING') {
+        resetTeamChat();
+        return;
+      }
+      const sameRoom = chatRoom === s.roomId;
+      if (!sameRoom) resetTeamChat();
+      chatRoom = s.roomId;
+      positionTeamChat();
+      $('gameChatFab').style.display = 'flex';
       const items = s.teamChat || [];
-      $('teamChatMessages').innerHTML = items.length
-        ? items.map(msg => `<div class="chat-line ${msg.mine ? 'mine' : ''}"><div class="chat-bubble"><div class="chat-meta">${escapeHtml(msg.fromUserId)} · ${formatChatTime(msg.at)}</div><div class="chat-text">${escapeHtml(msg.text)}</div></div></div>`).join('')
-        : '<div class="hint">Todavía no hay mensajes privados del equipo.</div>';
-      $('teamChatMessages').scrollTop = $('teamChatMessages').scrollHeight;
+      const ids = items.map(m => m.id);
+      if (sameRoom && ids.length === chatMessageIds.length &&
+          ids.every((id, i) => id === chatMessageIds[i])) return;
+      if (sameRoom && $('gameChatPanel').style.display !== 'flex') {
+        const previous = new Set(chatMessageIds);
+        chatUnread += items.filter(m => !m.mine && !previous.has(m.id)).length;
+        updateChatBadge();
+      }
+      chatMessageIds = ids;
+      const messages = $('gameChatMessages');
+      messages.innerHTML = items.length
+        ? items.map(m => `<div class="game-chat-message ${m.mine ? 'mine' : 'rival'}"><span class="game-chat-author">${m.mine ? 'Vos' : '@' + escapeHtml(m.fromUserId)}</span><span>${escapeHtml(m.text)}</span></div>`).join('')
+        : '<div class="game-chat-empty">Todavía no hay mensajes.</div>';
+      messages.scrollTop = messages.scrollHeight;
     }
 
-    function sendPrivateChat() {
-      if (!activeRoomId) return;
-      const input = $('teamChatInput');
+    function sendPrivateChat(event) {
+      event.preventDefault();
+      if (!chatRoom || chatRoom !== activeRoomId || state?.phase !== 'PLAYING' || !socket.connected) return;
+      const input = $('gameChatInput');
       const text = input.value.trim();
       if (!text) return;
       socket.emit('team_send_private_chat', { roomId: activeRoomId, text });
@@ -844,6 +1130,29 @@
 
     function renderGame(s) {
       showGame();
+      const result = $('tantoResult');
+      const reveal = s.tantoResult;
+      const revealCards = $('tantoResultCards');
+      const revealKey = reveal ? JSON.stringify(reveal) : '';
+      if ((revealCards.dataset.key || '') !== revealKey) {
+        revealCards.dataset.key = revealKey;
+        const subtitle = $('tantoResultText');
+        subtitle.replaceChildren();
+        if (reveal) {
+          const player = document.createElement('strong');
+          player.textContent = reveal.player;
+          const score = document.createElement('strong');
+          score.textContent = String(reveal.score);
+          subtitle.append(player, ' mostró ', score, ' puntos');
+        }
+        revealCards.replaceChildren(...(reveal?.cards || []).map(id => {
+          const img = document.createElement('img');
+          img.src = cardSrc({ id });
+          img.alt = id;
+          return img;
+        }));
+      }
+      result.classList.toggle('hidden', !reveal?.cards?.length);
       $('scoreA').textContent = s.scores.A;
       $('scoreB').textContent = s.scores.B;
       $('myTeamLabel').textContent = `Vos: J${s.mySeat + 1} · Equipo ${s.myTeam}`;
@@ -872,14 +1181,14 @@
       $('turnBanner').textContent = s.transitioning
         ? 'Preparando próxima mano...'
         : envidoTurnPlayer
-          ? `Envido: canta ${envidoTurnPlayer.userId}`
+          ? `${s.envidoDeclaration.kind === 'FLOR' ? 'Flor' : 'Envido'}: canta ${envidoTurnPlayer.userId}`
           : turnPlayer ? `Turno: ${turnPlayer.userId} · Equipo ${turnPlayer.team}` : 'Esperando...';
 
       if (!renderDisconnectGrace(s)) {
         if (s.envidoDeclaration?.active) {
           $('pendingBanner').classList.remove('hidden');
           const best = s.envidoDeclaration.bestScore == null ? 'todavía no hay puntos cantados' : `mejor hasta ahora: ${s.envidoDeclaration.bestScore}`;
-          $('pendingBanner').textContent = `Envido querido · ${envidoTurnPlayer?.userId || 'Jugador'} debe cantar · ${best}`;
+          $('pendingBanner').textContent = `${s.envidoDeclaration.kind === 'FLOR' ? 'Flor querida' : 'Envido querido'} · ${envidoTurnPlayer?.userId || 'Jugador'} debe cantar · ${best}`;
         } else if (s.pendingCall) {
           const caller = s.players.find(p => p.seat === s.pendingCall.callerSeat);
           $('pendingBanner').classList.remove('hidden');
@@ -937,7 +1246,7 @@
       state = s;
       activeRoomId = s.roomId;
       sessionStorage.setItem('team2v2_room', s.roomId);
-      if (s.phase === 'WAITING') renderWaiting(s);
+      if (s.phase === 'WAITING' || s.phase === 'CHOOSING_TEAMMATE') renderWaiting(s);
       else renderGame(s);
     }
 
@@ -1049,13 +1358,6 @@
     $('username').addEventListener('change', () => {
       const v = $('username').value.trim();
       if (v) sessionStorage.setItem('team2v2_user', v);
-    });
-
-    $('teamChatInput').addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        sendPrivateChat();
-      }
     });
 
     installTeamResumeListeners();

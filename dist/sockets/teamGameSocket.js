@@ -9,6 +9,8 @@ const teamTrucoGame_1 = require("../game/teamTrucoGame");
 const trucoEngine_1 = require("../game/trucoEngine");
 const userService_1 = require("../auth/userService");
 const activeGameRegistry_1 = require("./activeGameRegistry");
+const TEAM_TANTOS_MS = 3000;
+const TEAM_CHOICE_MS = 30_000;
 const teamRooms = new Map();
 const pendingTeamCreations = new Set();
 const pendingTeamJoins = new Set();
@@ -171,6 +173,16 @@ function canInitiateTantos(room, seat) {
         return false;
     return !room.round.hasSeatPlayedAnyCard(seat.seat);
 }
+function canSingFlor(room, seat) {
+    if (!room.withFlor || !seatHasFlor(room, seat.seat))
+        return false;
+    if (canInitiateTantos(room, seat))
+        return true;
+    const singers = room.soloFlorSingers || [];
+    return !!room.round && room.round.currentTrickIndex === 0 &&
+        !room.round.hasSeatPlayedAnyCard(seat.seat) && !singers.includes(seat.seat) &&
+        singers.some(index => getSeat(room, index)?.team === seat.team);
+}
 // Si un equipo se va al mazo durante la primera baza, el punto extra de Envido
 // corresponde cuando el equipo rival todavía tenía al menos un jugador que
 // conservaba su oportunidad real de cantar Envido (aún no había jugado carta).
@@ -208,7 +220,7 @@ function getTeamTimerContext(room) {
             key: `ENVIDO_DECL:${seat}:${room.envidoDeclarationIndex}:${room.envidoSonBuenasSeat ?? 'N'}`,
             seat,
             team: player?.team ?? (0, teamTrucoGame_1.teamForSeat)(seat),
-            label: player ? `Envido: ${player.userId}` : `Envido: J${seat + 1}`
+            label: `${room.florDeclarationActive ? 'Flor' : 'Envido'}: ${player?.userId || `J${seat + 1}`}`
         };
     }
     if (room.pendingCall) {
@@ -357,6 +369,7 @@ function finishTeamMatchByForfeit(io, room, loser, reason) {
     if (room.phase !== 'PLAYING')
         return;
     const winnerTeam = otherTeam(loser.team);
+    room.tantoResult = undefined;
     clearTeamTurnTimer(room);
     clearTeamDisconnectTimer(room);
     if (room.transitionTimer) {
@@ -448,6 +461,8 @@ function handleTeamTimeout(io, room, expiredContext) {
         const seat = getSeat(room, currentSeat);
         if (!seat)
             return;
+        if (room.florDeclarationActive)
+            return declareContestedFlor(io, room, seat, true);
         const score = (0, trucoEngine_1.calculateEnvido)(getRoundCards(room, seat.seat));
         const best = room.envidoWinningScore;
         const canBeat = best == null || score > best;
@@ -460,6 +475,8 @@ function handleTeamTimeout(io, room, expiredContext) {
         room.envidoWinningSeat = seat.seat;
         room.envidoDeclarations.push({ seat: seat.seat, userId: seat.userId, score, sonBuenas: false });
         roomLog(room, `⏱️ Tiempo agotado: ${seat.userId} canta ${score} de Envido automáticamente.`);
+        if (score === 0)
+            emitRoomAudio(io, room, 'cero.mp3');
         if (room.envidoDeclarationIndex === 0) {
             room.envidoDeclarationIndex = 1;
             return sendRoomState(io, room);
@@ -517,6 +534,8 @@ function availableActions(room, seat) {
         const currentSeat = room.envidoDeclarationOrder[room.envidoDeclarationIndex];
         if (seat.seat !== currentSeat)
             return actions;
+        if (room.florDeclarationActive)
+            return ['CANTAR_FLOR'];
         const myScore = (0, trucoEngine_1.calculateEnvido)(getRoundCards(room, seat.seat));
         const best = room.envidoWinningScore;
         if (best == null || myScore > best)
@@ -537,9 +556,9 @@ function availableActions(room, seat) {
                 actions.push('VALE_4');
             if (pending.proposedStake === 2 && canInitiateTantos(room, seat)) {
                 actions.push('ENVIDO', 'REAL_ENVIDO', 'FALTA_ENVIDO');
-                if (room.withFlor && seatHasFlor(room, seat.seat))
-                    actions.push('FLOR');
             }
+            if (pending.proposedStake === 2 && canSingFlor(room, seat))
+                actions.push('FLOR');
             return actions;
         }
         if (pending.kind === 'ENVIDO') {
@@ -573,9 +592,9 @@ function availableActions(room, seat) {
         if (!room.withFlor || !seatHasFlor(room, seat.seat)) {
             actions.push('ENVIDO', 'REAL_ENVIDO', 'FALTA_ENVIDO');
         }
-        if (room.withFlor && seatHasFlor(room, seat.seat))
-            actions.push('FLOR');
     }
+    if (canSingFlor(room, seat))
+        actions.push('FLOR');
     if (room.trucoStake === 1 && room.trucoLastRaiserTeam == null)
         actions.push('TRUCO');
     else if (room.trucoStake === 2 && room.trucoLastRaiserTeam !== seat.team)
@@ -595,11 +614,16 @@ function serializePending(room) {
         callerSeat: room.pendingCall.callerSeat
     };
 }
-function buildState(room, mySeat) {
+function buildState(room, mySeat, canReadChat) {
     const round = room.round;
     return {
         roomId: room.roomId,
         phase: room.phase,
+        tantoResult: room.round?.isFinished || room.phase === 'MATCH_OVER' ? room.tantoResult || null : null,
+        teammateChoice: room.phase === 'CHOOSING_TEAMMATE' ? {
+            secondsLeft: Math.max(0, Math.ceil(((room.teammateDeadline || 0) - Date.now()) / 1000)),
+            canChoose: canReadChat && mySeat.userId === room.creatorId
+        } : null,
         targetPoints: room.targetPoints,
         withFlor: room.withFlor,
         betAmount: room.betAmount,
@@ -635,6 +659,7 @@ function buildState(room, mySeat) {
         florChain: room.florChain,
         envidoDeclaration: room.envidoDeclarationActive ? {
             active: true,
+            kind: room.florDeclarationActive ? 'FLOR' : 'ENVIDO',
             order: room.envidoDeclarationOrder,
             index: room.envidoDeclarationIndex,
             currentSeat: room.envidoSonBuenasSeat ?? room.envidoDeclarationOrder[room.envidoDeclarationIndex] ?? null,
@@ -658,6 +683,7 @@ function buildState(room, mySeat) {
             trickWinnerSeats: round.trickWinnerSeats,
             myCards: round.getPlayerBySeat(mySeat.seat)?.cards || [],
             myEnvidoScore: (0, trucoEngine_1.calculateEnvido)(getRoundCards(room, mySeat.seat)),
+            myFlorScore: (0, trucoEngine_1.calculateFlor)(getRoundCards(room, mySeat.seat)),
             cardCounts: round.players.map(p => ({ seat: p.seat, count: p.cards.length })),
             cardsPlayed: round.players.map(p => ({ seat: p.seat, cards: p.cardsPlayed })),
             envidoResolved: round.envidoResolved,
@@ -667,7 +693,7 @@ function buildState(room, mySeat) {
         } : null,
         availableActions: availableActions(room, mySeat),
         logs: room.logs.slice(-120),
-        teamChat: (room.teamChats[mySeat.team] || []).slice(-30).map(msg => ({
+        teamChat: (canReadChat && room.phase === 'PLAYING' ? room.teamChats[mySeat.team] : []).slice(-30).map(msg => ({
             id: msg.id,
             fromSeat: msg.fromSeat,
             fromUserId: msg.fromUserId,
@@ -678,10 +704,16 @@ function buildState(room, mySeat) {
     };
 }
 function sendRoomState(io, room) {
+    if (room.phase === 'MATCH_OVER') {
+        room.teamChats.A.length = 0;
+        room.teamChats.B.length = 0;
+    }
     syncTeamTurnTimer(io, room);
     for (const player of room.players) {
         if (player.socketId && player.connected) {
-            io.to(player.socketId).emit('team_state', buildState(room, player));
+            const recipient = io.sockets.sockets.get(player.socketId);
+            const canReadChat = String(recipient?.data.tournamentUser || '').toLowerCase() === player.userId.toLowerCase();
+            io.to(player.socketId).emit('team_state', buildState(room, player, canReadChat));
         }
     }
 }
@@ -699,7 +731,7 @@ function scheduleReturnAllToTeamLobby(io, room) {
         teamRooms.delete(room.roomId);
         io.in(room.roomId).socketsLeave(room.roomId);
         broadcastTables(io);
-    }, 1800);
+    }, room.tantoResult ? TEAM_TANTOS_MS : 1800);
 }
 async function settleTeamFinancials(io, room, winnerTeam, reason) {
     if (room.settlementComplete || room.settlementInProgress)
@@ -782,6 +814,7 @@ function broadcastTables(io) {
     io.emit('team_update_tables', availableRooms());
 }
 function resetBids(room) {
+    room.tantoResult = undefined;
     room.pendingCall = null;
     room.suspendedTruco = null;
     room.trucoStake = 1;
@@ -796,6 +829,8 @@ function resetBids(room) {
     room.envidoSonBuenasSeat = null;
     room.envidoDeclarations = [];
     room.florChain = [];
+    room.soloFlorSingers = [];
+    room.florDeclarationActive = false;
 }
 function startRound(io, room) {
     if (room.players.length !== 4)
@@ -833,7 +868,7 @@ function finishMatchOrScheduleNext(io, room, winnerTeam, points, reason) {
     room.transitioning = true;
     sendRoomState(io, room);
     room.manoSeat = (room.manoSeat + 1) % 4;
-    room.transitionTimer = setTimeout(() => startRound(io, room), 1800);
+    room.transitionTimer = setTimeout(() => startRound(io, room), room.tantoResult ? TEAM_TANTOS_MS : 1800);
 }
 function resumeSuspendedTruco(room) {
     if (room.suspendedTruco && room.phase === 'PLAYING' && !room.transitioning) {
@@ -907,6 +942,9 @@ function finishEnvidoDeclarations(io, room) {
     room.round.envidoResolved = true;
     room.envidoDeclarationActive = false;
     room.envidoSonBuenasSeat = null;
+    const originalCards = getRoundCards(room, winnerSeat.seat);
+    const { envidoCards } = (0, trucoEngine_1.getEnvidoDetails)(originalCards);
+    room.tantoResult = { kind: 'Envido', player: winnerSeat.userId, score: room.envidoWinningScore, cards: (envidoCards.length === 2 ? envidoCards : originalCards).map(card => card.id) };
     roomLog(room, `🪙 ${winnerSeat.userId} ganó el Envido con ${room.envidoWinningScore}. Equipo ${winnerTeam} +${points}.`);
     roomLog(room, `📊 Marcador: Equipo A ${room.scoreA} - ${room.scoreB} Equipo B.`);
     if (scoreFor(room, winnerTeam) >= room.targetPoints) {
@@ -947,7 +985,9 @@ function handleEnvidoDeclaration(io, socket, room, seat, callType) {
     room.envidoWinningSeat = seat.seat;
     room.envidoDeclarations.push({ seat: seat.seat, userId: seat.userId, score, sonBuenas: false });
     roomLog(room, `🗣️ ${seat.userId} cantó ${score} de Envido.`);
-    if (score >= 1 && score <= 38)
+    if (score === 0)
+        emitRoomAudio(io, room, 'cero.mp3');
+    else if (score >= 1 && score <= 38)
         emitRoomAudio(io, room, `${score}.mp3`);
     if (room.envidoDeclarationIndex === 0) {
         room.envidoDeclarationIndex = 1;
@@ -985,13 +1025,49 @@ function resolveEnvido(io, room, accepted) {
     resumeSuspendedTruco(room);
     sendRoomState(io, room);
 }
-function resolveFlor(io, room, accepted) {
+function declareContestedFlor(io, room, seat, timedOut = false) {
+    if (!room.florDeclarationActive || room.envidoDeclarationOrder[room.envidoDeclarationIndex] !== seat.seat)
+        return;
+    const score = (0, trucoEngine_1.calculateFlor)(getRoundCards(room, seat.seat));
+    room.envidoDeclarations.push({ seat: seat.seat, userId: seat.userId, score, sonBuenas: false });
+    if (room.envidoWinningScore == null || score > room.envidoWinningScore) {
+        room.envidoWinningScore = score;
+        room.envidoWinningSeat = seat.seat;
+    }
+    roomLog(room, `${timedOut ? '⏱️ Tiempo agotado: ' : '🌸 '}${seat.userId} cantó ${score} de Flor.`);
+    if (score >= 20 && score <= 38)
+        emitRoomAudio(io, room, `${score}.mp3`);
+    if (++room.envidoDeclarationIndex < room.envidoDeclarationOrder.length)
+        return sendRoomState(io, room);
+    room.florDeclarationActive = false;
+    room.envidoDeclarationActive = false;
+    resolveFlor(io, room, true, true);
+}
+function resolveFlor(io, room, accepted, declared = false) {
     if (!room.round || !room.pendingCall || room.pendingCall.kind !== 'FLOR')
         return;
     const pending = room.pendingCall;
+    if (accepted && !declared && room.players.filter(p => seatHasFlor(room, p.seat)).length === 3) {
+        const a = bestFlorForTeam(room, 'A');
+        const b = bestFlorForTeam(room, 'B');
+        if (a && b) {
+            const order = seatOrderFrom(room.manoSeat);
+            room.envidoDeclarationOrder = [a.seat, b.seat].sort((x, y) => order.indexOf(x) - order.indexOf(y));
+            room.envidoDeclarationIndex = 0;
+            room.envidoSonBuenasSeat = null;
+            room.envidoWinningScore = null;
+            room.envidoWinningSeat = null;
+            room.envidoDeclarations = [];
+            room.envidoDeclarationActive = true;
+            room.florDeclarationActive = true;
+            room.envidoAcceptedPoints = florPoints(room, true);
+            return sendRoomState(io, room);
+        }
+    }
     const points = florPoints(room, accepted);
     let winnerTeam;
     let detail = '';
+    let winnerFlor = null;
     if (!accepted) {
         winnerTeam = pending.callerTeam;
         detail = `no querida → Equipo ${winnerTeam} +${points}`;
@@ -1001,10 +1077,12 @@ function resolveFlor(io, room, accepted) {
         const b = bestFlorForTeam(room, 'B');
         if (!a || !b) {
             winnerTeam = a ? 'A' : 'B';
+            winnerFlor = a || b;
             detail = `única flor válida → Equipo ${winnerTeam} +${points}`;
         }
         else {
             winnerTeam = chooseByMano(room, a, b);
+            winnerFlor = winnerTeam === 'A' ? a : b;
             detail = `${a.userId} ${a.score} / ${b.userId} ${b.score} → Equipo ${winnerTeam} +${points}`;
         }
     }
@@ -1012,6 +1090,12 @@ function resolveFlor(io, room, accepted) {
     room.round.florResolved = true;
     room.round.envidoResolved = true;
     room.pendingCall = null;
+    const florSeat = winnerFlor?.seat ?? (!accepted ? pending.callerSeat : null);
+    const florPlayer = florSeat == null ? undefined : getSeat(room, florSeat);
+    const florCards = florPlayer ? getRoundCards(room, florPlayer.seat) : [];
+    room.tantoResult = florPlayer ? {
+        kind: 'Flor', player: florPlayer.userId, score: (0, trucoEngine_1.calculateFlor)(florCards), cards: florCards.map(card => card.id)
+    } : undefined;
     roomLog(room, `🌸 Flor ${detail}.`);
     if (scoreFor(room, winnerTeam) >= room.targetPoints) {
         room.phase = 'MATCH_OVER';
@@ -1025,7 +1109,7 @@ function resolveFlor(io, room, accepted) {
     sendRoomState(io, room);
 }
 function startFlorCall(io, room, seat) {
-    if (!room.round || !seatHasFlor(room, seat.seat))
+    if (!room.round || !canSingFlor(room, seat))
         return;
     // La Flor puede interrumpir un Truco pendiente y anula cualquier Envido pendiente.
     // Si había Truco, se guarda para retomarlo cuando termine la Flor.
@@ -1041,7 +1125,13 @@ function startFlorCall(io, room, seat) {
     room.florChain = ['FLOR'];
     if (!teamHasFlor(room, otherTeam(seat.team))) {
         room.round.florResolved = true;
+        (room.soloFlorSingers ||= []).push(seat.seat);
         addScore(room, seat.team, 3);
+        const florCards = getRoundCards(room, seat.seat);
+        const florScore = (0, trucoEngine_1.calculateFlor)(florCards);
+        if (!room.tantoResult || florScore > room.tantoResult.score) {
+            room.tantoResult = { kind: 'Flor', player: seat.userId, score: florScore, cards: florCards.map(card => card.id) };
+        }
         roomLog(room, `🌸 ${seat.userId} cantó Flor. Equipo ${seat.team} +3.`);
         emitCallAudio(io, room, 'FLOR');
         if (scoreFor(room, seat.team) >= room.targetPoints) {
@@ -1114,6 +1204,8 @@ function handleCall(io, socket, room, seat, callType) {
         const foldPoints = room.trucoStake + uncalledEnvidoPoint;
         return finishMatchOrScheduleNext(io, room, otherTeam(seat.team), foldPoints, `${seat.userId} se fue al mazo${uncalledEnvidoPoint ? ' con Envido todavía disponible para el equipo rival' : ''}`);
     }
+    if (callType === 'CANTAR_FLOR')
+        return declareContestedFlor(io, room, seat);
     if (callType === 'CANTAR_ENVIDO' || callType === 'SON_BUENAS_ENVIDO') {
         return handleEnvidoDeclaration(io, socket, room, seat, callType);
     }
@@ -1183,6 +1275,34 @@ function handleCall(io, socket, room, seat, callType) {
         emitCallAudio(io, room, callType);
         return sendRoomState(io, room);
     }
+}
+function beginTeamMatch(io, room, teammate) {
+    if (teamRooms.get(room.roomId) !== room || room.phase !== 'CHOOSING_TEAMMATE' || room.players.length !== 4)
+        return;
+    if (room.teammateTimer)
+        clearTimeout(room.teammateTimer);
+    room.teammateTimer = undefined;
+    room.teammateDeadline = undefined;
+    const original = getSeat(room, 2);
+    if (teammate && teammate !== original) {
+        original.seat = teammate.seat;
+        teammate.seat = 2;
+        original.team = (0, teamTrucoGame_1.teamForSeat)(original.seat);
+        teammate.team = (0, teamTrucoGame_1.teamForSeat)(teammate.seat);
+    }
+    room.players.sort((a, b) => a.seat - b.seat);
+    room.phase = 'PLAYING';
+    const payout = (0, userService_1.calculateTeamMatchPayout)(room.betAmount);
+    roomLog(room, `👥 Equipo A: ${room.players[0].userId} y ${room.players[2].userId} · Equipo B: ${room.players[1].userId} y ${room.players[3].userId}.`);
+    roomLog(room, room.betAmount > 0
+        ? `🎮 Mesa completa. Pozo ${payout.grossPot} fichas · rake 7% ${payout.rakeAmount} · premio equipo ${payout.winnerPrizeTotal}.`
+        : '🎮 Mesa completa. Comienza el partido 2 vs 2 gratis.');
+    startRound(io, room);
+    for (const player of disconnectedPlayers(room))
+        startTeamDisconnectGrace(io, room, player);
+    if (disconnectedPlayers(room).length)
+        sendRoomState(io, room);
+    broadcastTables(io);
 }
 function setupTeamSocketEvents(io) {
     io.on('connection', (socket) => {
@@ -1348,7 +1468,7 @@ function setupTeamSocketEvents(io) {
                 debitSucceeded = true;
                 // Revalidamos después del débito por si otro jugador completó o cerró la mesa.
                 const liveRoom = teamRooms.get(room.roomId);
-                if (liveRoom !== room || room.phase !== 'WAITING' || room.players.length >= 4 || getSeatByUser(room, cleanUser)) {
+                if (liveRoom !== room || room.phase !== 'WAITING' || room.waitingLeaves || room.players.length >= 4 || getSeatByUser(room, cleanUser)) {
                     await (0, userService_1.refundTeamRoomEntry)(room.roomId, cleanUser, room.betAmount, entryToken);
                     (0, activeGameRegistry_1.releaseActiveGame)(cleanUser, '2v2', room.roomId);
                     claimed = false;
@@ -1369,16 +1489,11 @@ function setupTeamSocketEvents(io) {
                 socket.join(room.roomId);
                 socket.emit('team_room_joined', { roomId: room.roomId, balance: debit.balance });
                 if (room.players.length === 4) {
-                    room.phase = 'PLAYING';
-                    const payout = (0, userService_1.calculateTeamMatchPayout)(room.betAmount);
-                    roomLog(room, room.betAmount > 0
-                        ? `🎮 Mesa completa. Pozo ${payout.grossPot} fichas · rake 7% ${payout.rakeAmount} · premio equipo ${payout.winnerPrizeTotal}.`
-                        : '🎮 Mesa completa. Comienza el partido 2 vs 2 gratis.');
-                    startRound(io, room);
+                    room.phase = 'CHOOSING_TEAMMATE';
+                    room.teammateDeadline = Date.now() + TEAM_CHOICE_MS;
+                    room.teammateTimer = setTimeout(() => beginTeamMatch(io, room), TEAM_CHOICE_MS);
                 }
-                else {
-                    sendRoomState(io, room);
-                }
+                sendRoomState(io, room);
                 broadcastTables(io);
             }
             catch (err) {
@@ -1397,6 +1512,20 @@ function setupTeamSocketEvents(io) {
                 pendingTeamJoins.delete(joinKey);
             }
         });
+        socket.on('team_choose_teammate', (payload) => {
+            const room = teamRooms.get(String(payload?.roomId || ''));
+            if (!room || room.phase !== 'CHOOSING_TEAMMATE')
+                return;
+            const creator = getSeatBySocket(room, socket.id);
+            if (!creator || creator.userId !== room.creatorId ||
+                String(socket.data.tournamentUser || '').toLowerCase() !== creator.userId.toLowerCase())
+                return;
+            if (Date.now() >= (room.teammateDeadline || 0))
+                return beginTeamMatch(io, room);
+            const teammate = room.players.find(p => p !== creator && p.userId === payload?.userId);
+            if (teammate)
+                beginTeamMatch(io, room, teammate);
+        });
         socket.on('team_leave_waiting_room', async ({ roomId }) => {
             const room = teamRooms.get(String(roomId || ''));
             if (!room || room.phase !== 'WAITING')
@@ -1404,7 +1533,9 @@ function setupTeamSocketEvents(io) {
             const seat = getSeatBySocket(room, socket.id);
             if (!seat)
                 return;
-            const refund = await (0, userService_1.refundTeamRoomEntry)(room.roomId, seat.userId, room.betAmount, seat.entryToken);
+            room.waitingLeaves = (room.waitingLeaves || 0) + 1;
+            const refund = await (0, userService_1.refundTeamRoomEntry)(room.roomId, seat.userId, room.betAmount, seat.entryToken)
+                .finally(() => { room.waitingLeaves = (room.waitingLeaves || 1) - 1; });
             if (!refund.success) {
                 return socket.emit('team_error', { message: refund.message || 'No se pudo devolver la entrada. Seguís sentado para proteger tus fichas.' });
             }
@@ -1602,13 +1733,17 @@ function setupTeamSocketEvents(io) {
             socket.emit('team_teammate_cards_sent', { toUserId: teammate.userId, durationMs: 3000 });
             sendRoomState(io, room);
         });
-        socket.on('team_send_private_chat', ({ roomId, text }) => {
+        socket.on('team_send_private_chat', (payload) => {
+            const { roomId, text } = payload || {};
             const room = teamRooms.get(String(roomId || ''));
-            if (!room)
+            if (!room || room.phase !== 'PLAYING')
                 return;
             const seat = getSeatBySocket(room, socket.id);
             if (!seat)
                 return socket.emit('team_error', { message: 'No pertenecés a esta mesa.' });
+            if (String(socket.data.tournamentUser || '').toLowerCase() !== seat.userId.toLowerCase()) {
+                return socket.emit('team_error', { message: 'Volvé a iniciar sesión para usar el chat privado.' });
+            }
             const cleanText = String(text || '').replace(/\s+/g, ' ').trim();
             if (!cleanText)
                 return;
