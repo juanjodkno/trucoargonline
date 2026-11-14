@@ -16,6 +16,7 @@ import {
 } from './activeGameRegistry';
 
 const TEAM_TANTOS_MS = 3000;
+const TEAM_LAST_CARD_MS = 1000;
 const TEAM_CHOICE_MS = 30_000;
 type TeamPhase = 'WAITING' | 'CHOOSING_TEAMMATE' | 'PLAYING' | 'MATCH_OVER';
 type TeamCallKind = 'TRUCO' | 'ENVIDO' | 'FLOR';
@@ -99,6 +100,7 @@ interface TeamRoom {
   manoSeat: number;
   phase: TeamPhase;
   tantoResult?: { kind: 'Envido' | 'Flor'; player: string; score: number; cards: string[] };
+  tantoRevealAt?: number;
   teammateDeadline?: number;
   teammateTimer?: NodeJS.Timeout;
   waitingLeaves?: number;
@@ -762,6 +764,7 @@ function buildState(room: TeamRoom, mySeat: TeamSeat, canReadChat: boolean) {
     roomId: room.roomId,
     phase: room.phase,
     tantoResult: room.round?.isFinished || room.phase === 'MATCH_OVER' ? room.tantoResult || null : null,
+    tantoRevealAt: room.tantoRevealAt || null,
     teammateChoice: room.phase === 'CHOOSING_TEAMMATE' ? {
       secondsLeft: Math.max(0, Math.ceil(((room.teammateDeadline || 0) - Date.now()) / 1000)),
       canChoose: canReadChat && mySeat.userId === room.creatorId
@@ -874,7 +877,7 @@ function scheduleReturnAllToTeamLobby(io: Server, room: TeamRoom) {
     teamRooms.delete(room.roomId);
     io.in(room.roomId).socketsLeave(room.roomId);
     broadcastTables(io);
-  }, room.tantoResult ? TEAM_TANTOS_MS : 1800);
+  }, room.tantoResult ? TEAM_TANTOS_MS + (room.tantoRevealAt ? TEAM_LAST_CARD_MS : 0) : 1800);
 }
 
 async function settleTeamFinancials(io: Server, room: TeamRoom, winnerTeam: TeamId, reason: string) {
@@ -967,6 +970,7 @@ function broadcastTables(io: Server) {
 
 function resetBids(room: TeamRoom) {
   room.tantoResult = undefined;
+  room.tantoRevealAt = undefined;
   room.pendingCall = null;
   room.suspendedTruco = null;
   room.trucoStake = 1;
@@ -1002,6 +1006,7 @@ function startRound(io: Server, room: TeamRoom) {
 function finishMatchOrScheduleNext(io: Server, room: TeamRoom, winnerTeam: TeamId, points: number, reason: string) {
   if (!room.round || room.transitioning) return;
 
+  room.tantoRevealAt = room.tantoResult ? Date.now() + TEAM_LAST_CARD_MS : undefined;
   room.round.isFinished = true;
   room.round.winnerTeam = winnerTeam;
   addScore(room, winnerTeam, Math.max(1, points));
@@ -1023,7 +1028,7 @@ function finishMatchOrScheduleNext(io: Server, room: TeamRoom, winnerTeam: TeamI
   room.transitioning = true;
   sendRoomState(io, room);
   room.manoSeat = (room.manoSeat + 1) % 4;
-  room.transitionTimer = setTimeout(() => startRound(io, room), room.tantoResult ? TEAM_TANTOS_MS : 1800);
+  room.transitionTimer = setTimeout(() => startRound(io, room), room.tantoResult ? TEAM_TANTOS_MS + (room.tantoRevealAt ? TEAM_LAST_CARD_MS : 0) : 1800);
 }
 
 function resumeSuspendedTruco(room: TeamRoom) {
@@ -1505,6 +1510,10 @@ export function setupTeamSocketEvents(io: Server) {
       const cleanUser = String(userId || '').trim();
       const userKey = cleanUser.toLowerCase();
       if (!cleanUser) return socket.emit('team_error', { message: 'Ingresá un usuario para crear la mesa.' });
+      const requestedBet = Number(betAmount);
+      if (!Number.isFinite(requestedBet) || requestedBet < 300) {
+        return socket.emit('team_error', { message: 'El mínimo para jugar es de 300 fichas por jugador.' });
+      }
       try {
         if (!(await userExistsFresh(cleanUser))) {
           socket.emit('team_session_invalid', { message: 'Tu cuenta ya no existe. Volvé a iniciar sesión.' });
@@ -1527,7 +1536,7 @@ export function setupTeamSocketEvents(io: Server) {
         });
       }
 
-      const bet = Math.max(0, Math.round(Number(betAmount) || 0));
+      const bet = Math.round(requestedBet);
       const roomId = makeRoomId();
       const entryToken = makeEntryToken();
       pendingTeamCreations.add(userKey);

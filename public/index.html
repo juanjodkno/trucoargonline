@@ -1501,7 +1501,7 @@
     <div class="game-mode-selector">
       <div class="game-mode-card active">
         <div class="game-mode-title">🃏 Truco <span>1 vs 1</span></div>
-        <div class="game-mode-desc">Mesas individuales, gratis o con fichas, desafia a jugadores y gana en el 1 vs 1.</div>
+        <div class="game-mode-desc">Mesas individuales desde 300 fichas por jugador, desafia a jugadores y gana en el 1 vs 1.</div>
         <div class="game-mode-current">● Modo visible actualmente</div>
       </div>
       <div class="game-mode-card team">
@@ -1519,16 +1519,13 @@
     <div class="create-table-card">
       <div style="display:flex; justify-content:space-between; align-items:center;">
         <span style="font-weight:bold; color:#ffd166; font-size:0.95rem;">➕ Crear Nueva Mesa</span>
-        <label style="display:flex; align-items:center; gap:6px; font-size:0.85rem; color:#2ec4b6; font-weight:bold; cursor:pointer;">
-          <input type="checkbox" id="chkFreeTable" onchange="toggleFreeTable(this.checked)" style="width:17px; height:17px; cursor:pointer;" />
-          🎮 Jugar Gratis (Sin fichas)
-        </label>
+
       </div>
 
       <div class="table-options-grid">
         <div class="form-group" style="margin:0;">
           <label id="lblBetAmount">Monto Apuesta (ARS):</label>
-          <input type="number" id="inputBet" class="form-control" value="0" min="0" step="100" />
+          <input type="number" id="inputBet" class="form-control" value="300" min="300" step="100" />
         </div>
         <div class="form-group" style="margin:0;">
           <label>Puntos de Partida:</label>
@@ -3778,37 +3775,17 @@ function updateChipsDisplay(chips) {
       }
     }
 
-    function toggleFreeTable(isFree) {
-      triggerHaptic(15);
-      const inputBet = document.getElementById('inputBet');
-      const lblBet = document.getElementById('lblBetAmount');
-      const btn = document.getElementById('btnCreateTable');
-
-      if (isFree) {
-        inputBet.disabled = true;
-        inputBet.value = 0;
-        inputBet.style.opacity = '0.4';
-        lblBet.innerText = 'Modo Gratis (Sin apuesta)';
-        btn.innerText = 'Crear Mesa Gratis y Esperar Rival';
-        btn.style.background = '#2a9d8f';
-      } else {
-        inputBet.disabled = false;
-        inputBet.value = 0;
-        inputBet.style.opacity = '1';
-        lblBet.innerText = 'Monto Apuesta (ARS):';
-        btn.innerText = 'Crear Mesa y Esperar Rival';
-        btn.style.background = '#0077b6';
-      }
-    }
-
     function createNewTable() {
       triggerHaptic(20);
-      const isFree = document.getElementById('chkFreeTable').checked;
-      const bet = isFree ? 0 : parseInt(document.getElementById('inputBet').value, 10);
+      const bet = parseInt(document.getElementById('inputBet').value, 10);
       const points = parseInt(document.getElementById('selectPoints').value, 10) || 30;
       const withFlor = document.getElementById('selectFlor').value === 'true';
 
-      if (!isFree && bet > (currentUser.chips || 0)) {
+      if (!Number.isFinite(bet) || bet < 300) {
+        alert('El mínimo para jugar es de 300 fichas por jugador.');
+        return;
+      }
+      if (bet > (currentUser.chips || 0)) {
         alert('No tenés suficientes fichas para crear esta mesa.');
         return;
       }
@@ -4196,6 +4173,14 @@ maybeAutoUpdateInLobby();
       return Boolean(s0 && s0 === s1 && s1 === s2);
     }
 
+    function hideCallsAtThirtyPoints() {
+      if (Number(document.getElementById('scoreNosotros').innerText) >= 30 ||
+          Number(document.getElementById('scoreEllos').innerText) >= 30) {
+        document.getElementById('btnTruco').style.display = 'none';
+        document.getElementById('btnMazo').style.display = 'none';
+      }
+    }
+
     function setScores(scoresMap) {
       if (!scoresMap || !currentUser) return;
       const myUser = currentUser.username.toLowerCase();
@@ -4206,6 +4191,7 @@ maybeAutoUpdateInLobby();
 
       document.getElementById('scoreNosotros').innerText = myScore;
       document.getElementById('scoreEllos').innerText = rivalScore;
+      hideCallsAtThirtyPoints();
     }
 
     function updateTurnControls(turn) {
@@ -4281,6 +4267,7 @@ maybeAutoUpdateInLobby();
       } else {
         document.getElementById('trucoGroup').style.display = 'none';
       }
+      hideCallsAtThirtyPoints();
     }
 /* =========================================================
    RECUPERACION SEGURA DE PARTIDA 1VS1

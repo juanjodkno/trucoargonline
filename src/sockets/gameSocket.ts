@@ -2166,6 +2166,10 @@ io.to(room.roomId).emit('flor_declared', {
     socket.on('create_room', async ({ userId, betAmount, targetPoints, withFlor }) => {
       const cleanUser = (userId || '').trim().toLowerCase();
       if (!cleanUser) return socket.emit('error_action', { message: 'Usuario inválido.' });
+      const requestedBet = Number(betAmount);
+      if (!Number.isFinite(requestedBet) || requestedBet < 300) {
+        return socket.emit('error_action', { message: 'El mínimo para jugar es de 300 fichas por jugador.' });
+      }
       try {
         if (!(await userExistsFresh(cleanUser))) {
           socket.emit('session_invalid', { message: 'Tu cuenta ya no existe. Volvé a iniciar sesión.' });
@@ -2205,7 +2209,7 @@ io.to(room.roomId).emit('flor_declared', {
           });
         }
 
-        const bet = Number(betAmount) >= 0 ? Math.round(Number(betAmount)) : 0;
+        const bet = Math.round(requestedBet);
         const pts = Number(targetPoints) === 15 ? 15 : 30;
         const flor = (withFlor === true || withFlor === 'true' || withFlor === undefined);
 
@@ -2594,6 +2598,10 @@ io.to(room.roomId).emit('flor_declared', {
       try {
         const room = rooms.get(roomId);
         if (!room || !room.gameRound || room.disconnectedUser) return;
+
+        // Al alcanzar 30, estos cantos ya no pueden abrir otra espera durante el cierre.
+        if ((callType === 'TRUCO' || callType === 'ME_VOY_AL_MAZO') &&
+            (room.scoreP1 >= 30 || room.scoreP2 >= 30)) return;
 
         const authUser = getAuthenticatedUserId(room, socket.id);
         if (!authUser) return socket.emit('error_action', { message: 'No perteneces a esta mesa.' });

@@ -1822,6 +1822,10 @@ function setupSocketEvents(io, tournament) {
             const cleanUser = (userId || '').trim().toLowerCase();
             if (!cleanUser)
                 return socket.emit('error_action', { message: 'Usuario inválido.' });
+            const requestedBet = Number(betAmount);
+            if (!Number.isFinite(requestedBet) || requestedBet < 300) {
+                return socket.emit('error_action', { message: 'El mínimo para jugar es de 300 fichas por jugador.' });
+            }
             try {
                 if (!(await (0, userService_1.userExistsFresh)(cleanUser))) {
                     socket.emit('session_invalid', { message: 'Tu cuenta ya no existe. Volvé a iniciar sesión.' });
@@ -1858,7 +1862,7 @@ function setupSocketEvents(io, tournament) {
                             : 'Ya estás en otra mesa 1 vs 1.'
                     });
                 }
-                const bet = Number(betAmount) >= 0 ? Math.round(Number(betAmount)) : 0;
+                const bet = Math.round(requestedBet);
                 const pts = Number(targetPoints) === 15 ? 15 : 30;
                 const flor = (withFlor === true || withFlor === 'true' || withFlor === undefined);
                 // El roomId se genera ANTES del débito para que la entrada tenga una
@@ -2205,6 +2209,10 @@ function setupSocketEvents(io, tournament) {
             try {
                 const room = rooms.get(roomId);
                 if (!room || !room.gameRound || room.disconnectedUser)
+                    return;
+                // Al alcanzar 30, estos cantos ya no pueden abrir otra espera durante el cierre.
+                if ((callType === 'TRUCO' || callType === 'ME_VOY_AL_MAZO') &&
+                    (room.scoreP1 >= 30 || room.scoreP2 >= 30))
                     return;
                 const authUser = getAuthenticatedUserId(room, socket.id);
                 if (!authUser)

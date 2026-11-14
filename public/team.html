@@ -492,8 +492,8 @@
         <h2>🪑 Crear mesa 2 vs 2</h2>
         <div class="row">
           <div class="field">
-            <label for="betAmount">Fichas por jugador (0 = gratis)</label>
-            <input id="betAmount" type="number" min="0" step="100" value="0" inputmode="numeric" />
+            <label for="betAmount">Fichas por jugador (mínimo 300)</label>
+            <input id="betAmount" type="number" min="300" step="100" value="300" inputmode="numeric" />
           </div>
           <div class="field">
             <label for="targetPoints">Puntaje objetivo</label>
@@ -511,7 +511,7 @@
           </div>
           <button class="btn gold" onclick="createRoom()">Crear mesa</button>
         </div>
-        <div class="hint">0 fichas = partida gratis. Si elegís un monto, cada uno de los 4 jugadores debe tener esa cantidad para sentarse. El pozo total es la entrada x 4 y se reparte entre los 2 jugadores del equipo ganador.</div>
+        <div class="hint">El mínimo es de 300 fichas por jugador. Cada uno de los 4 jugadores debe tener el monto elegido para sentarse. El pozo total es la entrada x 4 y se reparte entre los 2 jugadores del equipo ganador.</div>
         <div class="hint">Los asientos se ocupan en orden: J1 Equipo A · J2 Equipo B · J3 Equipo A · J4 Equipo B. J1 y J3 son compañeros; J2 y J4 son compañeros.</div>
       </div>
 
@@ -706,9 +706,14 @@
     function createRoom() {
       const userId = cleanUser();
       if (!userId) return;
+      const bet = Number($('betAmount').value);
+      if (!Number.isFinite(bet) || bet < 300) {
+        alert('El mínimo para jugar es de 300 fichas por jugador.');
+        return;
+      }
       socket.emit('team_create_room', {
         userId,
-        betAmount: Math.max(0, Math.round(Number($('betAmount').value) || 0)),
+        betAmount: Math.round(bet),
         targetPoints: Number($('targetPoints').value),
         withFlor: $('withFlor').value === 'true'
       });
@@ -746,8 +751,11 @@
       }).join('');
     }
 
+    let tantoRevealTimer = null;
+
     function showLobby() {
       resetTeamChat();
+      clearTimeout(tantoRevealTimer);
       $('tantoResult').classList.add('hidden');
       $('lobbyView').classList.remove('hidden');
       $('waitingView').classList.add('hidden');
@@ -756,6 +764,7 @@
 
     function showWaiting() {
       resetTeamChat();
+      clearTimeout(tantoRevealTimer);
       $('tantoResult').classList.add('hidden');
       $('lobbyView').classList.add('hidden');
       $('waitingView').classList.remove('hidden');
@@ -1152,7 +1161,14 @@
           return img;
         }));
       }
-      result.classList.toggle('hidden', !reveal?.cards?.length);
+      clearTimeout(tantoRevealTimer);
+      const revealDelay = Math.max(0, (s.tantoRevealAt || 0) - Date.now());
+      result.classList.toggle('hidden', !reveal?.cards?.length || revealDelay > 0);
+      if (reveal?.cards?.length && revealDelay > 0) {
+        tantoRevealTimer = setTimeout(() => {
+          if (state === s && activeRoomId === s.roomId) result.classList.remove('hidden');
+        }, revealDelay);
+      }
       $('scoreA').textContent = s.scores.A;
       $('scoreB').textContent = s.scores.B;
       $('myTeamLabel').textContent = `Vos: J${s.mySeat + 1} · Equipo ${s.myTeam}`;

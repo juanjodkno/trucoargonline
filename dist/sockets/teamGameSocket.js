@@ -10,6 +10,7 @@ const trucoEngine_1 = require("../game/trucoEngine");
 const userService_1 = require("../auth/userService");
 const activeGameRegistry_1 = require("./activeGameRegistry");
 const TEAM_TANTOS_MS = 3000;
+const TEAM_LAST_CARD_MS = 1000;
 const TEAM_CHOICE_MS = 30_000;
 const teamRooms = new Map();
 const pendingTeamCreations = new Set();
@@ -620,6 +621,7 @@ function buildState(room, mySeat, canReadChat) {
         roomId: room.roomId,
         phase: room.phase,
         tantoResult: room.round?.isFinished || room.phase === 'MATCH_OVER' ? room.tantoResult || null : null,
+        tantoRevealAt: room.tantoRevealAt || null,
         teammateChoice: room.phase === 'CHOOSING_TEAMMATE' ? {
             secondsLeft: Math.max(0, Math.ceil(((room.teammateDeadline || 0) - Date.now()) / 1000)),
             canChoose: canReadChat && mySeat.userId === room.creatorId
@@ -731,7 +733,7 @@ function scheduleReturnAllToTeamLobby(io, room) {
         teamRooms.delete(room.roomId);
         io.in(room.roomId).socketsLeave(room.roomId);
         broadcastTables(io);
-    }, room.tantoResult ? TEAM_TANTOS_MS : 1800);
+    }, room.tantoResult ? TEAM_TANTOS_MS + (room.tantoRevealAt ? TEAM_LAST_CARD_MS : 0) : 1800);
 }
 async function settleTeamFinancials(io, room, winnerTeam, reason) {
     if (room.settlementComplete || room.settlementInProgress)
@@ -815,6 +817,7 @@ function broadcastTables(io) {
 }
 function resetBids(room) {
     room.tantoResult = undefined;
+    room.tantoRevealAt = undefined;
     room.pendingCall = null;
     room.suspendedTruco = null;
     room.trucoStake = 1;
@@ -849,6 +852,7 @@ function startRound(io, room) {
 function finishMatchOrScheduleNext(io, room, winnerTeam, points, reason) {
     if (!room.round || room.transitioning)
         return;
+    room.tantoRevealAt = room.tantoResult ? Date.now() + TEAM_LAST_CARD_MS : undefined;
     room.round.isFinished = true;
     room.round.winnerTeam = winnerTeam;
     addScore(room, winnerTeam, Math.max(1, points));
@@ -868,7 +872,7 @@ function finishMatchOrScheduleNext(io, room, winnerTeam, points, reason) {
     room.transitioning = true;
     sendRoomState(io, room);
     room.manoSeat = (room.manoSeat + 1) % 4;
-    room.transitionTimer = setTimeout(() => startRound(io, room), room.tantoResult ? TEAM_TANTOS_MS : 1800);
+    room.transitionTimer = setTimeout(() => startRound(io, room), room.tantoResult ? TEAM_TANTOS_MS + (room.tantoRevealAt ? TEAM_LAST_CARD_MS : 0) : 1800);
 }
 function resumeSuspendedTruco(room) {
     if (room.suspendedTruco && room.phase === 'PLAYING' && !room.transitioning) {
@@ -1312,6 +1316,10 @@ function setupTeamSocketEvents(io) {
             const userKey = cleanUser.toLowerCase();
             if (!cleanUser)
                 return socket.emit('team_error', { message: 'Ingresá un usuario para crear la mesa.' });
+            const requestedBet = Number(betAmount);
+            if (!Number.isFinite(requestedBet) || requestedBet < 300) {
+                return socket.emit('team_error', { message: 'El mínimo para jugar es de 300 fichas por jugador.' });
+            }
             try {
                 if (!(await (0, userService_1.userExistsFresh)(cleanUser))) {
                     socket.emit('team_session_invalid', { message: 'Tu cuenta ya no existe. Volvé a iniciar sesión.' });
@@ -1334,7 +1342,7 @@ function setupTeamSocketEvents(io) {
                         : 'Ya estás participando en otra mesa 2 vs 2.'
                 });
             }
-            const bet = Math.max(0, Math.round(Number(betAmount) || 0));
+            const bet = Math.round(requestedBet);
             const roomId = makeRoomId();
             const entryToken = makeEntryToken();
             pendingTeamCreations.add(userKey);
