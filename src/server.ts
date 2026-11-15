@@ -10,8 +10,8 @@ import crypto from 'crypto';
 import { Server } from 'socket.io';
 import rateLimit from 'express-rate-limit';
 import { getWeeklyRanking } from './ranking/weeklyRanking';
-import { setupSocketEvents } from './sockets/gameSocket';
-import { setupTeamSocketEvents } from './sockets/teamGameSocket';
+import { setupSocketEvents, getAdminLiveSoloMatches } from './sockets/gameSocket';
+import { setupTeamSocketEvents, getAdminLiveTeamMatches } from './sockets/teamGameSocket';
 import {
   initDatabase,
   registerUser,
@@ -859,6 +859,22 @@ app.post('/api/wallet/withdraw-request', async (req, res) => {
 });
 
 // Panel Administrativo - Métricas y Contabilidad
+app.get('/api/admin/live-games', requireAdminAuth, (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const matches = [...getAdminLiveSoloMatches(), ...getAdminLiveTeamMatches()];
+  return res.json({
+    success: true,
+    serverNow: Date.now(),
+    summary: {
+      matches: matches.length,
+      players: matches.reduce((sum, m) => sum + m.teams[0].length + m.teams[1].length, 0),
+      oneVsOne: matches.filter(m => m.mode === '1vs1').length,
+      twoVsTwo: matches.filter(m => m.mode === '2vs2').length
+    },
+    matches
+  });
+});
+
 app.get('/api/admin/metrics', requireAdminAuth, async (req, res) => {
   try {
     return res.json(await getAdminMetricsFresh());

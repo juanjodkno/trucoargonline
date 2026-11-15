@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Panel Admin - Backoffice Oficial</title>
   <link rel="icon" type="image/png" href="/logo.png" />
+  <link rel="stylesheet" href="/admin-live-games.css?v=1" />
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', system-ui, sans-serif; }
     body { background: #080c10; color: white; padding: 20px 10px; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
@@ -155,6 +156,7 @@
         <button class="tab-btn active" id="tabBtnDeposits" onclick="switchAdminTab('deposits')">📥 Depósitos Pendientes (<span id="tabPendingBadge">0</span>)</button>
         <button class="tab-btn" id="tabBtnChips" onclick="switchAdminTab('chips')">🪙 Ajuste de Fichas</button>
         <button class="tab-btn" id="tabBtnHistory" onclick="switchAdminTab('history')">📊 Historial Contable</button>
+        <button class="tab-btn" id="tabBtnLive" onclick="switchAdminTab('live')">🎴 Partidas en vivo</button>
         <button class="tab-btn" id="tabBtnPass" onclick="switchAdminTab('pass')">🔑 Claves</button>
       </div>
 
@@ -216,7 +218,23 @@
         </div>
       </div>
 
-      <!-- Tab 4: Resetear Password -->
+      <!-- Partidas en vivo: consulta administrativa de solo lectura -->
+      <section id="tabLive" style="display:none;" aria-labelledby="liveTitle">
+        <h4 id="liveTitle" style="color:#ffd166;">Partidas en vivo</h4>
+        <p class="live-description">Mesas comunes 1vs1 y 2vs2. Actualización cada 5 segundos mientras esta pestaña esté abierta.</p>
+        <div class="live-summary">
+          <div><strong id="liveMatchCount">—</strong><span>Partidas</span></div>
+          <div><strong id="livePlayerCount">—</strong><span>Jugadores</span></div>
+          <div><strong id="liveSoloCount">—</strong><span>1vs1</span></div>
+          <div><strong id="liveTeamCount">—</strong><span>2vs2</span></div>
+        </div>
+        <p id="liveUpdated" class="live-description" aria-live="polite"></p>
+        <p id="liveNotice" class="live-description" role="status"></p>
+        <p id="liveEmpty" class="live-empty" hidden>No hay partidas comunes en curso.</p>
+        <div id="liveList"></div>
+      </section>
+
+      <!-- Claves -->
       <form id="tabPass" onsubmit="handleResetPass(event)" style="display:none;">
         <h4 style="color:#ffd166; margin-bottom:12px;">Recuperación de contraseña por enlace</h4>
         <p style="color:#94a3b8; font-size:0.85rem; margin:0 0 12px;">Generá un enlace único válido durante 15 minutos y pegalo en el chat de WhatsApp del jugador.</p>
@@ -355,6 +373,7 @@
     }
 
     function adminLogout() {
+      window.dispatchEvent(new Event('admin-logout'));
       localStorage.removeItem('truco_admin_key');
       window.location.reload();
     }
@@ -366,6 +385,7 @@
         'deposits': { btn: 'tabBtnDeposits', content: 'tabDeposits' },
         'chips': { btn: 'tabBtnChips', content: 'tabChips' },
         'history': { btn: 'tabBtnHistory', content: 'tabHistory' },
+        'live': { btn: 'tabBtnLive', content: 'tabLive' },
         'pass': { btn: 'tabBtnPass', content: 'tabPass' }
       };
 
@@ -375,9 +395,11 @@
         document.getElementById(item.btn).classList.toggle('active', isCurrent);
         document.getElementById(item.content).style.display = isCurrent ? 'block' : 'none';
       });
+      window.dispatchEvent(new CustomEvent('admin-tab-change', { detail: tab }));
     }
 
     async function refreshAllData() {
+      window.dispatchEvent(new Event('admin-refresh'));
       await Promise.all([
         loadMetrics(),
         loadPendingDeposits(),
@@ -986,5 +1008,6 @@ ${link}`);
       }
     });
   </script>
+  <script src="/admin-live-games.js?v=1"></script>
 </body>
 </html>

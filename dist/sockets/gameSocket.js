@@ -3,6 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.getAdminLiveSoloMatches = getAdminLiveSoloMatches;
 exports.setupSocketEvents = setupSocketEvents;
 const crypto_1 = __importDefault(require("crypto"));
 const trucoGame_1 = require("../game/trucoGame");
@@ -12,6 +13,27 @@ const activeGameRegistry_1 = require("./activeGameRegistry");
 const rooms = new Map();
 const pendingRoomCreations = new Set();
 const BOT_DEFAULT_ID = 'La_Maquina';
+// Lee las salas existentes; no ejecuta acciones, liquidaciones ni temporizadores.
+function getAdminLiveSoloMatches() {
+    return Array.from(rooms.values())
+        .filter(room => room.guestId && !room.isTournament && !room.isBotGame &&
+        !room.settlementInProgress && room.scoreP1 < room.targetPoints && room.scoreP2 < room.targetPoints)
+        .map(room => {
+        const disconnectedPlayers = [room.creatorId, room.guestId].filter(user => room.disconnectedUser === user || !!room.disconnectDeadlines?.[user]);
+        return {
+            id: room.roomId,
+            mode: '1vs1',
+            teams: [[room.creatorId], [room.guestId]],
+            score: [room.scoreP1, room.scoreP2],
+            betPerPlayer: room.betAmount,
+            targetPoints: room.targetPoints,
+            withFlor: room.withFlor,
+            state: disconnectedPlayers.length ? 'reconnecting' : !room.gameRound ? 'starting' :
+                room.pendingNextHand || room.roundEnding || room.gameRound.isFinished ? 'between_hands' : 'playing',
+            disconnectedPlayers
+        };
+    });
+}
 function setupSocketEvents(io, tournament) {
     function getAvailableRooms() {
         return Array.from(rooms.values())

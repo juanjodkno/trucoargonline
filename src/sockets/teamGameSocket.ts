@@ -1,5 +1,6 @@
 import { Server, Socket } from 'socket.io';
 import crypto from 'crypto';
+import type { AdminLiveMatch } from '../admin/liveMatch';
 import { TeamTrucoRound, TeamId, teamForSeat } from '../game/teamTrucoGame';
 import { Card, calculateEnvido, calculateFlor, getEnvidoDetails, hasFlor } from '../game/trucoEngine';
 import {
@@ -132,6 +133,29 @@ interface TeamRoom {
 const teamRooms = new Map<string, TeamRoom>();
 const pendingTeamCreations = new Set<string>();
 const pendingTeamJoins = new Set<string>();
+
+// Solo copia datos públicos de partidas completas, usando los equipos elegidos.
+export function getAdminLiveTeamMatches(): AdminLiveMatch[] {
+  return Array.from(teamRooms.values())
+    .filter(room => room.phase === 'PLAYING' && room.players.length === 4 &&
+      !room.settlementInProgress && !room.settlementComplete &&
+      room.scoreA < room.targetPoints && room.scoreB < room.targetPoints)
+    .map(room => {
+      const players = [...room.players].sort((a, b) => a.seat - b.seat);
+      const disconnectedPlayers = players.filter(p => !p.connected || !!room.disconnectDeadlines[p.seat]).map(p => p.userId);
+      return {
+        id: room.roomId,
+        mode: '2vs2',
+        teams: [players.filter(p => p.team === 'A').map(p => p.userId), players.filter(p => p.team === 'B').map(p => p.userId)],
+        score: [room.scoreA, room.scoreB],
+        betPerPlayer: room.betAmount,
+        targetPoints: room.targetPoints,
+        withFlor: room.withFlor,
+        state: disconnectedPlayers.length ? 'reconnecting' : room.transitioning ? 'between_hands' : 'playing',
+        disconnectedPlayers
+      };
+    });
+}
 
 const otherTeam = (team: TeamId): TeamId => team === 'A' ? 'B' : 'A';
 const scoreFor = (room: TeamRoom, team: TeamId) => team === 'A' ? room.scoreA : room.scoreB;

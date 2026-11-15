@@ -3,6 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.getAdminLiveTeamMatches = getAdminLiveTeamMatches;
 exports.setupTeamSocketEvents = setupTeamSocketEvents;
 const crypto_1 = __importDefault(require("crypto"));
 const teamTrucoGame_1 = require("../game/teamTrucoGame");
@@ -15,6 +16,28 @@ const TEAM_CHOICE_MS = 30_000;
 const teamRooms = new Map();
 const pendingTeamCreations = new Set();
 const pendingTeamJoins = new Set();
+// Solo copia datos públicos de partidas completas, usando los equipos elegidos.
+function getAdminLiveTeamMatches() {
+    return Array.from(teamRooms.values())
+        .filter(room => room.phase === 'PLAYING' && room.players.length === 4 &&
+        !room.settlementInProgress && !room.settlementComplete &&
+        room.scoreA < room.targetPoints && room.scoreB < room.targetPoints)
+        .map(room => {
+        const players = [...room.players].sort((a, b) => a.seat - b.seat);
+        const disconnectedPlayers = players.filter(p => !p.connected || !!room.disconnectDeadlines[p.seat]).map(p => p.userId);
+        return {
+            id: room.roomId,
+            mode: '2vs2',
+            teams: [players.filter(p => p.team === 'A').map(p => p.userId), players.filter(p => p.team === 'B').map(p => p.userId)],
+            score: [room.scoreA, room.scoreB],
+            betPerPlayer: room.betAmount,
+            targetPoints: room.targetPoints,
+            withFlor: room.withFlor,
+            state: disconnectedPlayers.length ? 'reconnecting' : room.transitioning ? 'between_hands' : 'playing',
+            disconnectedPlayers
+        };
+    });
+}
 const otherTeam = (team) => team === 'A' ? 'B' : 'A';
 const scoreFor = (room, team) => team === 'A' ? room.scoreA : room.scoreB;
 function addScore(room, team, points) {

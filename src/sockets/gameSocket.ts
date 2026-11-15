@@ -1,6 +1,7 @@
 // src/sockets/gameSocket.ts
 import { Server, Socket } from 'socket.io';
 import crypto from 'crypto';
+import type { AdminLiveMatch } from '../admin/liveMatch';
 import { TrucoRound } from '../game/trucoGame';
 import { getEnvidoDetails, hasFlor, calculateFlor, Card } from '../game/trucoEngine';
 import {
@@ -109,6 +110,29 @@ interface ActiveRoom {
 const rooms = new Map<string, ActiveRoom>();
 const pendingRoomCreations = new Set<string>();
 const BOT_DEFAULT_ID = 'La_Maquina';
+
+// Lee las salas existentes; no ejecuta acciones, liquidaciones ni temporizadores.
+export function getAdminLiveSoloMatches(): AdminLiveMatch[] {
+  return Array.from(rooms.values())
+    .filter(room => room.guestId && !room.isTournament && !room.isBotGame &&
+      !room.settlementInProgress && room.scoreP1 < room.targetPoints && room.scoreP2 < room.targetPoints)
+    .map(room => {
+      const disconnectedPlayers = [room.creatorId, room.guestId!].filter(user =>
+        room.disconnectedUser === user || !!room.disconnectDeadlines?.[user]);
+      return {
+        id: room.roomId,
+        mode: '1vs1',
+        teams: [[room.creatorId], [room.guestId!]],
+        score: [room.scoreP1, room.scoreP2],
+        betPerPlayer: room.betAmount,
+        targetPoints: room.targetPoints,
+        withFlor: room.withFlor,
+        state: disconnectedPlayers.length ? 'reconnecting' : !room.gameRound ? 'starting' :
+          room.pendingNextHand || room.roundEnding || room.gameRound.isFinished ? 'between_hands' : 'playing',
+        disconnectedPlayers
+      };
+    });
+}
 
 export function setupSocketEvents(io: Server, tournament?: TournamentHooks) {
 

@@ -1,0 +1,25 @@
+#tabLive .live-description { color:#cbd5e1; font-size:.85rem; line-height:1.5; margin:8px 0; }
+#tabLive .live-summary { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:16px 0; }
+#tabLive .live-summary div { background:#0b141f; border:1px solid #334155; border-radius:10px; padding:12px; }
+#tabLive .live-summary strong { display:block; color:#ffd166; font-size:1.5rem; }
+#tabLive .live-summary span { color:#cbd5e1; font-size:.8rem; }
+#tabLive .live-empty { color:#94a3b8; padding:22px 0; }
+#tabLive .live-table { width:100%; border-collapse:collapse; font-size:.88rem; table-layout:fixed; }
+#tabLive .live-table th { color:#ffd166; text-align:left; font-size:.78rem; padding:12px 8px; }
+#tabLive .live-table td { padding:14px 8px; border-top:1px solid #334155; vertical-align:top; overflow-wrap:anywhere; }
+#tabLive .live-table th:nth-child(2) { width:35%; }
+#tabLive .live-table th:nth-child(4) { width:20%; }
+#tabLive .live-table th:nth-child(5) { width:22%; }
+#tabLive .live-opponents span { display:block; line-height:1.5; }
+#tabLive .live-versus { color:#94a3b8; font-size:.75rem; }
+#tabLive .live-detail { display:block; color:#94a3b8; font-size:.78rem; line-height:1.5; margin-top:3px; }
+#tabLive .live-status { color:#5eead4; font-weight:600; }
+#tabLive .live-status.waiting { color:#ffd166; }
+@media (max-width:650px) {
+  #tabLive .live-summary { grid-template-columns:repeat(2,1fr); }
+  #tabLive .live-table, #tabLive .live-table tbody { display:block; }
+  #tabLive .live-table thead { display:none; }
+  #tabLive .live-table tr { display:block; background:#0b141f; border:1px solid #334155; border-radius:12px; padding:8px 14px; margin-top:12px; }
+  #tabLive .live-table td { display:grid; grid-template-columns:85px minmax(0,1fr); gap:8px; border:0; padding:7px 0; }
+  #tabLive .live-table td::before { content:attr(data-label); color:#94a3b8; font-size:.8rem; }
+}

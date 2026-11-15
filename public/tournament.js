@@ -8,8 +8,9 @@
   const status=card.querySelector('#tournamentStatus'),message=card.querySelector('#tournamentMessage'),join=card.querySelector('#tournamentJoin'),cancel=card.querySelector('#tournamentCancel');
   async function api(url,body){
     const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
-    try{const r=await fetch(url,{method:body?'POST':'GET',signal:controller.signal,headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});const d=await r.json();if(!r.ok||!d.success)throw Error(d.message||'No se pudo completar la operación.');return d;}
-    catch(e){if(e.name==='AbortError')throw Error('La conexión demoró demasiado. Podés reintentar; la inscripción se cobra una sola vez.');throw e;}
+    let responseError=false;
+    try{const r=await fetch(url,{method:body?'POST':'GET',signal:controller.signal,headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});const d=await r.json();if(!r.ok||!d.success){responseError=true;throw Error(d.message||'No se pudo completar la operación.');}return d;}
+    catch(e){if(responseError)throw e;throw Error('No pudimos confirmar la operación. Reintentá en unos segundos.');}
     finally{clearTimeout(timer);}
   }
   function newRequestId(){
@@ -60,12 +61,12 @@
     for(const m of s.matches){const line=document.createElement('div');line.style.cssText='padding:9px;background:#0f172a;border-radius:8px;font-size:.9rem';const waiting=m.status==='waiting'?` · Presentarse: ${Math.max(0,Math.ceil((m.deadline-s.serverNow)/1000))} s`:'';line.textContent=`${m.stage}: ${m.players.map(u=>u?'@'+u:'Sin rival').join(' vs ')} · ${m.status==='playing'?'Jugando':m.status==='done'?(m.winner?'Avanza @'+m.winner:'Sin clasificados'):'Esperando'}${waiting}`;box.appendChild(line);}
     const prizes=Object.entries(s.prizes);if(prizes.length){const p=document.createElement('p');p.textContent=prizes.map(([rank,user])=>`${rank}º: @${user}`).join(' · ');box.appendChild(p);}
   }
-  async function refresh(){if(!currentUser||currentUser.isGuest)return;try{const d=await api('/api/tournament');render(d.tournament);}catch(e){message.textContent=e.message;}}
+  async function refresh(){if(!currentUser||currentUser.isGuest)return;try{const d=await api('/api/tournament');render(d.tournament);}catch(e){/* La consulta automática se reintenta sin mostrar errores transitorios. */}}
   async function presence(){
     if(!currentUser||currentUser.isGuest||!socket?.connected)return;
     const lobby=document.getElementById('lobbyContainer');
     const inLobby=getComputedStyle(lobby).display!=='none'&&!isGameStarted;
-    try{const d=await api('/api/tournament/presence',{socketId:socket.id,inLobby});recoverAssignment(d.assignedRoomId);}catch(e){message.textContent=e.message;if(inLobby&&!activeRoomId&&e.message.includes('Reconectá')){socket.disconnect();socket.connect();}}
+    try{const d=await api('/api/tournament/presence',{socketId:socket.id,inLobby});recoverAssignment(d.assignedRoomId);}catch(e){if(inLobby&&!activeRoomId&&e.message.includes('Reconectá')){socket.disconnect();socket.connect();}}
   }
   join.onclick=async()=>{
     if(busy||join.disabled)return;
