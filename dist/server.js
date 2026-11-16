@@ -525,21 +525,21 @@ app.post('/api/internal/astropay', requireAstroPayAutoEnabled, async (req, res) 
     const packageName = String(req.body?.packageName || '').trim();
     const title = String(req.body?.title || '').trim();
     const text = String(req.body?.text || '').trim();
-    if (packageName !== 'com.astropaycard.android') {
+    if (packageName !== 'air.PrexArgentina') {
         return res.status(400).json({
             success: false,
             message: 'Paquete de notificación no válido.'
         });
     }
-    if (title.toLowerCase() !== 'transferencia recibida') {
+    if (!/^Recibiste\s+\$/i.test(title)) {
         return res.status(400).json({
             success: false,
             message: 'Título de notificación no válido.'
         });
     }
-    const result = await (0, astropayAuto_1.processAstroPayAutoNotification)(text);
+    const result = await (0, astropayAuto_1.processAstroPayAutoNotification)(`${title}\n${text}`);
     console.log('====================================');
-    console.log('💳 ASTROPAY AUTO');
+    console.log('💳 PREX AUTO');
     console.log('Package:', packageName);
     console.log('Título:', title);
     console.log('Texto:', text);

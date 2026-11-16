@@ -121,7 +121,10 @@ function parseMoneyToken(token) {
 }
 function parseAstroPayNotification(text) {
     const raw = String(text || '').trim();
-    const match = raw.match(/^Has recibido\s+([0-9][0-9.,\s]*)\s+ARS\s+de\s+(.+?)\.?$/i);
+    const match = raw.match(/^Has recibido\s+([0-9][0-9.,\s]*)\s+ARS\s+de\s+(.+?)\.?$/i) || raw.match(
+    // Prex Argentina separa monto y titular entre el título y el cuerpo.
+    // Se aceptan pesos con formato argentino; no dólares ni otros avisos.
+    /^Recibiste[ \t]+\$[ \t]*((?:[0-9]{1,3}(?:\.[0-9]{3})+|[0-9]+)(?:,[0-9]{2})?)[ \t]*(?:💸\uFE0F?)?[ \t]*\r?\n[ \t]*Ya ten[eé]s disponible el dinero que te envi[oó]\s+(.+?)\.?$/iu);
     if (!match) {
         return {
             success: false,

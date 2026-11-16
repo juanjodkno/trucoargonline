@@ -303,7 +303,7 @@
     .cbu-box { background: #080c10; padding: 14px; border-radius: 8px; font-size: 0.92rem; color: #ffd166; margin-bottom: 15px; border: 1px dashed #334155; line-height: 1.6; }
 
 
-    /* Carga automática AstroPay - producción */
+    /* Carga automática Prex - producción */
     .deposit-card { max-width: 560px; padding: 30px 32px; }
     .deposit-card .cbu-box { margin-bottom: 0; }
     .deposit-important {
@@ -1768,7 +1768,7 @@ margin-left:auto;
   </div>
 
 </div>
-  <!-- Modal Cargar Fichas - Automática AstroPay -->
+  <!-- Modal Cargar Fichas - Automática Prex -->
   <div class="modal-overlay" id="depositModal">
     <div class="modal-card deposit-card">
       <h3 style="color:#ffd166; margin-bottom:12px;">💳 Cargar Fichas (1 ARS = 1 Ficha)</h3>
@@ -1776,11 +1776,11 @@ margin-left:auto;
 
       <div class="cbu-box">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; gap:10px;">
-          <div><strong>Alias:</strong> <span>juanjodecano.ap</span></div>
+          <div><strong>Alias:</strong> <span>JJAJ.PREX</span></div>
           <button type="button" id="btnCopyAlias" onclick="copyAlias()" style="background:#0077b6; color:white; border:none; padding:7px 13px; border-radius:6px; font-size:0.78rem; cursor:pointer; font-weight:bold; transition:0.2s; white-space:nowrap;">📋 Copiar</button>
         </div>
-        <div><strong>Titular:</strong> Juan Jose Arancibia Jerez</div>
-        <div><strong>Banco:</strong> AstroPay</div>
+        <div><strong>Titular:</strong> JUAN ARANCIBIA</div>
+        <div><strong>Banco:</strong> Prex</div>
       </div>
 
       <div class="deposit-important">
@@ -1826,7 +1826,7 @@ margin-left:auto;
         </div>
 
         <div id="depositStatusNote" class="deposit-status-note">
-          Esperando la transferencia. Cuando AstroPay confirme titular y monto, las fichas se acreditarán automáticamente.
+          Esperando la transferencia. Cuando Prex confirme titular y monto, las fichas se acreditarán automáticamente.
         </div>
 
         <div id="depositExpiryBox" class="deposit-expiry-box">
@@ -3247,7 +3247,7 @@ function updateChipsDisplay(chips) {
 
     function copyAlias() {
       triggerHaptic(20);
-      const alias = 'juanjodecano.ap';
+      const alias = 'JJAJ.PREX';
       navigator.clipboard.writeText(alias).then(() => {
         const btn = document.getElementById('btnCopyAlias');
         if (btn) {
@@ -3495,7 +3495,7 @@ function updateChipsDisplay(chips) {
         icon.textContent = '🔄';
         title.textContent = 'Verificando transferencia';
         badge.textContent = 'Procesando';
-        note.textContent = 'AstroPay confirmó la transferencia. Estamos completando la acreditación.';
+        note.textContent = 'Prex confirmó la transferencia. Estamos completando la acreditación.';
         if (expiryBox) expiryBox.style.display = 'none';
         stopAutoDepositCountdown();
         return;
