@@ -16,6 +16,7 @@ const socket_io_1 = require("socket.io");
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
 const weeklyRanking_1 = require("./ranking/weeklyRanking");
 const gameSocket_1 = require("./sockets/gameSocket");
+const livePresence_1 = require("./lobby/livePresence");
 const teamGameSocket_1 = require("./sockets/teamGameSocket");
 const userService_1 = require("./auth/userService");
 const astropayAuto_1 = require("./payments/astropayAuto");
@@ -721,6 +722,10 @@ const tournamentEngine = (0, gameSocket_1.setupSocketEvents)(io, {
 });
 tournamentRuntime = (0, http_1.mountTournament)(app, io, tournamentEngine, tournamentService, requireUserSession, cookie => verifySessionToken(getCookie({ headers: { cookie } }, SESSION_COOKIE)));
 (0, teamGameSocket_1.setupTeamSocketEvents)(io);
+(0, livePresence_1.mountLobbyPresence)(io, () => {
+    const solo = (0, gameSocket_1.getLobbySoloActivity)(), teams = (0, teamGameSocket_1.getAdminLiveTeamMatches)();
+    return { matches: solo.matches + teams.length, players: [...solo.players, ...teams.flatMap(m => m.teams.flat())] };
+});
 const PORT = process.env.PORT || 3000;
 async function startServer() {
     // Una sola inicialización. userService.ts ya no se auto-inicializa al importarse.

@@ -1517,9 +1517,12 @@
       <button type="button" class="btn-bot-lobby" onclick="startBotGame()">Jugar contra la máquina</button>
     </div>
     <div class="create-table-card">
-      <div style="display:flex; justify-content:space-between; align-items:center;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
         <span style="font-weight:bold; color:#ffd166; font-size:0.95rem;">➕ Crear Nueva Mesa</span>
-
+        <label for="useTablePassword" style="display:inline-flex; align-items:center; gap:6px; margin:0 0 0 auto; color:#fff; font-size:0.85rem; font-weight:600; cursor:pointer; white-space:nowrap;">
+          <input id="useTablePassword" type="checkbox" aria-controls="tablePasswordFields" style="width:16px; height:16px; margin:0; accent-color:#0077b6;" />
+          Con contraseña
+        </label>
       </div>
 
       <div class="table-options-grid">
@@ -1541,6 +1544,11 @@
             <option value="false">Sin Flor</option>
           </select>
         </div>
+      </div>
+      <div id="tablePasswordFields" class="form-group" hidden style="margin:10px 0 0; display:none;">
+        <label for="inputTablePassword">🔒 Contraseña de la mesa</label>
+        <input id="inputTablePassword" type="password" class="form-control" maxlength="32" autocomplete="new-password" placeholder="Ingresá una contraseña" disabled />
+        <small style="color:#94a3b8">De 6 a 32 caracteres. Compartila con quienes quieras invitar.</small>
       </div>
       <button class="btn-submit" id="btnCreateTable" style="margin-top:5px; padding:10px;" onclick="createNewTable()">CREAR MESA Y ESPERAR RIVAL</button>
     </div>
@@ -3790,17 +3798,20 @@ function updateChipsDisplay(chips) {
         return;
       }
 
+      const password = window.TrucoPrivateTables.readCreation('inputTablePassword', 'useTablePassword');
+      if (password === null) return;
       resetTableVisuals(false);
 
       socket.emit('create_room', { 
         userId: currentUser.username, 
         betAmount: bet,
         targetPoints: points,
-        withFlor
+        withFlor,
+        ...(password ? { password } : {})
       });
     }
 
-    function joinTable(roomId, betAmount, creatorId) {
+    async function joinTable(roomId, betAmount, creatorId, hasPassword = false) {
       triggerHaptic(20);
 
       // Nueva validación: Bloqueo de auto-partida
@@ -3813,6 +3824,9 @@ function updateChipsDisplay(chips) {
         alert('No tenés suficientes fichas para entrar a esta mesa.');
         return;
       }
+
+      const password = hasPassword ? await window.TrucoPrivateTables.askPassword() : '';
+      if (password === null) return;
 
       /*
         Recordamos temporalmente la mesa que se intentó ocupar.
@@ -3848,7 +3862,7 @@ function updateChipsDisplay(chips) {
       }, 3500);
 
       resetTableVisuals(true);
-      socket.emit('join_room', { roomId, userId: currentUser.username });
+      socket.emit('join_room', { roomId, userId: currentUser.username, ...(hasPassword ? { password } : {}) });
     }
 
     function cancelTableFromLobby(roomId) {
@@ -3879,7 +3893,7 @@ function updateChipsDisplay(chips) {
         
         // Armamos los botones. Siempre mostramos el de jugar.
         let actionButtons = `
-          <button class="btn-play-match ${isFree ? 'btn-free-match' : ''}" onclick="joinTable('${t.roomId}', ${t.betAmount}, '${t.creatorId}')">
+          <button class="btn-play-match ${isFree ? 'btn-free-match' : ''}" onclick="joinTable('${t.roomId}', ${t.betAmount}, '${t.creatorId}', ${t.hasPassword === true})">
             ${isFree ? '🎮 Jugar Gratis' : 'Jugar por $' + new Intl.NumberFormat('es-AR').format(t.betAmount)}
           </button>
         `;
@@ -3896,7 +3910,7 @@ function updateChipsDisplay(chips) {
         div.innerHTML = `
           <div class="table-info">
             <span style="color:white; font-weight:bold; display:flex; align-items:center; gap:6px;">
-              <span>${creatorEmoji}</span> Mesa de ${t.creatorId}
+              <span>${creatorEmoji}</span> Mesa de ${t.creatorId} ${t.hasPassword ? '🔒' : ''}
             </span>
             <div class="table-tags">
               <span class="tag-badge ${isFree ? 'tag-free' : 'tag-pts'}">${isFree ? 'GRATIS' : '$' + new Intl.NumberFormat('es-AR').format(t.betAmount)}</span>
@@ -6673,5 +6687,7 @@ window.addEventListener(
 );
   </script>
   <script src="/tournament.js?v=torneo-avisos-20261114"></script>
+  <script src="/private-tables.js?v=lab-ui2-20261118"></script>
+  <script src="/lobby-presence.js?v=lab-ui2-20261118"></script>
 </body>
 </html> 

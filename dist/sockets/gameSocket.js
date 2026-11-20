@@ -4,8 +4,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getAdminLiveSoloMatches = getAdminLiveSoloMatches;
+exports.getLobbySoloActivity = getLobbySoloActivity;
 exports.setupSocketEvents = setupSocketEvents;
 const crypto_1 = __importDefault(require("crypto"));
+const privateTables_1 = require("./privateTables");
 const trucoGame_1 = require("../game/trucoGame");
 const trucoEngine_1 = require("../game/trucoEngine");
 const userService_1 = require("../auth/userService");
@@ -34,6 +36,11 @@ function getAdminLiveSoloMatches() {
         };
     });
 }
+// Proyección pública: solo ocupación; no expone cartas, contraseñas ni puntajes.
+function getLobbySoloActivity() {
+    const live = [...rooms.values()].filter(r => r.guestId && !r.isBotGame && !r.settlementInProgress && r.scoreP1 < r.targetPoints && r.scoreP2 < r.targetPoints);
+    return { matches: live.length, players: live.flatMap(r => [r.creatorId, r.guestId]) };
+}
 function setupSocketEvents(io, tournament) {
     function getAvailableRooms() {
         return Array.from(rooms.values())
@@ -44,7 +51,8 @@ function setupSocketEvents(io, tournament) {
             creatorAvatar: (0, userService_1.getUserAvatar)(r.creatorId),
             betAmount: r.betAmount,
             targetPoints: r.targetPoints,
-            withFlor: r.withFlor
+            withFlor: r.withFlor,
+            hasPassword: !!r.privateAccess
         }));
     }
     function broadcastTables() {
@@ -1566,6 +1574,8 @@ function setupSocketEvents(io, tournament) {
             const room = rooms.get(roomId);
             if (room?.isTournament && (socket.data.tournamentUser !== String(userId || '').toLowerCase()))
                 return;
+            if (!(0, privateTables_1.privateTableIdentity)(room?.privateAccess, socket, userId))
+                return socket.emit('reconnect_failed', { roomId });
             const cleanUser = (userId || '').trim().toLowerCase();
             if (!cleanUser) {
                 return socket.emit('reconnect_failed', { roomId: String(roomId || '') });
@@ -1697,6 +1707,8 @@ function setupSocketEvents(io, tournament) {
             if (!room || !userId)
                 return;
             const cleanUser = String(userId).trim().toLowerCase();
+            if (!(0, privateTables_1.privateTableIdentity)(room.privateAccess, socket, cleanUser))
+                return;
             if (!room.isBotGame) {
                 try {
                     if (!(await (0, userService_1.userExistsFresh)(cleanUser))) {
@@ -1747,6 +1759,8 @@ function setupSocketEvents(io, tournament) {
             }
             for (const [roomId, room] of rooms.entries()) {
                 if (room.guestId && (room.creatorId.toLowerCase() === userId.toLowerCase() || (!room.isBotGame && room.guestId.toLowerCase() === userId.toLowerCase()))) {
+                    if (!(0, privateTables_1.privateTableIdentity)(room.privateAccess, socket, cleanUser))
+                        continue;
                     socket.emit('active_game_found', { roomId, userId });
                     return;
                 }
@@ -1840,7 +1854,7 @@ function setupSocketEvents(io, tournament) {
                     dealAutoHand(room);
             }, 650);
         });
-        socket.on('create_room', async ({ userId, betAmount, targetPoints, withFlor }) => {
+        socket.on('create_room', async ({ userId, betAmount, targetPoints, withFlor, password }) => {
             const cleanUser = (userId || '').trim().toLowerCase();
             if (!cleanUser)
                 return socket.emit('error_action', { message: 'Usuario inválido.' });
@@ -1860,6 +1874,13 @@ function setupSocketEvents(io, tournament) {
             if (pendingRoomCreations.has(cleanUser)) {
                 return socket.emit('error_action', { message: 'Ya se está creando tu mesa. Esperá un instante.' });
             }
+            let privateAccess;
+            try {
+                privateAccess = (0, privateTables_1.createTableAccess)(password, socket, cleanUser);
+            }
+            catch (e) {
+                return socket.emit('error_action', { message: e.message });
+            }
             pendingRoomCreations.add(cleanUser);
             let claimedRoomId = null;
             let debitSucceeded = false;
@@ -1867,6 +1888,8 @@ function setupSocketEvents(io, tournament) {
             try {
                 for (const [existingRoomId, existingRoom] of rooms.entries()) {
                     if (existingRoom.creatorId.toLowerCase() === cleanUser && !existingRoom.guestId) {
+                        if (!(0, privateTables_1.privateTableIdentity)(existingRoom.privateAccess, socket, cleanUser))
+                            return;
                         existingRoom.creatorSocketId = socket.id;
                         if (existingRoom.waitingTimeout) {
                             clearTimeout(existingRoom.waitingTimeout);
@@ -1902,6 +1925,7 @@ function setupSocketEvents(io, tournament) {
                 }
                 debitSucceeded = true;
                 const room = {
+                    privateAccess,
                     roomId,
                     creatorId: userId,
                     creatorSocketId: socket.id,
@@ -1960,6 +1984,8 @@ function setupSocketEvents(io, tournament) {
             try {
                 const room = rooms.get(roomId);
                 if (room && !room.guestId && (room.creatorSocketId === socket.id || (userId && room.creatorId.toLowerCase() === userId.toLowerCase()))) {
+                    if (!(0, privateTables_1.privateTableIdentity)(room.privateAccess, socket, room.creatorId))
+                        return;
                     if (room.waitingTimeout) {
                         clearTimeout(room.waitingTimeout);
                         room.waitingTimeout = undefined;
@@ -2002,7 +2028,7 @@ function setupSocketEvents(io, tournament) {
             }
             void settleAndCloseMatch(room, winnerId, authUser, 'SURRENDER', 'player_surrendered', authUser);
         });
-        socket.on('join_room', async ({ roomId, userId }) => {
+        socket.on('join_room', async ({ roomId, userId, password }) => {
             if (String(roomId || '').startsWith('torneo_'))
                 return;
             const cleanUser = (userId || '').trim().toLowerCase();
@@ -2018,6 +2044,9 @@ function setupSocketEvents(io, tournament) {
                     return socket.emit('error_action', { message: 'La mesa ya está completa.' });
                 if (!cleanUser)
                     return socket.emit('error_action', { message: 'Usuario inválido.' });
+                const accessError = (0, privateTables_1.tableEntryError)(room.privateAccess, socket, cleanUser, room.roomId, password);
+                if (accessError)
+                    return socket.emit('error_action', { message: accessError });
                 try {
                     if (!(await (0, userService_1.userExistsFresh)(cleanUser))) {
                         socket.emit('session_invalid', { message: 'Tu cuenta ya no existe. Volvé a iniciar sesión.' });

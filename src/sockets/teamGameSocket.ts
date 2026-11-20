@@ -1,5 +1,6 @@
 import { Server, Socket } from 'socket.io';
 import crypto from 'crypto';
+import { createTableAccess, privateTableIdentity, tableEntryError, PrivateTableAccess } from './privateTables';
 import type { AdminLiveMatch } from '../admin/liveMatch';
 import { TeamTrucoRound, TeamId, teamForSeat } from '../game/teamTrucoGame';
 import { Card, calculateEnvido, calculateFlor, getEnvidoDetails, hasFlor } from '../game/trucoEngine';
@@ -73,6 +74,7 @@ interface FlorPending {
 type PendingCall = TrucoPending | EnvidoPending | FlorPending;
 
 interface TeamRoom {
+  privateAccess?: PrivateTableAccess;
   roomId: string;
   creatorId: string;
   players: TeamSeat[];
@@ -984,7 +986,8 @@ function availableRooms() {
       targetPoints: room.targetPoints,
       withFlor: room.withFlor,
       betAmount: room.betAmount,
-      payout: calculateTeamMatchPayout(room.betAmount)
+      payout: calculateTeamMatchPayout(room.betAmount),
+      hasPassword: !!room.privateAccess
     }));
 }
 
@@ -1530,7 +1533,7 @@ export function setupTeamSocketEvents(io: Server) {
   io.on('connection', (socket: Socket) => {
     socket.on('team_request_tables', () => socket.emit('team_update_tables', availableRooms()));
 
-    socket.on('team_create_room', async ({ userId, targetPoints, withFlor, betAmount }) => {
+    socket.on('team_create_room', async ({ userId, targetPoints, withFlor, betAmount, password }) => {
       const cleanUser = String(userId || '').trim();
       const userKey = cleanUser.toLowerCase();
       if (!cleanUser) return socket.emit('team_error', { message: 'Ingresá un usuario para crear la mesa.' });
@@ -1560,6 +1563,9 @@ export function setupTeamSocketEvents(io: Server) {
         });
       }
 
+      let privateAccess: PrivateTableAccess | undefined;
+      try { privateAccess = createTableAccess(password, socket, cleanUser); }
+      catch (e) { return socket.emit('team_error', { message: (e as Error).message }); }
       const bet = Math.round(requestedBet);
       const roomId = makeRoomId();
       const entryToken = makeEntryToken();
@@ -1582,6 +1588,7 @@ export function setupTeamSocketEvents(io: Server) {
         debitSucceeded = true;
 
         const room: TeamRoom = {
+          privateAccess,
           roomId,
           creatorId: cleanUser,
           players: [{ seat: 0, userId: cleanUser, socketId: socket.id, connected: true, team: 'A', entryToken }],
@@ -1638,11 +1645,13 @@ export function setupTeamSocketEvents(io: Server) {
       }
     });
 
-    socket.on('team_join_room', async ({ roomId, userId }) => {
+    socket.on('team_join_room', async ({ roomId, userId, password }) => {
       const room = teamRooms.get(String(roomId || ''));
       const cleanUser = String(userId || '').trim();
       if (!room || room.phase !== 'WAITING') return socket.emit('team_error', { message: 'La mesa ya no está disponible.' });
       if (!cleanUser) return socket.emit('team_error', { message: 'Usuario inválido.' });
+      const accessError = tableEntryError(room.privateAccess, socket, cleanUser, room.roomId, password);
+      if (accessError) return socket.emit('team_error', { message: accessError });
       try {
         if (!(await userExistsFresh(cleanUser))) {
           socket.emit('team_session_invalid', { message: 'Tu cuenta ya no existe. Volvé a iniciar sesión.' });
@@ -1782,13 +1791,14 @@ export function setupTeamSocketEvents(io: Server) {
         }
       } catch { return; }
       const room = Array.from(teamRooms.values()).find(r => r.phase !== 'MATCH_OVER' && getSeatByUser(r, cleanUser));
-      if (room) socket.emit('team_active_room_found', { roomId: room.roomId });
+      if (room && privateTableIdentity(room.privateAccess, socket, cleanUser)) socket.emit('team_active_room_found', { roomId: room.roomId });
     });
 
     socket.on('team_reconnect_room', async ({ roomId, userId }) => {
       const room = teamRooms.get(String(roomId || ''));
       if (!room) return socket.emit('team_reconnect_failed');
       const reconnectUser = String(userId || '').trim();
+      if (!privateTableIdentity(room.privateAccess, socket, reconnectUser)) return socket.emit('team_reconnect_failed');
       try {
         if (!(await userExistsFresh(reconnectUser))) {
           socket.emit('team_session_invalid', { message: 'Tu cuenta ya no existe. Volvé a iniciar sesión.' });
@@ -1813,6 +1823,7 @@ export function setupTeamSocketEvents(io: Server) {
       const room = teamRooms.get(String(roomId || ''));
       if (!room) return socket.emit('team_reconnect_failed');
       const stateUser = String(userId || '').trim();
+      if (!privateTableIdentity(room.privateAccess, socket, stateUser)) return socket.emit('team_reconnect_failed');
       try {
         if (!(await userExistsFresh(stateUser))) {
           socket.emit('team_session_invalid', { message: 'Tu cuenta ya no existe. Volvé a iniciar sesión.' });

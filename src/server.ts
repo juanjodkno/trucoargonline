@@ -10,7 +10,8 @@ import crypto from 'crypto';
 import { Server } from 'socket.io';
 import rateLimit from 'express-rate-limit';
 import { getWeeklyRanking } from './ranking/weeklyRanking';
-import { setupSocketEvents, getAdminLiveSoloMatches } from './sockets/gameSocket';
+import { setupSocketEvents, getAdminLiveSoloMatches, getLobbySoloActivity } from './sockets/gameSocket';
+import { mountLobbyPresence } from './lobby/livePresence';
 import { setupTeamSocketEvents, getAdminLiveTeamMatches } from './sockets/teamGameSocket';
 import {
   initDatabase,
@@ -1038,6 +1039,10 @@ const tournamentEngine = setupSocketEvents(io, {
 tournamentRuntime = mountTournament(app,io,tournamentEngine,tournamentService,requireUserSession,
   cookie => verifySessionToken(getCookie({headers:{cookie}} as express.Request, SESSION_COOKIE)));
 setupTeamSocketEvents(io);
+mountLobbyPresence(io, () => {
+  const solo = getLobbySoloActivity(), teams = getAdminLiveTeamMatches();
+  return { matches: solo.matches + teams.length, players: [...solo.players, ...teams.flatMap(m => m.teams.flat())] };
+});
 
 const PORT = process.env.PORT || 3000;
 

@@ -509,6 +509,11 @@
               <option value="true">Con Flor</option>
             </select>
           </div>
+          <div class="field">
+            <label for="tablePassword">🔒 Contraseña (opcional)</label>
+            <input id="tablePassword" type="password" maxlength="32" autocomplete="new-password" placeholder="Sin contraseña: mesa pública" />
+            <small class="hint">De 6 a 32 caracteres.</small>
+          </div>
           <button class="btn gold" onclick="createRoom()">Crear mesa</button>
         </div>
         <div class="hint">El mínimo es de 300 fichas por jugador. Cada uno de los 4 jugadores debe tener el monto elegido para sentarse. El pozo total es la entrada x 4 y se reparte entre los 2 jugadores del equipo ganador.</div>
@@ -711,18 +716,23 @@
         alert('El mínimo para jugar es de 300 fichas por jugador.');
         return;
       }
+      const password = window.TrucoPrivateTables.readCreation('tablePassword');
+      if (password === null) return;
       socket.emit('team_create_room', {
         userId,
         betAmount: Math.round(bet),
         targetPoints: Number($('targetPoints').value),
-        withFlor: $('withFlor').value === 'true'
+        withFlor: $('withFlor').value === 'true',
+        ...(password ? { password } : {})
       });
     }
 
-    function joinRoom(roomId) {
+    async function joinRoom(roomId, hasPassword = false) {
       const userId = cleanUser();
       if (!userId) return;
-      socket.emit('team_join_room', { roomId, userId });
+      const password = hasPassword ? await window.TrucoPrivateTables.askPassword() : '';
+      if (password === null) return;
+      socket.emit('team_join_room', { roomId, userId, ...(hasPassword ? { password } : {}) });
     }
 
     function leaveWaitingRoom() {
@@ -743,10 +753,10 @@
           ? `${formatChips(room.betAmount)} fichas c/u · Pozo ${formatChips(payout.grossPot)} · Premio equipo ${formatChips(payout.winnerPrizeTotal)}`
           : 'Gratis · Sin fichas';
         return `<article class="room-card">
-          <strong>${escapeHtml(room.creatorId)}</strong>
+          <strong>${escapeHtml(room.creatorId)} ${room.hasPassword ? '🔒' : ''}</strong>
           <div class="meta">${room.playerCount}/4 jugadores · ${room.targetPoints} puntos · ${room.withFlor ? 'Con Flor' : 'Sin Flor'}<br>${moneyLine}<br>${escapeHtml(room.roomId)}</div>
           <div class="seat-mini">${seats}</div>
-          <button class="btn" onclick="joinRoom('${room.roomId}')">${Number(room.betAmount) > 0 ? `Entrar · ${formatChips(room.betAmount)} fichas` : 'Entrar gratis'}</button>
+          <button class="btn" onclick="joinRoom('${room.roomId}', ${room.hasPassword === true})">${Number(room.betAmount) > 0 ? `Entrar · ${formatChips(room.betAmount)} fichas` : 'Entrar gratis'}</button>
         </article>`;
       }).join('');
     }
@@ -1379,5 +1389,7 @@
     installTeamResumeListeners();
     requestTables();
   </script>
+  <script src="/private-tables.js?v=lab-20261118"></script>
+  <script src="/lobby-presence.js?v=lab-20261118"></script>
 </body>
 </html>

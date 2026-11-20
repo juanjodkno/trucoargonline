@@ -1,6 +1,7 @@
 // src/sockets/gameSocket.ts
 import { Server, Socket } from 'socket.io';
 import crypto from 'crypto';
+import { createTableAccess, privateTableIdentity, tableEntryError, PrivateTableAccess } from './privateTables';
 import type { AdminLiveMatch } from '../admin/liveMatch';
 import { TrucoRound } from '../game/trucoGame';
 import { getEnvidoDetails, hasFlor, calculateFlor, Card } from '../game/trucoEngine';
@@ -32,6 +33,7 @@ export interface TournamentHooks {
 }
 
 interface ActiveRoom {
+  privateAccess?: PrivateTableAccess;
   isTournament?: boolean;
   disconnectDeadlines?: Record<string, number>;
   roomId: string;
@@ -134,6 +136,12 @@ export function getAdminLiveSoloMatches(): AdminLiveMatch[] {
     });
 }
 
+// Proyección pública: solo ocupación; no expone cartas, contraseñas ni puntajes.
+export function getLobbySoloActivity() {
+  const live = [...rooms.values()].filter(r => r.guestId && !r.isBotGame && !r.settlementInProgress && r.scoreP1 < r.targetPoints && r.scoreP2 < r.targetPoints);
+  return { matches: live.length, players: live.flatMap(r => [r.creatorId, r.guestId!]) };
+}
+
 export function setupSocketEvents(io: Server, tournament?: TournamentHooks) {
 
   function getAvailableRooms() {
@@ -145,7 +153,8 @@ export function setupSocketEvents(io: Server, tournament?: TournamentHooks) {
         creatorAvatar: getUserAvatar(r.creatorId),
         betAmount: r.betAmount,
         targetPoints: r.targetPoints,
-        withFlor: r.withFlor
+        withFlor: r.withFlor,
+        hasPassword: !!r.privateAccess
       }));
   }
 
@@ -1810,6 +1819,7 @@ io.to(room.roomId).emit('flor_declared', {
 
   const room = rooms.get(roomId);
   if (room?.isTournament && (socket.data.tournamentUser !== String(userId || '').toLowerCase())) return;
+  if (!privateTableIdentity(room?.privateAccess, socket, userId)) return socket.emit('reconnect_failed', { roomId });
 
   const cleanUser =
     (userId || '').trim().toLowerCase();
@@ -2041,6 +2051,7 @@ io.to(room.roomId).emit('flor_declared', {
       if (!room || !userId) return;
 
       const cleanUser = String(userId).trim().toLowerCase();
+      if (!privateTableIdentity(room.privateAccess, socket, cleanUser)) return;
       if (!room.isBotGame) {
         try {
           if (!(await userExistsFresh(cleanUser))) {
@@ -2084,6 +2095,7 @@ io.to(room.roomId).emit('flor_declared', {
       } catch { return; }
       for (const [roomId, room] of rooms.entries()) {
         if (room.guestId && (room.creatorId.toLowerCase() === userId.toLowerCase() || (!room.isBotGame && room.guestId.toLowerCase() === userId.toLowerCase()))) {
+          if (!privateTableIdentity(room.privateAccess, socket, cleanUser)) continue;
           socket.emit('active_game_found', { roomId, userId });
           return;
         }
@@ -2187,7 +2199,7 @@ io.to(room.roomId).emit('flor_declared', {
       }, 650);
     });
 
-    socket.on('create_room', async ({ userId, betAmount, targetPoints, withFlor }) => {
+    socket.on('create_room', async ({ userId, betAmount, targetPoints, withFlor, password }) => {
       const cleanUser = (userId || '').trim().toLowerCase();
       if (!cleanUser) return socket.emit('error_action', { message: 'Usuario inválido.' });
       const requestedBet = Number(betAmount);
@@ -2207,6 +2219,10 @@ io.to(room.roomId).emit('flor_declared', {
         return socket.emit('error_action', { message: 'Ya se está creando tu mesa. Esperá un instante.' });
       }
 
+      let privateAccess: PrivateTableAccess | undefined;
+      try { privateAccess = createTableAccess(password, socket, cleanUser); }
+      catch (e) { return socket.emit('error_action', { message: (e as Error).message }); }
+
       pendingRoomCreations.add(cleanUser);
       let claimedRoomId: string | null = null;
       let debitSucceeded = false;
@@ -2214,6 +2230,7 @@ io.to(room.roomId).emit('flor_declared', {
       try {
         for (const [existingRoomId, existingRoom] of rooms.entries()) {
           if (existingRoom.creatorId.toLowerCase() === cleanUser && !existingRoom.guestId) {
+            if (!privateTableIdentity(existingRoom.privateAccess, socket, cleanUser)) return;
             existingRoom.creatorSocketId = socket.id;
             if (existingRoom.waitingTimeout) {
               clearTimeout(existingRoom.waitingTimeout);
@@ -2254,6 +2271,7 @@ io.to(room.roomId).emit('flor_declared', {
         debitSucceeded = true;
 
         const room: ActiveRoom = {
+          privateAccess,
           roomId,
           creatorId: userId,
           creatorSocketId: socket.id,
@@ -2311,6 +2329,7 @@ io.to(room.roomId).emit('flor_declared', {
         const room = rooms.get(roomId);
 
         if (room && !room.guestId && (room.creatorSocketId === socket.id || (userId && room.creatorId.toLowerCase() === userId.toLowerCase()))) {
+          if (!privateTableIdentity(room.privateAccess, socket, room.creatorId)) return;
           if (room.waitingTimeout) {
             clearTimeout(room.waitingTimeout);
             room.waitingTimeout = undefined;
@@ -2366,7 +2385,7 @@ io.to(room.roomId).emit('flor_declared', {
       );
     });
 
-    socket.on('join_room', async ({ roomId, userId }) => {
+    socket.on('join_room', async ({ roomId, userId, password }) => {
       if (String(roomId || '').startsWith('torneo_')) return;
       const cleanUser = (userId || '').trim().toLowerCase();
       let claimedTarget = false;
@@ -2379,6 +2398,8 @@ io.to(room.roomId).emit('flor_declared', {
         if (!room) return socket.emit('error_action', { message: 'La mesa no existe.' });
         if (room.guestId) return socket.emit('error_action', { message: 'La mesa ya está completa.' });
         if (!cleanUser) return socket.emit('error_action', { message: 'Usuario inválido.' });
+        const accessError = tableEntryError(room.privateAccess, socket, cleanUser, room.roomId, password);
+        if (accessError) return socket.emit('error_action', { message: accessError });
         try {
           if (!(await userExistsFresh(cleanUser))) {
             socket.emit('session_invalid', { message: 'Tu cuenta ya no existe. Volvé a iniciar sesión.' });
